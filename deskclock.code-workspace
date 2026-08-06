@@ -1,0 +1,65 @@
+{
+    "folders": [
+        {
+            "path": "."
+        }
+    ],
+    "settings": {
+        // === 禁用 STM32 插件，消除冲突 ===
+        "stm32-vscode-extension.enabled": false,
+        "stm32cube-ide-clangd.enable": false,
+        "C_Cpp.intelliSenseEngine": "default",
+        "clangd.onConfigChanged": "ignore",
+
+        // === C/C++ IntelliSense (Microsoft cpptools) ===
+        "C_Cpp.default.includePath": [
+            "${workspaceFolder}/Core/Inc",
+            "${workspaceFolder}/Drivers/STM32L4xx_HAL_Driver/Inc",
+            "${workspaceFolder}/Drivers/STM32L4xx_HAL_Driver/Inc/Legacy",
+            "${workspaceFolder}/Drivers/CMSIS/Device/ST/STM32L4xx/Include",
+            "${workspaceFolder}/Drivers/CMSIS/Include",
+            "${workspaceFolder}/Middlewares/Third_Party/FreeRTOS/Source/include",
+            "${workspaceFolder}/Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2",
+            "${workspaceFolder}/Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F"
+        ],
+        "C_Cpp.default.defines": [
+            "USE_HAL_DRIVER",
+            "STM32L471xx"
+        ],
+        "C_Cpp.default.compilerPath": "C:/Program Files (x86)/Arm GNU Toolchain arm-none-eabi/14.2 rel1/bin/arm-none-eabi-gcc.exe",
+        "C_Cpp.default.cStandard": "c99",
+        "C_Cpp.default.intelliSenseMode": "gcc-arm",
+        "C_Cpp.default.compilerArgs": [
+            "-mcpu=cortex-m4",
+            "-mthumb",
+            "-mfloat-abi=hard",
+            "-mfpu=fpv4-sp-d16"
+        ],
+
+        // === 编辑器体验 ===
+        "files.associations": {
+            "*.s": "arm",
+            "*.ioc": "xml"
+        },
+        "editor.renderWhitespace": "boundary",
+        "editor.rulers": [100],
+        "search.exclude": {
+            "build/": true,
+            "MDK-ARM/Listings/": true,
+            "MDK-ARM/Objects/": true
+        }
+    },
+    "extensions": {
+        "recommendations": [
+            "ms-vscode.cpptools",
+            "ms-vscode.cpptools-extension-pack",
+            "gruntfuggly.todo-tree",
+            "aaron-bond.better-comments"
+        ],
+        "unwantedRecommendations": [
+            "stmicroelectronics.stm32-vscode-extension",
+            "stmicroelectronics.stm32cube-ide-clangd",
+            "stmicroelectronics.stm32cube-ide-core"
+        ]
+    }
+}

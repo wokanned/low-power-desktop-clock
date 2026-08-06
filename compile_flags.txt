@@ -1,0 +1,16 @@
+-mcpu=cortex-m4
+-mthumb
+-mfloat-abi=hard
+-mfpu=fpv4-sp-d16
+-Iapp
+-ICore/Inc
+-IDrivers/STM32L4xx_HAL_Driver/Inc
+-IDrivers/STM32L4xx_HAL_Driver/Inc/Legacy
+-IDrivers/CMSIS/Device/ST/STM32L4xx/Include
+-IDrivers/CMSIS/Include
+-IMiddlewares/Third_Party/FreeRTOS/Source/include
+-IMiddlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2
+-IMiddlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F
+-DUSE_HAL_DRIVER
+-DSTM32L471xx
+-std=c99

@@ -1,0 +1,21 @@
+# === 编译产物 / Build output ===
+build/
+MDK-ARM/DeskClock/
+MDK-ARM/DebugConfig/
+*.o
+*.d
+*.crf
+*.lst
+*.axf
+*.map
+*.dep
+*.hex
+
+# === Keil 个人用户设置（可再生、因人而异）===
+MDK-ARM/*.uvguix.*
+MDK-ARM/*.uvoptx
+
+# === IDE / 工具用户状态 ===
+.vscode/
+.mxproject
+.claude/settings.local.json
