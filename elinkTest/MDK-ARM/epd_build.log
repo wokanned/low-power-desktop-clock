@@ -1,0 +1,7 @@
+*** Using Compiler 'V5.06 update 7 (build 960)', folder: 'D:\realThirdKeil\ARM\ARMCC\Bin'
+Rebuild target 'elinkTest'
+Error instantiating RTE components
+Error #543: Device STM32L471RETx(STMicroelectronics) not found, pack 'Keil::STM32L4xx_DFP' is not installed
+Error #541: 'ARM::CMSIS:CORE@4.3.0' component is missing (previously found in pack 'ARM::CMSIS')
+Target not created.
+Build Time Elapsed:  00:00:01
