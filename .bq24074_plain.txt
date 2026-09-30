@@ -1,0 +1,3931 @@
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+BQ2407x Standalone 1-Cell 1.5-A Linear Battery Chargers with Power Path
+
+1 Features
+· Fully compliant USB charger
+­ Selectable 100-mA and 500-mA maximum input current
+­ 100-mA Maximum current limit ensures compliance to USB-IF standard
+­ Input-based dynamic power management (VINDPM) for protection against poor USB sources
+· Functional Safety-Capable (BQ24074)
+­ Documentation available to aid functional safety system design
+· 28-V Input rating with overvoltage protection · Integrated dynamic power path management
+(DPPM) function simultaneously and independently powers the system and charges the battery · Supports up to 1.5-A charge current with current monitoring output (ISET) · Programmable input current limit up to 1.5 A for wall adapters · System output tracks battery voltage (BQ24072) · Programmable termination current (BQ24074) · Battery disconnect function with SYSOFF input (BQ24075, BQ24079) · Programmable pre-charge and fast-charge safety timers · Reverse current, short-circuit and thermal protection · NTC thermistor input · Proprietary start-up sequence limits inrush current · Status indication ­ charging/done, power good · Safety-Related Certification:
+­ IEC 62368-1 Certification (BQ24072)
+2 Applications
+· TWS Charging case and headphones · Gaming accessory · Video doorbells, IP network cameras · Asset tracking and fleet management · Portable medical devices
+3 Description
+The BQ2407x series of devices are integrated Li-Ion linear chargers and system power path management devices targeted at space-limited portable applications. The devices operate from either a USB port or an AC adapter and support charge currents up to 1.5 A. The input voltage range with input overvoltage protection supports unregulated adapters. The USB input current limit accuracy and start up sequence allow the BQ2407x to meet USB-
+
+IF inrush current specifications. Additionally, the input dynamic power management (VIN-DPM) prevents the charger from crashing incorrectly configured USB sources.
+
+The BQ2407x features dynamic power path management (DPPM) that powers the system while simultaneously and independently charging the battery. The DPPM circuit reduces the charge current when the input current limit causes the system output to fall to the DPPM threshold; thus, supplying the system load at all times while monitoring the charge current separately. This feature reduces the number of charge and discharge cycles on the battery, allows for proper charge termination and enables the system to run with a defective or absent battery pack.
+
+Device Information
+
+PART NUMBER(1)
+
+PACKAGE
+
+BODY SIZE (NOM)
+
+BQ24072
+
+BQ24073
+
+BQ24074
+
+VQFN (16)
+
+3.00 mm × 3.00 mm
+
+BQ24075
+
+BQ24079
+
+(1) For all available packages, see the orderable addendum at the end of the data sheet.
+
+1 kW
+
+1 kW
+
+PGOOD 7 CHG 9
+
+IN 1 mF
+System ON/OFF Control
+
+IN
+13
+8 VSS
+
+BQ24075 BQ24079
+
+15 SYSOFF
+
+OUT 10
+11
+EN 2 5 BAT 2
+3
+TS 1
+
+4.7 mF
+
+SYSTEM
+
+4.7 mF
+
+TEMP
+
+PACK+
+
+CE TMR EN1 ILM ISET
+
+16
+12 6 14 4
+
+1.18 kW 1.13 kW
+
+PACK-
+
+Typical Application Circuit
+
+An IMPORTANT NOTICE at the end of this data sheet addresses availability, warranty, changes, use in safety-critical applications, intellectual property matters and other important disclaimers. PRODUCTION DATA.
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+www.ti.com
+
+Table of Contents
+
+1 Features............................................................................1 2 Applications..................................................................... 1 3 Description.......................................................................1 4 Revision History.............................................................. 2 5 Description (continued).................................................. 5 6 Device Comparison Table...............................................6 7 Pin Configuration and Functions...................................7 8 Specifications................................................................ 10
+8.1 Absolute Maximum Ratings(1) .................................. 10 8.2 ESD Ratings............................................................. 10 8.3 Recommended Operating Conditions.......................10 8.4 Thermal Information.................................................. 11 8.5 Electrical Characteristics...........................................12 8.6 Typical Characteristics.............................................. 14 9 Detailed Description......................................................17 9.1 Overview................................................................... 17 9.2 Functional Block Diagram......................................... 18 9.3 Feature Description...................................................19 9.4 Device Functional Modes..........................................31
+
+10 Application and Implementation................................ 33 10.1 Application Information........................................... 33 10.2 Typical Application.................................................. 33 10.3 System Examples................................................... 38
+11 Power Supply Recommendations..............................39 12 Layout...........................................................................40
+12.1 Layout Guidelines................................................... 40 12.2 Layout Example...................................................... 41 12.3 Thermal Considerations..........................................42 13 Device and Documentation Support..........................43 13.1 Device Support....................................................... 43 13.2 Receiving Notification of Documentation Updates..43 13.3 Support Resources................................................. 43 13.4 Trademarks............................................................. 43 13.5 Electrostatic Discharge Caution..............................43 13.6 Glossary..................................................................43 14 Mechanical, Packaging, and Orderable Information.................................................................... 43
+
+4 Revision History
+NOTE: Page numbers for previous revisions may differ from page numbers in the current version.
+
+Changes from Revision M (August 2019) to Revision N (October 2021)
+
+Page
+
+· Added Functional Safety-Capable (BQ24074) to Features ............................................................................... 1 · Added Safety-Related Certification: IEC 62368-1 Certification (BQ24072) to Features ....................................1 · Changed Applications.........................................................................................................................................1 · Changed BQ24079T information and package in Section 6 ..............................................................................6 · Added IBAT(PDWN) TYP value.............................................................................................................................12 · Added IIN TYP values....................................................................................................................................... 12 · Added ICC TYP value........................................................................................................................................ 12
+
+Changes from Revision L (June 2018) to Revision M (August 2019)
+
+Page
+
+· Changed the document title ...............................................................................................................................1
+
+· Changed the Device Comparison Table............................................................................................................. 6
+
+· Deleted the Dissipation Ratings table............................................................................................................... 11
+
+· Changed VIN-LOW To VIN-DPM in the Functional Block Diagram ....................................................................... 18 · Changed text From: "the DPPM loop or the VIN-(LOW) loop." To: "the DPPM loop or the VIN-DPM loop." in the
+Battery Charging secton................................................................................................................................... 24
+
+· Chganged text From: " input voltage has fallen to VIN(LOW)" To: "input voltage has fallen to VIN-DPM" in the Dynamic Charge Timers (TMR Input) scrtion................................................................................................... 27
+
+· Changed Equation 11 ...................................................................................................................................... 42
+
+Changes from Revision K (March 2015) to Revision L (June 2018)
+
+Page
+
+· Deleted MARKINGS from the Device Comparison Table................................................................................... 6
+
+· Added the RGT0016B and RGT0016C package information to the Device Comparison Table.........................6
+
+· Changed the Pinout images and descriptions ................................................................................................... 7
+
+· Change description of the CE pin From: "Connect CE to a high logic level to place the battery charger in
+
+standby mode. In standby mode,..." To ""Connect CE to a high logic level to disable battery charging. OUT is
+
+active and battery supplement mode is still available.".......................................................................................7
+
+· "Changed text in the third paragraph of the Power On section From: When VOUT is above VSC,..." To: "When VOUT is above VO(SC1),..."..................................................................................................................................19
+
+2
+
+Submit Document Feedback
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+www.ti.com
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+· Changed text From: "The valid resistor range is 590  to 5.9 k." To: "The valid resistor range is 590  to 8.9 k." in the Battery Charging section.................................................................................................................24
+· Changed From: VIN(DT) To: VBAT + VIN(DT) in Table 9-1 ....................................................................................28 · Changed INTC To: ITS in Figure 9-9 .................................................................................................................. 29
+
+Changes from Revision J (January 2015) to Revision K (March 2015)
+
+Page
+
+· Deleted package type code from Device Comparison Table. See the POA at the end of the data sheet. ........ 6 · Changed ICHG Battery fast charge current range MIN specification from "150 mA" to "100 mA"..................... 12
+
+Changes from Revision I (January 2014) to Revision J (January 2015)
+
+Page
+
+· Added ESD Ratings table, Feature Description section, Device Functional Modes, Application and Implementation section, Power Supply Recommendations section, Layout section, Device and Documentation Support section, and Mechanical, Packaging, and Orderable Information section................... 1
+
+Changes from Revision H (December 2013) to Revision I (January 2014)
+
+Page
+
+· Changed resistor value from "3 k" to "8.9 k" in the Pin Functions table ISET Description paragraph...........7
+
+· Changed RISET spec MAX value from "3000" to "8900" in the Recommended Operating Conditions table.... 10 · Changed resistor value from "3 k" to "5.9 k" in the Battery Charging section paragraph............................ 24
+
+Changes from Revision G (July 2011) to Revision H (December 2013)
+
+Page
+
+· Changed ICHG Battery fast charge current range MIN specification from "300 mA" to "150 mA"..................... 12
+
+Changes from Revision F (September 2010) to Revision G (July 2011)
+
+Page
+
+· Added ESD human body model specification to Abs Maximum Ratings table.................................................10
+
+Changes from Revision E (August 2010) to Revision F (September 2010)
+
+Page
+
+· Changed 10 x 45 s/k to 10 x 48 s/k under section Program 6.25hour......(TMR)........................................ 34
+
+Changes from Revision D (June 2009) to Revision E (August 2010)
+
+Page
+
+· Changed globally RT1 and RT2 to Rs and Rp..................................................................................................29 · Added equations 2 and 3 plus explanations and table..................................................................................... 29
+
+Changes from Revision C (March 2009) to Revision D (June 2009)
+
+Page
+
+· Added Device number BQ24079........................................................................................................................ 1
+
+Changes from Revision B (January 2009) to Revision C (March 2009)
+
+Page
+
+· Changed Maximum input current factor values. .............................................................................................. 12
+
+Changes from Revision A (December 2008) to Revision B (January 2009)
+
+Page
+
+· Changed VBAT(REG) max value From 4.24 V To: 4.23 V....................................................................................12
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Submit Document Feedback
+
+3
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+www.ti.com
+
+Changes from Revision * (September 2008) to Revision A (December 2008)
+
+Page
+
+· Changed device Features...................................................................................................................................1 · Changed Description.......................................................................................................................................... 1 · Changed Typical Application Circuit................................................................................................................... 1 · Changed description of CHG pin........................................................................................................................ 7 · Changed SYSOFF Description...........................................................................................................................7 · Added Figure 10-5 through Figure 8-1............................................................................................................. 14 · Changed DETAILED FUNCTIONAL DESCRIPTION section........................................................................... 17 · Changed the Functional Block Diagram .......................................................................................................... 18 · Changed text in section - STATUS INDICATORS ( PGOOD, CHG).................................................................28 · Changed Table - CHG STATUS INDICATOR................................................................................................... 28 · Changed Equation 8 and Equation 9 ...............................................................................................................29 · Changed APPLICATION CIRCUITS section.................................................................................................... 33 · Added Using BQ24075 to Disconnect the Battery from the System, Figure 10-13.......................................... 38 · Changed section - Half-Wave Adaptors............................................................................................................39
+
+4
+
+Submit Document Feedback
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+www.ti.com
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+5 Description (continued)
+Additionally, the regulated system input enables instant system turn-on when plugged in even with a totally discharged battery. The power path management architecture also lets the battery supplement the system current requirements when the adapter cannot deliver the peak system currents, thus enabling the use of a smaller adapter.
+The battery is charged in three phases: conditioning, constant current, and constant voltage. In all charge phases, an internal control loop monitors the IC junction temperature and reduces the charge current if the internal temperature threshold is exceeded. The charger power stage and charge current sense functions are fully integrated. The charger function has high accuracy current and voltage regulation loops, charge status display, and charge termination. The input current limit and charge current are programmable using external resistors.
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Submit Document Feedback
+
+5
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+www.ti.com
+
+6 Device Comparison Table
+
+PART NUMBER (1) (2)
+BQ24072 BQ24073 BQ24074 BQ24075 BQ24076 BQ24078 BQ24079 BQ24072T BQ24075T BQ24079T
+
+VOVP
+6.6 V 6.6 V 10.5 V 6.6 V 6.6 V 6.6 V 6.6 V 6.6 V 6.6 V 6.6 V
+
+VBAT(REG)
+4.2 V 4.2 V 4.2 V 4.2 V 4.4 V 4.35 V 4.1 V 4.2 V 4.2 V 4.1 V
+
+VOUT(REG)
+VBAT + 225 mV 4.4 V 4.4 V 5.5 V
+VBAT + 225 mV VBAT + 225 mV
+5.5 V VBAT + 225 mV
+5.5 V 5.5 V
+
+VDPPM
+VO(REG) ­ 100 mV VO(REG) ­ 100 mV VO(REG) ­ 100 mV
+4.3 V VO(REG) ­ 100 mV VO(REG) ­ 100 mV
+4.3 V VO(REG) ­ 100 mV
+4.3 V 4.3 V
+
+TS METHOD Current Based Voltage Based
+
+OPTIONAL FUNCTION
+TD TD ITERM SYSOFF SYSOFF SYSOFF SYSOFF TD SYSOFF SYSOFF
+
+PACKAGE RGT0016C
+
+(1) For all available packages, see the orderable addendum at the end of the data sheet (2) This product is RoHS compatible, including a lead concentration that does not exceed 0.1% of total product weight, and is suitable for
+use in specified lead-free soldering processes. In addition, this product uses package materials that do not contain halogens, including bromine (Br) or antimony (Sb) above 0.1% of total product weight.
+
+6
+
+Submit Document Feedback
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+www.ti.com
+7 Pin Configuration and Functions
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+TMR
+
+IN
+
+TD
+
+ISET
+
+13
+
+14
+
+15
+
+16
+
+TS
+
+1
+
+BAT
+
+2
+
+BAT
+
+3
+
+CE
+
+4
+
+12
+
+11 Thermal
+
+Pad
+
+10
+
+9
+
+ILIM OUT OUT CHG
+
+8
+
+7
+
+6
+
+5
+
+VSS
+
+PGOOD
+
+EN1
+
+EN2
+
+Not to scale
+Figure 7-1. BQ24072, BQ24073 RGT0016B Package 16 Pins Top View
+
+TMR
+
+ITERM
+
+ISET
+
+IN
+
+13
+
+14
+
+15
+
+16
+
+TS
+
+1
+
+12
+
+BAT
+
+2
+
+11
+
+Thermal
+
+BAT
+
+3
+
+Pad
+
+10
+
+CE
+
+4
+
+9
+
+ILIM OUT OUT CHG
+
+8
+
+7
+
+6
+
+5
+
+VSS
+
+PGOOD
+
+EN1
+
+EN2
+
+Not to scale
+Figure 7-2. BQ24074 RGT0016B Package 16 Pins Top View
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Submit Document Feedback
+
+7
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+www.ti.com
+
+TMR
+
+SYSOFF
+
+ISET
+
+IN
+
+13
+
+14
+
+15
+
+16
+
+TS
+
+1
+
+12
+
+BAT
+
+2
+
+11
+
+Thermal
+
+BAT
+
+3
+
+Pad
+
+10
+
+CE
+
+4
+
+9
+
+ILIM OUT OUT CHG
+
+8
+
+7
+
+6
+
+5
+
+VSS
+
+PGOOD
+
+EN1
+
+EN2
+
+Not to scale
+
+Figure 7-3. BQ24075 RGT0016C Package, BQ24079 RGT0016B Package 16 Pins Top View
+
+NAME BAT CE CHG EN1 EN2 ILIM IN
+ISET ITERM OUT PGOOD SYSOFF
+
+PIN '72, '73 '74
+
+2, 3
+
+2, 3
+
+4
+
+4
+
+9
+
+9
+
+6
+
+6
+
+5
+
+5
+
+12
+
+12
+
+13
+
+13
+
+16
+
+16
+
+­
+
+15
+
+10, 11 10, 11
+
+7
+
+7
+
+­
+
+­
+
+Table 7-1. Pin Functions
+
+'75, '79 2, 3 4 9 6 5 12 13
+16 ­ 10, 11 7 15
+
+I/O
+
+DESCRIPTION
+
+I/O
+
+Charger Power Stage Output and Battery Voltage Sense Input. Connect BAT to the positive terminal of the battery. Bypass BAT to VSS with a 4.7-F to 47-F ceramic capacitor.
+
+Charge Enable Active-Low Input. Connect CE to a high logic level to disable battery charging. OUT is active
+
+I
+
+and battery supplement mode is still available. Connect CE to a low logic level to enable the battery charger. CE is internally pulled down with approximately 285 k. Do not leave CE unconnected to ensure proper
+
+operation.
+
+Open-Drain Charging Status Indication Output. CHG pulls to VSS when the battery is charging. CHG is high O impedance when charging is complete and when charger is disabled. Connect CHG to the desired logic
+voltage rail using a 1k-100k resistor, or use with an LED for visual indication.
+
+I Input Current Limit Configuration Inputs. Use EN1 and EN2 control the maximum input current and enable USB compliance. See Table 7-2 for the description of the operation states. EN1 and EN2 are internally pulled
+I down with 285 k. Do not leave EN1 or EN2 unconnected to ensure proper operation.
+
+Adjustable Current Limit Programming Input. Connect a 1100- to 8-k resistor from ILIM to VSS to program I the maximum input current (EN2=1, EN1=0). The input current includes the system load and the battery
+charge current. Leaving ILIM unconnected disables all charging.
+
+Input Power Connection. Connect IN to the external DC supply (AC adapter or USB port). The input operating
+
+I
+
+range is 4.35 V to 6.6 V (BQ24072, BQ24073, BQ24075, and BQ24079) or 4.35 V to 10.5 V (bq24074). The input can accept voltages up to 26 V without damage but operation is suspended. Connect bypass capacitor
+
+1 F to 10 F to VSS.
+
+Fast Charge Current Programming Input. Connect a 590- to 8.9-k resistor from ISET to VSS to program
+
+I/O
+
+the fast charge current level. Charging is disabled if ISET is left unconnected. While charging, the voltage at ISET reflects the actual charging current and can be used to monitor charge current. See Section 9.3.5.1 for
+
+more details.
+
+Termination Current Programming Input. Connect a 0- to 15-k resistor from ITERM to VSS to program the I termination current. Leave ITERM unconnected to set the termination current to the default 10% termination
+threshold.
+
+System Supply Output. OUT provides a regulated output when the input is below the OVP threshold and
+
+O
+
+above the regulation voltage. When the input is out of the operation range, OUT is connected to VBAT except when SYSOFF is high (BQ24075 and BQ24079 only). Connect OUT to the system load. Bypass OUT to VSS
+
+with a 4.7-F to 47-F ceramic capacitor.
+
+Open-drain Power Good Status Indication Output. PGOOD pulls to VSS when a valid input source is O detected. PGOOD is high-impedance when the input power is not within specified limits. Connect PGOOD to
+the desired logic voltage rail using a 1-k to 100-k resistor, or use with an LED for visual indication.
+
+System Enable Input. Connect SYSOFF high to turn off the FET connecting the battery to the system
+
+I
+
+output. When an adapter is connected, charging is also disabled. Connect SYSOFF low for normal operation. SYSOFF is internally pulled up to VBAT through a large resistor (approximately 5 M). Do not leave SYSOFF
+
+unconnected to ensure proper operation.
+
+8
+
+Submit Document Feedback
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+www.ti.com
+
+NAME
+
+PIN '72, '73 '74
+
+TD
+
+15
+
+­
+
+Thermal Pad
+
+--
+
+--
+
+TMR
+
+14
+
+14
+
+TS VSS
+
+1
+
+1
+
+8
+
+8
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+Table 7-1. Pin Functions (continued)
+
+'75, '79 ­
+-- 14 1 8
+
+I/O
+
+DESCRIPTION
+
+Termination Disable Input. Connect TD high to disable charger termination. Connect TD to VSS to enable
+
+I
+
+charger termination. TD is checked during startup only and cannot be changed during operation. See the TD section in this datasheet for a description of the behavior when termination is disabled. TD is internally pulled
+
+down to VSS with approximately 285 k. Do not leave TD unconnected to ensure proper operation.
+
+There is an internal electrical connection between the exposed thermal pad and the VSS pin of the device.
+
+­
+
+The thermal pad must be connected to the same potential as the VSS pin on the printed circuit board. Do not use the thermal pad as the primary ground input for the device. VSS pin must be connected to ground at all
+
+times.
+
+Timer Programming Input. TMR controls the pre-charge and fast-charge safety timers. Connect TMR to VSS I to disable all safety timers. Connect a 18-k to 72-k resistor between TMR and VSS to program the timers a
+desired length. Leave TMR unconnected to set the timers to the default values.
+
+External NTC Thermistor Input. Connect the TS input to the NTC thermistor in the battery pack. TS monitors a I 10k NTC thermistor. For applications that do not use the TS function, connect a 10-k fixed resistor from TS
+to VSS to maintain a valid voltage level on TS.
+
+­ Ground. Connect to the thermal pad and to the ground rail of the circuit.
+
+Table 7-2. EN1/EN2 Settings
+
+EN2 EN1 MAXIMUM INPUT CURRENT INTO IN PIN
+
+0
+
+0 100 mA. USB100 mode
+
+0
+
+1 500 mA. USB500 mode
+
+1
+
+0 Set by an external resistor from ILIM to VSS
+
+1
+
+1 Standby (USB suspend mode)
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Submit Document Feedback
+
+9
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+www.ti.com
+
+8 Specifications
+
+8.1 Absolute Maximum Ratings(1)
+
+over the 0°C to 125°C operating free-air temperature range (unless otherwise noted) MIN
+
+IN (with respect to VSS)
+
+­0.3
+
+VI Input Voltage
+
+BAT (with respect to VSS)
+
+­0.3
+
+OUT, EN1, EN2, CE, TS, ISET, PGOOD, CHG, ILIM, TMR, ITERM, SYSOFF, TD (with respect to VSS)
+
+­0.3
+
+II
+
+Input Current
+
+IO
+
+Output Current (Continuous)
+
+IN OUT BAT (Discharge mode) BAT (Charging mode)
+
+Output Sink Current CHG, PGOOD
+
+TJ Junction temperature
+
+­40
+
+Tstg Storage temperature
+
+­65
+
+MAX 28 5
+7
+1.6 5 5 1.5(2) 15 150 150
+
+UNIT V V
+V
+A A A A mA °C °C
+
+(1) Stresses beyond those listed under Absolute Maximum Ratings may cause permanent damage to the device. These are stress ratings only, and functional operation of the device at these or any other conditions beyond those indicated under Section 8.3 is not implied. Exposure to absolute-maximum-rated conditions for extended periods may affect device reliability. All voltage values are with respect to the network ground terminal unless otherwise noted.
+(2) The IC operational charging life is reduced to 20,000 hours, when charging at 1.5A and 125°C. The thermal regulation feature reduces charge current if the IC's junction temperature reaches 125°C; thus without a good thermal design the maximum programmed charge current may not be reached.
+
+8.2 ESD Ratings
+V(ESD) Electrostatic discharge
+
+Human body model (HBM), per ANSI/ESDA/JEDEC JS-001(1) Charged-device model (CDM), per JEDEC specification JESD22C101(2)
+
+VALUE ±2000
+±500
+
+(1) JEDEC document JEP155 states that 500-V HBM allows safe manufacturing with a standard ESD control process. (2) JEDEC document JEP157 states that 250-V CDM allows safe manufacturing with a standard ESD control process.
+
+UNIT V
+
+8.3 Recommended Operating Conditions
+
+VI
+IIN IOUT IBAT ICHG TJ RILIM RISET RITERM RTMR
+
+IN voltage range
+
+IN operating voltage range
+
+'72, '73, `75, '79 `74
+
+Input current, IN pin
+
+Current, OUT pin
+
+Current, BAT pin (Discharging)
+
+Current, BAT pin (Charging)
+
+Junction Temperature
+
+Maximum input current programming resistor
+
+Fast-charge current programming resistor (1)
+
+Termination current programming resistor
+
+Timer programming resistor
+
+MIN 4.35 4.35 4.35
+­40 1100 590
+0 18
+
+MAX 26 6.4
+10.2 1.5 4.5 4.5
+1.5(2) 125
+8000 8900
+15 72
+
+UNIT V
+V
+A A A A °C   k k
+
+(1) Use a 1% tolerance resistor for RISET to avoid issues with the RISET short test when using the maximum charge current setting. (2) The IC operational charging life is reduced to 20,000 hours, when charging at 1.5A and 125°C. The thermal regulation feature reduces
+charge current if the IC's junction temperature reaches 125°C; thus without a good thermal design the maximum programmed charge current may not be reached.
+
+10 Submit Document Feedback
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+www.ti.com
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+8.4 Thermal Information
+
+THERMAL METRIC(1)
+
+RJA RJC(top) RJB JT JB RJC(bot)
+
+Junction-to-ambient thermal resistance Junction-to-case (top) thermal resistance Junction-to-board thermal resistance Junction-to-top characterization parameter Junction-to-board characterization parameter Junction-to-case (bottom) thermal resistance
+
+BQ2407x RGT
+16 PINS 44.5 54.2 17.2 1.0 17.1 3.8
+
+UNIT °C/W
+
+(1) For more information about traditional and new thermal metrics, see the Semiconductor IC Package Thermal Metrics application report.
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Submit Document Feedback 11
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+www.ti.com
+
+8.5 Electrical Characteristics
+
+Over junction temperature range (0°  TJ  125°C) and the recommended supply voltage range (unless otherwise noted)
+
+PARAMETER
+
+TEST CONDITIONS
+
+MIN
+
+TYP
+
+MAX UNIT
+
+INPUT
+
+UVLO Vhys
+
+Undervoltage lock-out Hysteresis on UVLO
+
+VIN(DT)
+
+Input power detection threshold
+
+Vhys
+
+Hysteresis on VIN(DT)
+
+tDGL(PGOOD) Deglitch time, input power detected status
+
+VIN: 0 V  4 V VIN: 4 V  0 V Input power detected when VIN > VBAT + VIN(DT) VBAT = 3.6 V, VIN: 3.5 V  4 V VBAT = 3.6 V, VIN: 4 V  3.5 V Time measured from VIN: 0 V  5 V 1 s rise-time to PGOOD = LO
+
+3.2
+
+3.3
+
+3.4 V
+
+200
+
+300 mV
+
+55
+
+80
+
+130 mV
+
+20
+
+mV
+
+1.2
+
+ms
+
+VOVP
+Vhys tDGL(OVP) tREC
+
+Input overvoltage protection threshold
+Hysteresis on OVP Input overvoltage blanking time (OVP fault deglitch) Input overvoltage recovery time
+
+VIN: 5 V  7 V VIN: 5 V  11 V VIN: 7 V  5V VIN: 11 V  5 V
+
+('72, '73, '75, '79) ('74) ('72, '73, '75, '79) ('74)
+
+Time measured from VIN: 11 V  5 V with 1 s fall-time to PGOOD = LO
+
+6.4
+
+6.6
+
+6.8
+
+V
+
+10.2
+
+10.5
+
+10.8
+
+110 mV
+175
+
+50
+
+s
+
+1.2
+
+ms
+
+ILIM, ISET SHORT-CIRCUIT DETECTION (CHECKED DURING STARTUP)
+
+ISC
+
+Current source
+
+VSC
+
+QUIESCENT CURRENT
+
+VIN > UVLO and VIN > VBAT + VIN(DT) VIN > UVLO and VIN > VBAT + VIN(DT)
+
+1.3
+
+mA
+
+520
+
+mV
+
+IBAT(PDWN) Sleep current into BAT pin
+
+IIN
+
+Standby current into IN pin
+
+ICC
+
+Active supply current, IN pin
+
+POWER PATH
+
+CE = LO or HI, input power not detected, No load on OUT pin, TJ = 85°C
+EN1= HI, EN2=HI, VIN = 6 V, TJ= 85°C
+EN1= HI, EN2=HI, VIN = 10 V, TJ= 85°C
+CE = LO, VIN = 6 V, no load on OUT pin, VBAT > VBAT(REG), (EN1, EN2)  (HI, HI)
+
+4.3
+
+6.5 A
+
+41.3
+
+50
+
+A
+
+99.8
+
+200
+
+1.1
+
+1.5 mA
+
+VDO(IN-OUT) VDO(BAT-OUT)
+
+VIN ­ VOUT VBAT ­ VOUT
+
+VO(REG)
+
+OUT pin voltage regulation (BQ24072)
+OUT pin voltage regulation (BQ24073, BQ24074) OUT pin voltage regulation (BQ24075, BQ24079)
+
+VIN = 4.3 V, IIN = 1 A, VBAT = 4.2 V IOUT = 1 A, VIN = 0 V, VBAT > 3 V VIN > VOUT + VDO(IN-OUT), VBAT < 3.2 V
+VIN > VOUT + VDO(IN-OUT), VBAT  3.2 V
+VIN > VOUT + VDO(IN-OUT) VIN > VOUT + VDO(IN-OUT) EN1 = LO, EN2 = LO
+
+IINmax
+
+Maximum input current
+
+EN1 = HI, EN2 = LO EN2 = HI, EN1 = LO
+
+KILIM
+IINmax VIN-DPM
+
+Maximum input current factor
+
+ILIM = 500 mA to 1.5 A ILIM = 200 mA to 500 mA
+
+Programmable input current limit range
+
+EN2 = HI, EN1 = LO, RILIM = 8 k to 1.1 k
+
+Input voltage threshold when input current is reduced EN2 = LO, EN1 = X
+
+VDPPM
+
+Output voltage threshold when charging current is reduced
+
+('72, '73, '74) ('75, '79)
+
+3.3 VBAT + 150mV
+4.3 5.4 90 450
+1500 1330
+200 4.35 VO(REG) ­ 180mV
+4.2
+
+300
+
+475 mV
+
+50
+
+100 mV
+
+3.4
+
+3.5
+
+VBAT + 225mV
+4.4
+
+VBAT +
+
+270mV
+
+V
+
+4.5
+
+5.5
+
+5.6
+
+95
+
+100
+
+mA
+
+475
+
+500
+
+KILIM/RILIM 1610 1525
+
+A 1720
+A 1720
+
+1500 mA
+
+4.5
+
+4.63 V
+
+VO(REG) ­ 100mV
+
+VO(REG) ­ 30mV
+
+V
+
+4.3
+
+4.4 V
+
+VBSUP1
+
+Enter battery supplement mode
+
+VBAT = 3.6 V, RILIM = 1.5 k, RLOAD = 10   2 
+
+VOUT  VBAT ­ 40mV
+
+V
+
+VBSUP2
+
+Exit battery supplement mode
+
+VBAT = 3.6 V, RILIM = 1.5 k, RLOAD = 2   10 
+
+VOUT  VBAT­ 20mV
+
+V
+
+VO(SC1) VO(SC2) tDGL(SC2) tREC(SC2)
+
+Output short-circuit detection threshold, power-on
+Output short-circuit detection threshold, supplement mode VBAT ­ VOUT > VO(SC2) indicates short-circuit Deglitch time, supplement mode short circuit
+Recovery time, supplement mode short circuit
+
+VIN > VUVLO and VIN > VBAT + VIN(DT) VIN > VUVLO and VIN > VBAT + VIN(DT)
+
+0.8
+
+0.9
+
+1V
+
+200
+
+250
+
+300 mV
+
+250
+
+s
+
+60
+
+ms
+
+12 Submit Document Feedback
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+www.ti.com
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+8.5 Electrical Characteristics (continued)
+
+Over junction temperature range (0°  TJ  125°C) and the recommended supply voltage range (unless otherwise noted)
+
+PARAMETER
+
+TEST CONDITIONS
+
+MIN
+
+TYP
+
+MAX UNIT
+
+BATTERY CHARGER
+
+IBAT VBAT(SC)
+VBAT(REG)
+
+Source current for BAT pin short-circuit detection BAT pin short-circuit detection threshold
+Battery charge voltage
+
+VBAT = 1.5 V VBAT rising
+
+('72, '73, '74, '75) ('79)
+
+4 1.6 4.16 4.059
+
+7.5 1.8 4.20 4.100
+
+11 mA 2V 4.23
+V 4.141
+
+VLOWV tDGL1(LOWV) tDGL2(LOWV)
+ICHG
+
+Pre-charge to fast-charge transition threshold Deglitch time on pre-charge to fast-charge transition Deglitch time on fast-charge to pre-charge transition Battery fast charge current range
+Battery fast charge current
+
+VIN > VUVLO and VIN > VBAT + VIN(DT)
+VBAT(REG) > VBAT > VLOWV, VIN = 5 V CE = LO, EN1 = LO, EN2 = HI CE = LO, EN1= LO, EN2 = HI, VBAT > VLOWV, VIN = 5 V, IINmax > ICHG, no load on OUT pin, thermal loop and DPPM loop not active
+
+2.9
+
+3
+
+25
+
+25
+
+100
+
+KISET/RISET
+
+3.1 V ms ms
+1500 mA
+A
+
+KISET IPRECHG KPRECHG
+
+Fast charge current factor Pre-charge current Pre-charge current factor
+
+ITERM
+
+Termination comparator detection threshold (internally set)
+
+CE = LO, (EN1, EN2)  (LO, LO), VBAT > VRCH, t < tMAXCH, VIN = 5 V, DPPM loop and thermal loop not active
+CE = LO, (EN1, EN2) = (LO, LO), VBAT > VRCH, t < tMAXCH, VIN = 5 V, DPPM loop and thermal loop not active
+
+797
+
+890
+
+KPRECHG/RISET
+
+70
+
+88
+
+975 A A
+106 A
+
+0.09×ICHG
+
+0.1×ICHG 0.11×ICHG A
+
+0.027×ICHG 0.033×ICHG 0.040×ICHG
+
+IBIAS(ITERM) ITERM
+
+Current for external termination-setting resistor
+Termination current threshold (externally set) (BQ24074)
+
+VIN > VUVLO and VIN > VBAT + VIN(DT)
+
+72
+
+75
+
+KITERM × RITERM / RISET
+
+78 A A
+
+KITERM
+
+K Factor for termination detection threshold (externally set) (BQ24074)
+
+USB500 or ISET mode(EN1, EN2)  (LO, LO) CE = LO, VBAT > VRCH, t < tMAXCH, VIN = 5 V, DPPM loop and thermal loop not active
+USB100 mode (EN1, EN2) = (LO, LO), CE = LO, VBAT > VRCH, t < tMAXCH, VIN = 5 V, DPPM loop and thermal loop not active
+
+0.0225 0.008
+
+0.0300 0.0100
+
+0.0375 A
+0.012
+
+tDGL(TERM) VRCH
+
+Deglitch time, termination detected Recharge detection threshold
+
+VIN > VUVLO and VIN > VBAT + VIN(DT)
+
+25
+
+ms
+
+VBAT(REG) ­ 140mV
+
+VBAT(REG) ­ VBAT(REG) ­
+
+100mV
+
+60mV
+
+V
+
+tDGL(RCH)
+
+Deglitch time, recharge threshold detected
+
+tDGL(NO-IN) Delay time, input power loss to OUT LDO turn-off
+
+IBAT(DET)
+
+Sink current for battery detection
+
+tDET
+
+Battery detection timer
+
+BATTERY CHARGING TIMERS
+
+VBAT = 3.6 V. Time measured from VIN: 5 V  3 V 1 s fall-time VBAT = 2.5 V BAT high or low
+
+62.5
+
+ms
+
+20
+
+ms
+
+5
+
+7.5
+
+10 mA
+
+250
+
+ms
+
+tPRECHG
+
+Pre-charge safety timer value
+
+tMAXCHG
+
+Charge safety timer value
+
+tPRECHG
+
+Pre-charge safety timer value
+
+tMAXCHG
+
+Charge safety timer value
+
+KTMR
+
+Timer factor
+
+BATTERY-PACK NTC MONITOR(1)
+
+TMR = floating TMR = floating 18 k < RTMR < 72 k 18 k < RTMR < 72 k
+
+1440
+
+1800
+
+14400
+
+18000
+
+RTMR × KTMR
+
+10×R TMR ×KTMR
+
+36
+
+48
+
+2160 21600
+60
+
+s s s s s/k
+
+INTC
+
+NTC bias current
+
+VHOT
+
+High temperature trip point
+
+VHYS(HOT)
+
+Hysteresis on high trip point
+
+VCOLD
+
+Low temperature trip point
+
+VHYS(COLD) Hysteresis on low trip point
+
+tDGL(TS)
+
+Deglitch time, pack temperature fault detection
+
+VDIS(TS)
+
+TS function disable threshold (BQ24072, BQ24073)
+
+THERMAL REGULATION
+
+VIN > UVLO and VIN > VBAT + VIN(DT) Battery charging, VTS Falling Battery charging, VTS Rising from VHOT Battery charging, VTS Rising Battery charging, VTS Falling from VCOLD TS fault detected to charger disable TS unconnected
+
+72 270
+2000
+
+75 300
+30 2100
+300 50
+VIN - 200mV
+
+78 A 330 mV
+mV 2200 mV
+mV ms V
+
+TJ(REG) TJ(OFF) TJ(OFF-HYS)
+
+Temperature regulation limit Thermal shutdown temperature Thermal shutdown hysteresis
+
+TJ Rising
+
+125
+
+°C
+
+155
+
+°C
+
+20
+
+°C
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Submit Document Feedback 13
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+www.ti.com
+
+8.5 Electrical Characteristics (continued)
+
+Over junction temperature range (0°  TJ  125°C) and the recommended supply voltage range (unless otherwise noted)
+
+PARAMETER
+
+TEST CONDITIONS
+
+MIN
+
+TYP
+
+MAX UNIT
+
+LOGIC LEVELS ON EN1, EN2, CE, SYSOFF, TD
+
+VIL
+
+Logic LOW input voltage
+
+0
+
+0.4 V
+
+VIH
+
+Logic HIGH input voltage
+
+IIL
+
+Input sink current
+
+VIL= 0 V
+
+1.4
+
+6V
+
+1 A
+
+IIH
+
+Input source current
+
+VIH= 1.4 V
+
+10 A
+
+LOGIC LEVELS ON PGOOD, CHG
+
+VOL
+
+Output LOW voltage
+
+ISINK = 5 mA
+
+0.4 V
+
+(1) These numbers set trip points of 0°C and 50°C while charging, with 3°C hysteresis on the trip points, with a Vishay Type 2 curve NTC with an R25 of 10 k.
+
+8.6 Typical Characteristics
+VIN = 6 V, EN1=1, EN2=0, BQ24073 application circuit, TA = 25°C, unless otherwise noted.
+
+IBAT - mA
+
+600
+
+0.7
+
+IL = 1 A
+
+500
+
+0.6
+
+Dropout Voltage - VIN-VOUT
+
+0.5 400
+0.4 300
+0.3
+200 0.2
+
+100
+
+0.1
+
+0 120 125 130 135 140 145 Temperature - oC
+Figure 8-1. Thermal Regulation
+120 IL = 1 A
+100
+
+Dropout Voltage - VBAT-VOUT
+
+80
+
+VBAT = 3 V
+
+60
+
+VBAT = 3.9 V
+
+40
+
+20
+
+0
+
+0
+
+25
+
+50
+
+75
+
+100
+
+125
+
+TJ - Junction Temperature - °C
+
+Figure 8-3. Dropout Voltage vs Temperature No Input Supply
+
+0
+
+0
+
+25
+
+50
+
+75
+
+100 125
+
+TJ - Junction Temperature - °C
+
+Figure 8-2. Dropout Voltage vs Temperature
+
+4.6
+VIN = 5 V 4.4
+
+VO - Output Voltage - V
+
+4.2
+
+4
+
+3.8
+
+3.6
+
+3.4
+
+3.2
+
+3
+
+2
+
+2.5
+
+3
+
+3.5
+
+4
+
+4.5
+
+VBAT - Battery Voltage - V
+
+Figure 8-4. BQ24072 Output Regulation Voltage vs Battery
+
+Voltage
+
+14 Submit Document Feedback
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+www.ti.com
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+8.6 Typical Characteristics (continued)
+VIN = 6 V, EN1=1, EN2=0, BQ24073 application circuit, TA = 25°C, unless otherwise noted.
+
+3.80 3.78 3.76
+
+VIN = 5 V, VBAT = 3.5 V, IL = 1 A
+
+VO - Output Voltage - V
+
+3.74
+
+3.72
+
+3.70
+
+3.68
+
+3.66
+
+3.64
+
+3.62
+
+3.60 0
+
+25
+
+50
+
+75
+
+100 125
+
+TJ - Junction Temperature - °C
+
+Figure 8-5. BQ24072 Output Regulation Voltage vs Temperature
+
+5.75 5.70 5.65
+
+VIN = 6 V, IL = 1 A
+
+5.60
+
+VO - Output Voltage - V
+
+5.55
+
+5.50
+
+5.45 5.40
+
+5.35
+
+5.30
+
+5.25
+
+0
+
+25
+
+50
+
+75
+
+100 125
+
+TJ - Junction Temperature - °C
+
+Figure 8-7. BQ24075, BQ24079 Output Regulation Voltage vs
+
+Temperature
+
+4.45 4.43
+
+VIN = 5 V, IL = 1 A
+
+VO - Output Voltage - V
+
+4.40
+
+4.38
+
+4.35
+
+4.33
+
+4.30 0
+
+25
+
+50
+
+75
+
+100 125
+
+TJ - Junction Temperature - °C
+Figure 8-6. BQ24073/ 74 Output Regulation Voltage vs Temperature
+
+4.210
+
+VBAT - Regulation Voltage - V
+
+4.205 4.200
+
+4.195
+
+4.190 4.185
+
+4.180 0
+
+5
+
+10 15
+
+20 25 30
+
+TJ - Junction Temperature - °C
+Figure 8-8. BAT Regulation Voltage vs Temperature
+
+VOVP - Output Voltage Threshold - V
+
+6.70 6.65
+
+6.6 V
+
+6.60
+
+VI Rising
+
+6.55 6.50
+
+VI Falling
+
+6.45
+
+0
+
+25
+
+50
+
+75
+
+100 125
+
+TJ - Junction Temperature - °C
+
+Figure 8-9. BQ24072/ 73/ 75/ 79 Overvoltage Protection
+
+Threshold vs Temperature
+
+10.70 10.65
+
+10.5 V
+
+VOVP - Output Voltage Threshold - V
+
+10.60 10.55
+
+VI Rising
+
+10.50
+
+10.45 10.40
+
+VI Falling
+
+10.35
+
+10.30
+
+10.25
+
+10.20
+
+0
+
+25
+
+50
+
+75
+
+100 125
+
+TJ - Junction Temperature - °C
+
+Figure 8-10. BQ24074 Overvoltage Protection Threshold vs
+
+Temperature
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Submit Document Feedback 15
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+8.6 Typical Characteristics (continued)
+VIN = 6 V, EN1=1, EN2=0, BQ24073 application circuit, TA = 25°C, unless otherwise noted.
+
+www.ti.com
+
+ILIM - Input Current - mA
+
+800 RILIM
+700
+
+600
+
+500
+
+USB500
+
+400
+
+300
+
+200
+USB100 100
+
+0
+
+5
+
+6
+
+7
+
+8
+
+9
+
+10
+
+VI - Input Voltage - V
+
+Figure 8-11. BQ24074 Input Current Limit vs Input Voltage
+
+310 RISET = 3 kW
+305
+
+IBAT - Fast Charge Current - A
+
+300
+
+295
+
+290
+
+285
+
+280 3 3.2 3.4 3.6 3.8 4 4.2 VBAT - Battery Voltage - V
+Figure 8-13. Fastcharge Current vs Battery Voltage
+
+31.5 31
+
+RISET = 3 kW
+
+IBAT - Fast Charge Current - A
+
+1.05 1.03
+
+RISET = 900 W
+
+1.01
+
+0.99
+
+0.97
+
+0.95
+
+3
+
+3.2 3.4 3.6 3.8
+
+4 4.2
+
+VBAT - Battery Voltage - V
+
+Figure 8-12. Fastcharge Current vs Battery Voltage
+
+105
+
+104
+
+RISET = 900 W
+
+IBAT - Precharge Current - A
+
+103 102
+
+101
+
+100
+
+99
+
+98
+
+97
+
+96
+
+95
+
+2
+
+2.2
+
+2.4
+
+2.6
+
+2.8
+
+3
+
+VBAT - Battery Voltage - V
+Figure 8-14. Precharge Current vs Battery Voltage
+
+30.5
+
+IBAT - Precharge Current - A
+
+30
+
+29.5
+
+29
+
+28.5
+
+2
+
+2.2
+
+2.4
+
+2.6
+
+2.8
+
+3
+
+VBAT - Battery Voltage - V
+
+Figure 8-15. Precharge Current vs Battery Voltage
+
+16 Submit Document Feedback
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+www.ti.com
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+9 Detailed Description
+9.1 Overview
+The BQ2407x devices are integrated Li-Ion linear chargers and system power path management devices targeted at space-limited portable applications. The device powers the system while simultaneously and independently charging the battery. This feature reduces the number of charge and discharge cycles on the battery, allows for proper charge termination and enables the system to run with a defective or absent battery pack. This feature also allows instant system turn-on even with a totally discharged battery. The input power source for charging the battery and running the system can be an AC adapter or a USB port. The devices feature Dynamic Power Path Management (DPPM), which shares the source current between the system and battery charging, and automatically reduces the charging current if the system load increases. When charging from a USB port, the input dynamic power management (VIN-DPM) circuit reduces the input current if the input voltage falls below a threshold, thus preventing the USB port from crashing. The power-path architecture also permits the battery to supplement the system current requirements when the adapter cannot deliver the peak system currents.
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Submit Document Feedback 17
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+9.2 Functional Block Diagram
+
+IN
+Short Detect
+
+ILIM
+
+USB100 USB500
+USB-susp
+
+EN2 EN1
+
+ITERM BQ24074
+
+VO(SC1) Q1
+EN2 VIN-DPM VREF-ILIM V O(REG)
+
+IBIAS- ITERM
+
+CHARGEPUMP
+
+225mV ('72, '73, '75)
+
+~3V
+
+I TERM-floating
+
+www.ti.com
+
+OUT-SC1
+
+250mV VBAT
+
+t DGL(SC2)
+
+OUT-SC2
+
+OUT
+
+225mV Precharge
+2.25V Fastcharge
+TJ TJ(REG)
+V DPPM V OUT
+V BAT (REG)
+
+VOUT
+
+VLOWV
+
+40mV
+
+Supplement
+
+VRCH
+
+VBAT(SC)
+
+Short Detect Q2
+VBAT
+
+ISET
+BAT SYSOFF BQ24075 BQ24079
+
+tDGL(TERM) tDGL1(LOWV) tDGL2(LOWV) tDGL(RCH)
+
+VIN
+
+VBAT + VIN-DT
+V UVLO V OVP
+
+tDGL(NO-IN) t DGL(PGOOD)
+tBLK(OVP)
+
+Charge Control
+
+CE
+
+TMR
+
+VIPRECHG VICHG
+V ISET
+
+~100mV
+
+EN1
+
+USB Suspend
+
+EN2
+
+Dynamically Controlled Oscillator
+
+Halt timers Reset timers
+
+Timers disabled
+
+Fast-Charge Timer
+Pre-Charge Timer
+
+BAT-SC t DGL(TS)
+Timer fault
+
+INTC V HOT
+TS
+VCOLD
+
+VDIS(TS)
+
+TD (BQ24072, BQ24073)
+CHG
+
+PGOOD
+
+18 Submit Document Feedback
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+www.ti.com
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+9.3 Feature Description
+9.3.1 Undervoltage Lockout (UVLO)
+The BQ2407X family remains in power down mode when the input voltage at the IN pin is below the undervoltage threshold (UVLO).
+During the power down mode the host commands at the control inputs ( CE, EN1 and EN2) are ignored. The Q1 FET connected between IN and OUT pins is off, and the status outputs CHG and PGOOD are high impedance. The Q2 FET that connects BAT to OUT is ON. (If SYSOFF is high, Q2 is off). During power down mode, the VOUT(SC2) circuitry is active and monitors for overload conditions on OUT.
+9.3.2 Power On
+When VIN exceeds the UVLO threshold, the BQ2407x powers up. While VIN is below VBAT + VIN(DT), the host commands at the control inputs ( CE, EN1 and EN2) are ignored. The Q1 FET connected between IN and OUT pins is off, and the status outputs CHG and PGOOD are high impedance. The Q2 FET that connects BAT to OUT is ON. (If SYSOFF is high, Q2 is off). During this mode, the VOUT(SC2) circuitry is active and monitors for overload conditions on OUT.
+Once VIN rises above VBAT + VIN(DT), PGOOD is driven low to indicate the valid power status and the CE, EN1, and EN2 inputs are read. The device enters standby mode if (EN1 = EN2 = HI) or if an input overvoltage condition occurs. In standby mode, Q1 is OFF and Q2 is ON so OUT is connected to the battery input. (If SYSOFF is high, FET Q2 is off). During this mode, the VOUT(SC2) circuitry is active and monitors for overload conditions on OUT.
+When the input voltage at IN is within the valid range: VIN > UVLO AND VIN > VBAT + VIN(DT) AND VIN < VOVP, and the EN1 and EN2 pins indicate that the USB suspend mode is not enabled [(EN1, EN2)  (HI, HI)] all internal timers and other circuit blocks are activated. The device then checks for short-circuits at the ISET and ILIM pins. If no short conditions exists, the device switches on the input FET Q1 with a 100mA current limit to checks for a short circuit at OUT. When VOUT is above VO(SC1), the FET Q1 switches to the current limit threshold set by EN1, EN2 and RILIM and the device enters into the normal operation. During normal operation, the system is powered by the input source (Q1 is regulating), and the device continuously monitors the status of CE, EN1 and EN2 as well as the input voltage conditions.
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Submit Document Feedback 19
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+www.ti.com
+
+PGOOD = Hi-Z CHG = Hi-Z
+BATTFET ON
+
+UVLO <VIN <VOVP
+
+No
+
+and
+
+VIN >VBAT +VIN(DT)
+
+Yes PGOOD = Low
+
+Yes EN1=EN2=1
+No
+Yes ILIM or ISET short?
+No
+Begin Startup I IN(MAX) 100mA
+
+Yes VOUT short?
+No
+Input Current Limit set by EN1
+and EN2
+
+No CE = Low Yes
+Begin Charging
+Figure 9-1. Startup Flow Diagram
+
+20 Submit Document Feedback
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+www.ti.com
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+9.3.3 Overvoltage Protection (OVP)
+The BQ2407x accepts inputs up to 28 V without damage. Additionally, an overvoltage protection (OVP) circuit is implemented that shuts off the internal LDO and discontinues charging when VIN > VOVP for a period long than tDGL(OVP). When in OVP, the system output (OUT) is connected to the battery and PGOOD is high impedance. Once the OVP condition is removed, a new power on sequence starts (see Section 9.3.2). The safety timers are reset and a new charge cycle will be indicated by the CHG output.
+9.3.4 Dynamic Power Path Management
+The BQ2407x features an OUT output that powers the external load connected to the battery. This output is active whenever a source is connected to IN or BAT. The following sections discuss the behavior of OUT with a source connected to IN to charge the battery and a battery source only.
+9.3.4.1 Input Source Connected (ADAPTER or USB)
+With a source connected, the dynamic power path management (DPPM) circuitry of the BQ2407x monitors the input current continuously. The OUT output for the BQ24073/ 74/ 75/ 79 is regulated to a fixed voltage (VO(REG)). For the BQ24072, OUT is regulated to 200 mV above the voltage at BAT. When the BAT voltage falls below 3.2 V, OUT is clamped to 3.4 V. This allows for proper startup of the system load even with a discharged battery. The current into IN is shared between charging the battery and powering the system load at OUT. The BQ2407x has internal selectable current limits of 100 mA (USB100) and 500 mA (USB500) for charging from USB ports, as well as a resistor-programmable input current limit.
+The BQ2407x is USB IF compliant for the inrush current testing. The USB specification allows up to 10 F to be hard started, which establishes 50 C as the maximum inrush charge value when exceeding 100 mA. The input current limit for the BQ2407x prevents the input current from exceeding this limit, even with system capacitances greater than 10 F. The input capacitance to the device must be selected small enough to prevent a violation (<10 F), as this current is not limited. Figure 9-2 demonstrates the start-up of the BQ2407x and compares it to the USB-IF specification.
+
+10 C
+
+50 C
+
+USB100 Current Limit 20 mA/div
+
+100 s/div
+Figure 9-2. USB-IF Inrush Current Test
+
+The input current limit selection is controlled by the state of the EN1 and EN2 pins as shown in the EN1/EN2 Settings table in Section 7. When using the resistor-programmable current limit, the input current limit is set by the value of the resistor connected from the ILIM pin to VSS, and is given by the equation:
+
+IIN-MAX = KILIM/RILIM
+
+(1)
+
+The input current limit is adjustable up to 1.5 A. The valid resistor range is 1.1 k to 8 k.
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Submit Document Feedback 21
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+www.ti.com
+
+When the IN source is connected, priority is given to the system load. The DPPM and Battery Supplement modes are used to maintain the system load. Figure 9-4 and Figure 9-5 illustrate examples of the DPPM and supplement modes. These modes are explained in detail in the following sections.
+
+9.3.4.1.1 Input DPM Mode (VIN-DPM)
+The BQ2407x utilizes the VIN-DPM mode for operation from current-limited USB ports. When EN1 and EN2 are configured for USB100 (EN2=0, EN1=0) or USB500 (EN2=0, EN1=1) modes, the input voltage is monitored. If VIN falls to VIN-DPM, the input current limit is reduced to prevent the input voltage from falling further. This prevents the BQ2407x from crashing poorly designed or incorrectly configured USB sources. Figure 9-3 shows the VIN-DPM behavior to a current limited source. In this figure, the input source has a 400-mA current limit and the device is in USB500 mode (EN1=1, EN2=0).
+
+IOUT
+VIN (5V)
+USB500 Current Limit
+
+Input collapses Input regulated to VIN_DPM
+
+IIN Input current limit is reduced to prevent crashing the supply
+IBAT
+
+200mA/div 500mV/div 200mA/div 200mA/div
+
+4 ms/div
+Figure 9-3. VIN-DPM Waveform
+9.3.4.1.2 DPPM Mode
+When the sum of the charging and system load currents exceeds the maximum input current (programmed with EN1, EN2, and ILIM pins), the voltage at OUT decreases. Once the voltage on the OUT pin falls to VDPPM, the BQ2407x enters DPPM mode. In this mode, the charging current is reduced as the OUT current increases in order to maintain the system output. Battery termination is disabled while in DPPM mode.
+9.3.4.1.3 Battery Supplement Mode
+While in DPPM mode, if the charging current falls to zero and the system load current increases beyond the programmed input current limit, the voltage at OUT reduces further. When the OUT voltage drops below the VBSUP1 threshold, the battery supplements the system load. The battery stops supplementing the system load when the voltage at OUT rises above the VBSUP2 threshold.
+During supplement mode, the battery supplement current is not regulated (BAT-FET is fully on), however there is a short circuit protection circuit built in. Figure 10-6 demonstrates supplement mode. If during battery supplement mode, the voltage at OUT drops VO(SC2) below the BAT voltage, the OUT output is turned off if the overload exists after tDGL(SC2). The short circuit recovery timer then starts counting. After tREC(SC2), OUT turns on and attempts to restart. If the short circuit remains, OUT is turned off and the counter restarts. Battery termination is disabled while in supplement mode.
+
+22 Submit Document Feedback
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+IBAT
+
+IIN
+
+IOUT
+
+www.ti.com 1200 mA
+900 mAA
+400 mA 0 mA
+900 mA 500 mA
+0 mA
+500 mA
+0 mA -300 mA
+3.8 V 3.7 V ~3.6 V
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+DPPM Loop Active Supplement Mode
+
+VOUT
+
+Figure 9-4. BQ24072 DPPM and Battery Supplement Modes (VOREG = VBAT + 225 mV, VBAT = 3.6 V)
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Submit Document Feedback 23
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+IOUT
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021 1200 mA
+900 mAA
+400 mA 0 mA
+900 mA
+500 mA
+0 mA
+500 mA
+0 mA -300 mA
+
+IIN
+
+IBAT
+
+4.4 V 4.3 V
+~3.6 V
+
+DPPM Loop Active Supplement Mode
+
+www.ti.com
+
+VOUT
+
+Figure 9-5. BQ24073 DPPM and Battery Supplement Modes (VOREG = 4.4 V, VBAT = 3.6 V)
+9.3.4.2 Input Source Not Connected
+When no source is connected to the IN input, OUT is powered strictly from the battery. During this mode the current into OUT is not regulated, similar to Battery Supplement Mode, however the short circuit circuitry is active. If the OUT voltage falls below the BAT voltage by 250 mV for longer than tDGL(SC2), OUT is turned off. The short circuit recovery timer then starts counting. After tREC(SC2), OUT turns on and attempts to restart. If the short circuit remains, OUT is turned off and the counter restarts. This ON/OFF cycle continues until the overload condition is removed.
+9.3.5 Battery Charging
+Set CE low to initiate battery charging. First, the device checks for a short-circuit on the BAT pin by sourcing IBAT(SC) to the battery and monitoring the voltage. When the BAT voltage exceeds VBAT(SC), the battery charging continues. The battery is charged in three phases: conditioning pre-charge, constant current fast charge (current regulation) and a constant voltage tapering (voltage regulation). In all charge phases, an internal control loop monitors the IC junction temperature and reduces the charge current if an internal temperature threshold is exceeded.
+Figure 9-6 illustrates a normal Li-Ion charge cycle using the BQ2407x:
+
+24 Submit Document Feedback
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+www.ti.com
+
+PRECHARGE
+
+CC FAST CHARGE
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+CV TAPER
+
+DONE
+
+VBAT(REG) IO(CHG)
+
+Battery Current
+
+VLOWV I(PRECHG)
+I(TERM)
+
+Battery Voltage
+
+CHG = Hi-z
+
+Figure 9-6. Typical Charge Cycle
+
+In the pre-charge phase, the battery is charged at with the pre-charge current (IPRECHG). Once the battery voltage crosses the VLOWV threshold, the battery is charged with the fast-charge current (ICHG). As the battery voltage reaches VBAT(REG), the battery is held at a constant voltage of VBAT(REG) and the charge current tapers off as the battery approaches full charge. When the battery current reaches ITERM, the CHG pin indicates charging done by going high-impedance.
+Note that termination detection is disabled whenever the charge rate is reduced because of the actions of the thermal loop, the DPPM loop or the VIN-DPM loop.
+The value of the fast-charge current is set by the resistor connected from the ISET pin to VSS, and is given by the equation:
+
+ICHG = KISET/RISET
+
+(2)
+
+The charge current limit is adjustable up to 1.5 A. The valid resistor range is 590  to 8.9 k. If ICHG is programmed as greater than the input current limit, the battery will not charge at the rate of ICHG, but at the slower rate of IIN(MAX) (minus the load current on the OUT pin, if any). In this case, the charger timers will be proportionately slowed down.
+9.3.5.1 Charge Current Translator
+When the charger is enabled, internal circuits generate a current proportional to the charge current at the ISET input. The current out of ISET is 1/400 (±10%) of the charge current. This current, when applied to the external charge current programming resistor, RISET, generates an analog voltage that can be monitored by an external host to calculate the current sourced from BAT.
+
+VISET = ICHARGE / 400 × RISET
+
+(3)
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Submit Document Feedback 25
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+Begin Charging
+
+Yes Battery short detected?
+
+No
+Start Precharge CHG = Low
+
+VBAT > VLOWV
+
+No
+
+Yes
+
+Start Fastcharge ICHARGE set by ISET
+
+IBAT < ITERM
+
+No
+
+Yes
+Charge Done CHG = Hi-Z
+
+No tPRECHARGE Elapsed?
+End Charge Flash CHG
+No t FASTCHARGE Elapsed?
+End Charge Flash CHG
+
+TD = Low
+
+('72, '73 Only)
+
+No
+
+('74, '75 = YES)
+
+Yes
+
+Termination Reached BATTFET Off
+Wait for VBAT < VRCH
+
+No VBAT < VRCH Yes Run Battery Detection
+Battery Detected? No Yes
+Figure 9-7. Battery Charging Flow Diagram
+
+www.ti.com
+
+26 Submit Document Feedback
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+www.ti.com
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+9.3.5.2 Adjustable Termination Threshold (ITERM Input, BQ24074)
+The termination current threshold in the BQ24074 is user-programmable. Set the termination current by connecting a resistor from ITERM to VSS. For USB100 mode (EN1 = EN2 = Low), the termination current value is calculated as:
+
+ITERM = 0.01 × RITERM/ RISET
+
+(4)
+
+In the other input current limit modes (EN1  EN2), the termination current value is calculated as:
+
+ITERM = 0.03 × RITERM/ RISET
+
+(5)
+
+The termination current is programmable up to 50% of the fastcharge current. The RITERM resistor must be less than 15 k. Leave ITERM unconnected to select the default internally set termination current.
+9.3.5.3 Termination Disable (TD Input, BQ24072, BQ24073)
+The BQ24072 and BQ24073 contain a TD input that allows termination to be enabled/ disabled. Connect TD to a logic high to disable charge termination. When termination is disabled, the device goes through the pre-charge, fast-charge and CV phases, then remains in the CV phase. During the CV phase, the charger maintains the output voltage at BAT equal to VBAT(REG), and charging current does not terminate. The charge current is set by ICHG or IINmax, whichever is less. Battery detection is not performed. The CHG output is high impedance once the current falls below ITERM and does not go low until the input power or CE are toggled. When termination is disabled, the pre-charge and fast-charge safety timers are also disabled. Battery pack temperature sensing (TS pin functionality) is disabled if the TD pin is high and the TS pin is unconnected or pulled up to VIN.
+9.3.5.4 Battery Detection and Recharge
+The BQ2407x automatically detects if a battery is connected or removed. Once a charge cycle is complete, the battery voltage is monitored. When the battery voltage falls below VRCH, the battery detection routine is run. During battery detection, current (IBAT(DET)) is pulled from the battery for a duration tDET to see if the voltage on BAT falls below VLOWV. If not, charging begins. If it does, then it indicates that the battery is missing or the protector is open. Next, the precharge current is applied for tDET to close the protector if possible. If VBAT < VRCH, then the protector closed and charging is initiated. If VBAT > VRCH, then the battery is determined to be missing and the detection routine continues.
+9.3.5.5 Battery Disconnect (SYSOFF Input, BQ24075, BQ24079)
+The BQ24075 and BQ24079 feature a SYSOFF input that allows the user to turn the FET Q2 off and disconnect the battery from the OUT pin. This is useful for disconnecting the system load from the battery, factory programming where the battery is not installed or for host side impedance track fuel gauging, such as bq27500, where the battery open circuit voltage level must be detected before the battery charges or discharges. The /CHG output remains low when SYSOFF is high. Connect SYSOFF to VSS, to turn Q2 on for normal operation. SYSOFF is internally pulled to VBAT through ~5 M resistor.
+9.3.5.6 Dynamic Charge Timers (TMR Input)
+The BQ2407x devices contain internal safety timers for the pre-charge and fast-charge phases to prevent potential damage to the battery and the system. The timers begin at the start of the respective charge cycles. The timer values are programmed by connecting a resistor from TMR to VSS. The resistor value is calculated using the following equation:
+
+tPRECHG = KTMR × RTMR
+
+(6)
+
+tMAXCHG = 10 × KTMR × RTMR
+
+(7)
+
+Leave TMR unconnected to select the internal default timers. Disable the timers by connecting TMR to VSS.
+Reset the timers by toggling the CE pin, or by toggling EN1, EN2 pin to put the device in and out of USB suspend mode (EN1 = HI, EN2 = HI).
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Submit Document Feedback 27
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+www.ti.com
+
+Note that timers are suspended when the device is in thermal shutdown, and the timers are slowed proportionally to the charge current when the device enters thermal regulation. For the BQ24072 and BQ24073, the timers are disabled when TD is connected to a high logic level.
+
+During the fast charge phase, several events increase the timer durations. · The system load current activates the DPPM loop which reduces the available charging current · The input current is reduced because the input voltage has fallen to VIN-DPM · The device has entered thermal regulation because the IC junction temperature has exceeded TJ(REG)
+During each of these events, the internal timers are slowed down proportionately to the reduction in charging current. For example, if the charging current is reduced by half for two minutes, the timer clock is reduced to half the frequency and the counter counts half as fast resulting in only one minute of "counting" time.
+
+If the pre charge timer expires before the battery voltage reaches VLOWV, the BQ2407x indicates a fault condition. Additionally, if the battery current does not fall to ITERM before the fast charge timer expires, a fault is indicated. The CHG output flashes at approximately 2 Hz to indicate a fault condition. The fault condition is cleared by toggling CE or the input power, entering/ exiting USB suspend mode, or an OVP event.
+
+9.3.5.7 Status Indicators ( PGOOD, CHG)
+
+The BQ2407x contains two open-drain outputs that signal its status. The PGOOD output signals when a valid input source is connected. PGOOD is low when (VBAT + VIN(DT)) < VIN < VOVP. When the input voltage is outside of this range, PGOOD is high impedance.
+
+The charge cycle after power-up, CE going low, or exiting OVP is indicated with the CHG pin on (low - LED on), whereas all refresh (subsequent) charges will result in the CHG pin off (open - LED off). In addition, the CHG signals timer faults by flashing at approximately 2 Hz.
+
+Table 9-1. PGOOD Status Indicator
+
+INPUT STATE
+
+PGOOD OUTPUT
+
+VIN < VUVLO VUVLO < VIN < VBAT + VIN(DT) VBAT + VIN(DT) < VIN < VOVP
+VIN > VOVP
+
+High-impedance High-impedance
+Low High-impedance
+
+Table 9-2. CHG Status Indicator
+
+CHARGE STATE
+
+CHG OUTPUT
+
+Charging Charging suspended by thermal loop
+
+Low (for first charge cycle)
+
+Safety timers expired
+
+Flashing at 2 Hz
+
+Charging done
+
+Recharging after termination IC disabled or no valid input power
+
+High-impedance
+
+Battery absent
+
+9.3.5.8 Thermal Regulation and Thermal Shutdown
+The BQ2407x contain a thermal regulation loop that monitors the die temperature. If the temperature exceeds TJ(REG), the device automatically reduces the charging current to prevent the die temperature from increasing further. In some cases, the die temperature continues to rise despite the operation of the thermal loop, particularly under high VIN and heavy OUT system load conditions. Under these conditions, if the die temperature increases to TJ(OFF), the input FET Q1 is turned OFF. FET Q2 is turned ON to ensure that the battery still powers the load on OUT. Once the device die temperature cools by TJ(OFF-HYS), the input FET Q1 is turned on and the device returns to thermal regulation. Continuous overtemperature conditions result in a "hiccup" mode. During thermal regulation, the safety timers are slowed down proportionately to the reduction in current limit.
+
+28 Submit Document Feedback
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+www.ti.com
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+Note that this feature monitors the die temperature of the BQ2407x. This is not synonymous with ambient temperature. Self heating exists due to the power dissipated in the IC because of the linear nature of the battery charging algorithm and the LDO associated with OUT. A modified charge cycle with the thermal loop active is shown in Figure 9-8. Battery termination is disabled during thermal regulation.
+
+PRECHARGE
+
+THERMAL REGULATION
+
+CC FAST CHARGE
+
+CV TAPER
+
+DONE
+
+VO(REG) IO(CHG)
+Battery Voltage
+
+Battery Current
+
+V(LOWV)
+I(PRECHG) I(TERM)
+
+HI-z
+
+TJ(REG)
+
+IC Junction Temperature, TJ
+
+Figure 9-8. Charge Cycle Modified by Thermal Loop
+9.3.6 Battery Pack Temperature Monitoring
+The BQ2407x features an external battery pack temperature monitoring input. The TS input connects to the NTC thermistor in the battery pack to monitor battery temperature and prevent dangerous over-temperature conditions. During charging, INTC is sourced to TS and the voltage at TS is continuously monitored. If, at any time, the voltage at TS is outside of the operating range (VCOLD to VHOT), charging is suspended. The timers maintain their values but suspend counting. When the voltage measured at TS returns to within the operation window, charging is resumed and the timers continue counting. When charging is suspended due to a battery pack temperature fault, the CHG pin remains low and continues to indicate charging.
+For the BQ24072 and BQ24073, battery pack temperature sensing is disabled when termination is disabled (TD = High) and the voltage at TS is greater than VDIS(TS). For applications that do not require the TS monitoring function, connect a 10-k resistor from TS to VSS to set the TS voltage at a valid level and maintain charging.
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Submit Document Feedback 29
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+www.ti.com
+
+The allowed temperature range for 103AT-2 type thermistor is 0°C to 50°C. However, the user may increase the range by adding two external resistors. See Figure 9-9 for the circuit details. The values for Rs and Rp are calculated using the following equations:
+
+-(RTH + RTC ) ±
+
+æ ççè (RTH+RTC )2
+
+-
+
+ì 4 íîRTH
+
+´
+
+RTC + (VH
+
+VH ´ VC - VC ) ´
+
+ITS
+
+´ (RTC
+
+-
+
+üö
+
+RTH
+
+)ý þ
+
+÷÷ø
+
+Rs =
+
+2
+
+(8)
+
+( ) Rp = VH ´ RTH + RS ( ) ITS ´ RTH + RS - VH
+
+(9)
+
+where
+
+· RTH: Thermistor Hot Trip Value found in thermistor data sheet · RTC: Thermistor Cold Trip Value found in thermistor data sheet · VH: IC's Hot Trip Threshold = 0.3 V nominal · VC: IC's Cold Trip Threshold = 2.1 V nominal · ITS: IC's Output Current Bias = 75 µA nominal · NTC Thermsitor Semitec 103AT-4
+
+Rs and Rp 1% values were chosen closest to calculated values in Table 9-3.
+
+Table 9-3. Calculated Values
+
+COLD TEMP RESISTANCE AND HOT TEMP RESISTANCE AND EXTERNAL BIAS RESISTOR,
+
+TRIP THRESHOLD;  (°C)
+
+TRIP THRESHOLD;  (°C)
+
+Rs ()
+
+28000 (­0.6)
+
+4000 (51)
+
+0
+
+28480 (­1)
+
+3536 (55)
+
+487
+
+28480 (­1)
+
+3021 (60)
+
+1000
+
+33890 (­5)
+
+4026 (51)
+
+76.8
+
+33890 (­5)
+
+3536 (55)
+
+576
+
+33890 (­5)
+
+3021 (60)
+
+1100
+
+EXTERNAL BIAS RESISTOR, Rp ()  845000 549000 158000 150000 140000
+
+RHOT and RCOLD are the thermistor resistance at the desired hot and cold temperatures, respectively. The temperature window cannot be tightened more than using only the thermistor connected to TS, it can only be extended.
+
+Figure 9-9. Extended TS Pin Thresholds
+
+30 Submit Document Feedback
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+www.ti.com
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+9.4 Device Functional Modes 9.4.1 Sleep Mode
+When the input is between UVLO and VIN(DT), the device enters sleep mode. After entering sleep mode for >20 mS the internal FET connection between the IN and OUT pin is disabled and pulling the input to ground will not discharge the battery, other than the leakage on the BAT pin. If one has a full 1000-mAHr battery and the leakage is 10 A, then it would take 1000 mAHr / 10 A = 100000 hours (11.4 years) to discharge the battery. The self-discharge of the battery is typically five times higher than this.
+9.4.2 Explanation of Deglitch Times and Comparator Hysteresis
+
+Figure 9-10 to Figure 9-14 are not to scale.
+
+Note
+
+VOVP VOVP - Vhys(OVP)
+VIN
+VBAT + VIN(DT) VBAT + VIN(DT) - Vhys(INDT)
+UVLO UVLO - Vhys(UVLO)
+
+t < tDGL(OVP)
+
+Typical Input Voltage Operating Range
+
+PGOOD tDGL(PGOOD)
+
+tDGL(OVP)
+
+tDGL(PGOOD)
+
+tDGL(NO-IN)
+
+Figure 9-10. Power-Up, Power-Down, Power Good Indication
+
+VLOWV
+
+VBAT
+
+tDGL1(LOWV)
+
+t < tDGL1(LOWV)
+
+tDGL1(LOWV)
+
+tDGL2(LOWV)
+
+t < tDGL2(LOWV)
+
+ICHG IPRE-CHG
+
+Pre-Charge
+
+Fast-Charge
+
+Fast-Charge
+
+Pre-Charge
+
+Figure 9-11. Precharge to Fast-Charge, Fast- to Pre-Charge Transition ­ tDGL1(LOWV), tDGL2(LOWV)
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Submit Document Feedback 31
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+VRCH
+
+VBAT
+
+t < tDGL(RCH)
+
+tDGL(RCH)
+
+Re-Charge
+
+Figure 9-12. Recharge ­ tDGL(RCH)
+
+www.ti.com
+
+Turn Q2 OFF
+
+tREC(SC2)
+
+Force Q2 ON
+
+Turn Q2 OFF
+
+tREC(SC2)
+
+Force Q2 ON
+
+VBAT - VOUT
+
+VO(SC2)
+
+Recover
+
+t < tDGL(SC2) tDGL(SC2)
+
+tDGL(SC2)
+
+t < tDGL(SC2)
+
+Figure 9-13. OUT Short-Circuit ­ Supplement Mode
+
+VCOLD VCOLD - Vhys(COLD)
+
+VHOT - Vhys(HOT) VHOT
+
+VTS
+
+t < tDGL(TS)
+
+tDGL(TS)
+
+Suspend Charging
+
+Resume Charging
+
+Figure 9-14. Battery Pack Temperature Sensing ­ TS Pin. Battery Temperature Increasing
+
+32 Submit Document Feedback
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+www.ti.com
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+10 Application and Implementation
+
+Note
+Information in the following applications sections is not part of the TI component specification, and TI does not warrant its accuracy or completeness. TI's customers are responsible for determining suitability of components for their purposes, as well as validating and testing their design implementation to confirm system functionality.
+
+10.1 Application Information
+The BQ2407x devices power the system while simultaneously and independently charging the battery. The input power source for charging the battery and running the system can be an AC adapter or a USB port. The devices feature dynamic power-path management (DPPM), which shares the source current between the system and battery charging and automatically reduces the charging current if the system load increases. When charging from a USB port, the input dynamic power management (VIN-DPM) circuit reduces the input current limit if the input voltage falls below a threshold, preventing the USB port from crashing. The power-path architecture also permits the battery to supplement the system current requirements when the adapter cannot deliver the peak system currents.
+The BQ2407x is configurable to be host controlled for selecting different input current limits based on the input source connected, or a fully stand alone device for applications that do not support multiple types of input sources.
+10.2 Typical Application
+VIN = UVLO to VOVP, IFASTCHG = 800 mA, IIN(MAX) = 1.3 A, Battery Temperature Charge Range = 0°C to 50°C, 6.25-hour Fastcharge Safety Timer
+
+R4 1.5 kW
+
+R5 1.5 kW
+
+SYSTEM
+
+Adaptor
+DC+ GND
+
+C1 1 mF
+
+TEMP
+
+PACK+
+
+C3 4.7 mF
+
+IN
+
+OUT
+
+VSS
+BQ24072 BQ24073 EN2
+EN1 TS
+TD
+CE BAT
+
+PGOOD CHG
+
+C2 4.7 mF
+
+TMR ILM ISET
+
+PACK-
+
+R1 46.4 kW
+
+R2 1.18 kW
+
+R3 1.13 kW
+
+HOST
+
+Figure 10-1. Using BQ24072/ BQ24073 in a Host-Controlled Charger Application
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Submit Document Feedback 33
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+www.ti.com
+
+10.2.1 Design Requirements
+· Supply voltage = 5 V · Fast charge current of approximately 800 mA; ISET - pin 16 · Input Current Limit =1.3 A; ILIM - pin 12 · Termination Current Threshold = 110 mA; ITERM ­ pin 15 (BQ24074 only) · Safety timer duration, Fast-Charge = 6.25 hours; TMR ­ pin 14 · TS ­ Battery Temperature Sense = 10 k NTC (103AT-2)
+10.2.2 Detailed Design Procedure 10.2.2.1 BQ2407x Charger Design Example
+See Figure 10-1 to Figure 10-13 for Schematics of the Design Example.
+10.2.2.1.1 Termination Disable (TD) (BQ24072, BQ24073 only)
+Connect TD high to disable termination. Connect TD low to enable termination.
+10.2.2.1.2 System ON/OFF (SYSOFF) (BQ24075 or BQ24079 only)
+Connect SYSOFF high to disconnect the battery from the system load. Connect SYSOFF low for normal operation
+10.2.2.2 Calculations 10.2.2.2.1 Program the Fast Charge Current (ISET):
+RISET = KISET / ICHG KISET = 890 A from the electrical characteristics table. RISET = 890 A / 0.8 A = 1.1125 k Select the closest standard value, which for this case is 1.13 k. Connect this resistor between ISET (pin 16) and VSS. 10.2.2.2.2 Program the Input Current Limit (ILIM)
+RILIM = KILIM / II_MAX KILIM = 1550 A from the electrical characteristics table. RISET = 1550 A / 1.3 A = 1.192 k Select the closest standard value, which for this case is 1.18 k. Connect this resistor between ILIM (pin 12) and VSS. 10.2.2.2.3 Program the Termination Current Threshold (ITERM) (BQ24074 only) RITERM = ITERM × RISET / 0.030 RISET = 1.13 k from the above calculation. RITERM = 110 mA × 1.13 k / 0.030 = 4.143 k Select the closest standard value, which for this case is 4.12 k. Connect this resistor between ITERM (pin 15) and VSS. Note that when in USB100 mode (EN1 = EN2 = VSS), the termination threshold is 1/3 of the normal threshold.
+10.2.2.2.4 Program 6.25-hour Fast-Charge Safety Timer (TMR)
+RTMR = tMAXCHG / (10 × KTMR ) KTMR = 48 s/k from the electrical characteristics table. RTMR = (6.25 hr × 3600 s/hr) / (10 × 48 s/k) = 46.8 k Select the closest standard value, which for this case is 46.4 k. Connect this resistor between TMR (pin 14) and VSS.
+
+34 Submit Document Feedback
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+www.ti.com
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+10.2.2.3 TS Function
+Use a 10-k NTC thermistor in the battery pack (103AT-2). For applications that do not require the TS monitoring function, connect a 10-k resistor from TS to VSS to set the TS voltage at a valid level and maintain charging.
+10.2.2.4 CHG and PGOOD
+LED Status: Connect a 1.5-k resistor in series with a LED between OUT and CHG to indicate charging status. Connect a 1.5-k resistor in series with a LED between OUT and PGOOD to indicate when a valid input source is connected.
+Processor Monitoring Status: Connect a pullup resistor (on the order of 100 k) between the power rail of the processor and CHG and PGOOD.
+10.2.2.5 Selecting IN, OUT, and BAT Pin Capacitors
+In most applications, all that is needed is a high-frequency decoupling capacitor (ceramic) on the power pin, input, output and battery pins. Using the values shown on the application diagram, is recommended. After evaluation of these voltage signals with real system operational conditions, one can determine if capacitance values can be adjusted toward the minimum recommended values (DC load application) or higher values for fast high amplitude pulsed load applications. Note if designed high input voltage sources (bad adaptors or wrong adaptors), the capacitor needs to be rated appropriately. Ceramic capacitors are tested to 2x their rated values so a 16-V capacitor may be adequate for a 30-V transient (verify tested rating with capacitor manufacturer).
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Submit Document Feedback 35
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+10.2.3 Application Curves
+
+www.ti.com
+
+VIN
+VOUT 4.4 V
+VBAT 3.6 V VPGOOD
+
+5 V/div 500 mV/div 5 V/div
+
+IBAT
+
+500 mA/div
+
+4 ms/div
+RLOAD = 10 
+Figure 10-2. Adapter Plug-In Battery Connected
+
+VCHG
+
+5 V/div
+
+1 A/div IBAT
+
+VBAT
+
+Battery Removed
+
+2 V/div
+
+Battery Detection Mode
+
+400 ms/div
+Figure 10-4. Battery Detection Battery Removed
+
+VCHG
+
+Charging Initiated
+
+IBAT
+
+5 V/div 1 A/div
+
+VBAT
+
+2 V/div Battery Inserted
+
+Battery Detection Mode
+
+400 ms/div
+Figure 10-3. Battery Detection Battery Inserted
+
+IOUT
+
+500 mA/div
+
+IBAT
+
+500 mA/div
+
+VOUT 4.4 V
+
+200 mV/div
+
+400 ms/div
+RLOAD = 20  to 9 
+Figure 10-5. Entering and Exiting DPPM Mode
+
+IOUT IBAT
+
+Supplement Mode
+
+1 A/div 500 mA/div
+
+VOUT 4.4 V
+VBAT 3.8 V
+
+1 ms/div
+
+500 mV/div
+
+RLOAD = 25  to 4.5 
+
+Figure 10-6. Entering and Exiting Battery Supplement Mode BQ24074
+
+IOUT
+
+1 A/div
+
+IBAT
+
+Supplement Mode
+
+500 mA/div
+
+VOUT 3.825 V
+VBAT 3.6 V
+
+Tracking to VBAT +225 mV
+
+200 mV/div
+
+1 ms/div
+RLOAD = 20  to 4.5 
+Figure 10-7. Entering and Exiting Battery Supplement Mode BQ24072
+
+36 Submit Document Feedback
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+www.ti.com
+
+VCE
+VCHG
+VBAT 3.6 V
+
+5 V/div 5 V/div 1 V/div
+
+Mandatory Precharge IBAT
+
+500 mA/div
+
+10 ms/div
+Figure 10-8. Charger ON/OFF Using CE
+
+VSYSOFF
+
+5 V/div
+
+VOUT 5.5 V
+VBAT 4V
+
+2 V/div
+
+500 mA/div
+IBAT
+400 ms/div
+Figure 10-10. System ON/OFF With Input Connected VIN = 6 V BQ24075, BQ24079
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+VIN
+VOUT 4.4 V VBAT 4.2 V
+
+10 V/div 500 mV/div
+
+IBAT
+
+1 A/div
+
+40 ms/div
+
+VIN = 6 V to 15 V
+
+RLOAD = 10 
+
+Figure 10-9. OVP Fault
+
+VSYSOFF
+
+5 V/div
+
+VBAT 4V
+VOUT
+
+2 V/div
+
+Battery Powering System
+IBAT
+
+System Power Off
+
+500 mA/div
+
+4 ms/div
+Figure 10-11. System ON/OFF With Input Not Connected VIN = 0 V BQ24075, BQ24079
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Submit Document Feedback 37
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+www.ti.com
+
+10.3 System Examples 10.3.1 Standalone Charger
+VIN = UVLO to VOVP, IFASTCHG = 800 mA, IIN(MAX) = 1.3 A, ITERM = 110 mA, Battery Temperature Charge Range = 0°C to 50°C, Safety Timers disabled.
+
+R4 1.5 kW
+
+R5 1.5 kW
+
+SYSTEM
+
+Adaptor
+DC+ GND
+
+C1 1 mF
+
+TEMP
+
+PACK+
+
+C3 4.7mF
+
+PGOOD CHG
+
+IN
+
+OUT
+
+VSS
+BQ24074
+EN2 EN1 TS TMR
+CE BAT
+
+C2 4.7 mF
+
+ITERM ILM ISET
+
+PACK-
+
+R1 4.12 kW
+
+R2 1.18 kW
+
+R3 1.13 kW
+
+Figure 10-12. Using BQ24074 in a Standalone Charger Application 10.3.2 Disconnecting the Battery From the System VIN = UVLO to VOVP, IFASTCHG = 800 mA, IIN(MAX) = 1.3 A, Battery Temperature Charge Range = 0°C to 50°C, 6.25 hour Fastcharge Safety Timer.
+
+R4 1.5 kW
+
+R5 1.5 kW
+
+SYSTEM
+
+Adaptor DC+ GND
+
+C1 1 mF
+
+TEMP
+
+PACK+
+
+C3 4.7 mF
+
+IN
+
+OUT
+
+VSS
+BQ24075 BQ24079 EN2
+EN1 TS
+SYSOFF
+CE BAT
+
+PGOOD CHG
+
+C2 4.7 mF
+
+HOST
+
+TMR ILM ISET
+
+PACK-
+
+R1 46.4 kW
+
+R2 1.18 kW
+
+R3 1.13 kW
+
+Figure 10-13. Using BQ24075 or BQ24079 to Disconnect the Battery From the System
+
+38 Submit Document Feedback
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+www.ti.com
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+11 Power Supply Recommendations
+Some adapters implement a half rectifier topology, which causes the adapter output voltage to fall below the battery voltage during part of the cycle. To enable operation with adapters under those conditions, the BQ2407x family keeps the charger on for at least 20 msec (typical) after the input power puts the part in sleep mode. This feature enables use of external adapters using 50 Hz networks. The input must not drop below the UVLO voltage for the charger to work properly. Thus, the battery voltage should be above the UVLO to help prevent the input from dropping out. Additional input capacitance may be needed.
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Submit Document Feedback 39
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+www.ti.com
+
+12 Layout
+12.1 Layout Guidelines
+· To obtain optimal performance, the decoupling capacitor from IN to GND (thermal pad) and the output filter capacitors from OUT to GND (thermal pad) should be placed as close as possible to the BQ2407x, with short trace runs to both IN, OUT and GND (thermal pad).
+· All low-current GND connections should be kept separate from the high-current charge or discharge paths from the battery. Use a single-point ground technique incorporating both the small signal ground path and the power ground path.
+· The high current charge paths into IN pin and from the OUT pin must be sized appropriately for the maximum charge current in order to avoid voltage drops in these traces
+· The BQ2407x family is packaged in a thermally enhanced MLP package. The package includes a thermal pad to provide an effective thermal contact between the IC and the printed circuit board (PCB); this thermal pad is also the main ground connection for the device. Connect the thermal pad to the PCB ground connection. Full PCB design guidelines for this package are provided in the QFN/SON PCB Attachment Application Note.
+
+40 Submit Document Feedback
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+www.ti.com
+12.2 Layout Example
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+Figure 12-1. Layout Schematic
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Submit Document Feedback 41
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+www.ti.com
+
+12.3 Thermal Considerations
+The BQ24072/3/4/5 family is packaged in a thermally enhanced MLP package. The package includes a thermal pad to provide an effective thermal contact between the IC and the printed circuit board (PCB). The power pad should be directly connected to the VSS pin. Full PCB design guidelines for this package are provided in the QFN/SON PCB Attachment Application Note. The most common measure of package thermal performance is thermal impedance (JA) measured (or modeled) from the chip junction to the air surrounding the package surface (ambient). The mathematical expression for JA is:
+
+JA = (TJ - T) / P
+
+(10)
+
+where
+· TJ = chip junction temperature · T = ambient temperature · P = device power dissipation
+Factors that can influence the measurement and calculation of JA include:
+· Whether or not the device is board mounted · Trace size, composition, thickness, and geometry · Orientation of the device (horizontal or vertical) · Volume of the ambient air surrounding the device under test and airflow · Whether other surfaces are in close proximity to the device being tested
+Due to the charge profile of Li-Ion batteries the maximum power dissipation is typically seen at the beginning of the charge cycle when the battery voltage is at its lowest. Typically after fast charge begins the pack voltage increases to 3.4 V within the first 2 minutes. The thermal time constant of the assembly typically takes a few minutes to heat up so when doing maximum power dissipation calculations, 3.4 V is a good minimum voltage to use. This is verified, with the system and a fully discharged battery, by plotting temperature on the bottom of the PCB under the IC (pad should have multiple vias), the charge current and the battery voltage as a function of time. The fast charge current will start to taper off if the part goes into thermal regulation.
+The device power dissipation, P, is a function of the charge rate and the voltage drop across the internal PowerFET. It can be calculated from the following equation when a battery pack is being charged :
+
+P = [V(IN) ­ V(OUT)] × [I(OUT) + I(BAT)] + [V(OUT) ­ V(BAT)] × I(BAT)
+
+(11)
+
+The thermal loop feature reduces the charge current to limit excessive IC junction temperature. It is recommended that the design not run in thermal regulation for typical operating conditions (nominal input voltage and nominal ambient temperatures) and use the feature for non typical situations such as hot environments or higher than normal input source voltage. With that said, the IC will still perform as described, if the thermal loop is always active.
+
+42 Submit Document Feedback
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+www.ti.com
+
+BQ24072, BQ24073, BQ24074, BQ24075, BQ24079
+SLUS810N ­ SEPTEMBER 2008 ­ REVISED OCTOBER 2021
+
+13 Device and Documentation Support 13.1 Device Support
+13.1.1 Third-Party Products Disclaimer
+TI'S PUBLICATION OF INFORMATION REGARDING THIRD-PARTY PRODUCTS OR SERVICES DOES NOT CONSTITUTE AN ENDORSEMENT REGARDING THE SUITABILITY OF SUCH PRODUCTS OR SERVICES OR A WARRANTY, REPRESENTATION OR ENDORSEMENT OF SUCH PRODUCTS OR SERVICES, EITHER ALONE OR IN COMBINATION WITH ANY TI PRODUCT OR SERVICE.
+13.2 Receiving Notification of Documentation Updates
+To receive notification of documentation updates, navigate to the device product folder on ti.com. Click on Subscribe to updates to register and receive a weekly digest of any product information that has changed. For change details, review the revision history included in any revised document.
+13.3 Support Resources
+TI E2ETM support forums are an engineer's go-to source for fast, verified answers and design help -- straight from the experts. Search existing answers or ask your own question to get the quick design help you need.
+Linked content is provided "AS IS" by the respective contributors. They do not constitute TI specifications and do not necessarily reflect TI's views; see TI's Terms of Use.
+13.4 Trademarks TI E2ETM is a trademark of Texas Instruments. All trademarks are the property of their respective owners. 13.5 Electrostatic Discharge Caution
+This integrated circuit can be damaged by ESD. Texas Instruments recommends that all integrated circuits be handled with appropriate precautions. Failure to observe proper handling and installation procedures can cause damage.
+ESD damage can range from subtle performance degradation to complete device failure. Precision integrated circuits may be more susceptible to damage because very small parametric changes could cause the device not to meet its published specifications.
+
+13.6 Glossary
+
+TI Glossary
+
+This glossary lists and explains terms, acronyms, and definitions.
+
+14 Mechanical, Packaging, and Orderable Information
+
+The following pages include mechanical, packaging, and orderable information. This information is the most current data available for the designated devices. This data is subject to change without notice and revision of this document. For browser-based versions of this data sheet, refer to the left-hand navigation.
+
+Copyright © 2021 Texas Instruments Incorporated
+
+Submit Document Feedback 43
+
+Product Folder Links: BQ24072 BQ24073 BQ24074 BQ24075 BQ24079
+
+www.ti.com
+
+PACKAGE OPTION ADDENDUM
+8-Jan-2026
+
+PACKAGING INFORMATION
+
+Orderable part number
+
+Status Material type
+
+(1)
+
+(2)
+
+Package | Pins
+
+Package qty | Carrier
+
+BQ24072RGTR BQ24072RGTR.A BQ24072RGTR.B BQ24072RGTRG4 BQ24072RGTRG4.A BQ24072RGTRG4.B
+BQ24072RGTT BQ24072RGTT.A BQ24072RGTT.B BQ24073RGTR BQ24073RGTR.A BQ24073RGTR.B BQ24073RGTRG4 BQ24073RGTRG4.A BQ24073RGTRG4.B BQ24073RGTT BQ24073RGTT.A BQ24073RGTT.B BQ24073RGTTG4 BQ24074RGTR BQ24074RGTR.A BQ24074RGTR.B BQ24074RGTRG4 BQ24074RGTT BQ24074RGTT.A BQ24074RGTT.B BQ24075RGTR BQ24075RGTR.A BQ24075RGTR.B
+
+Active Active Active Active Active Active Active Active Active Active Active Active Active Active Active Active Active Active Active Active Active Active Active Active Active Active Active Active Active
+
+Production Production Production Production Production Production Production Production Production Production Production Production Production Production Production Production Production Production Production Production Production Production Production Production Production Production Production Production Production
+
+VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16
+
+3000 | LARGE T&R 3000 | LARGE T&R 3000 | LARGE T&R 3000 | LARGE T&R 3000 | LARGE T&R 3000 | LARGE T&R 250 | SMALL T&R 250 | SMALL T&R 250 | SMALL T&R 3000 | LARGE T&R 3000 | LARGE T&R 3000 | LARGE T&R 3000 | LARGE T&R 3000 | LARGE T&R 3000 | LARGE T&R 250 | SMALL T&R 250 | SMALL T&R 250 | SMALL T&R 250 | SMALL T&R 3000 | LARGE T&R 3000 | LARGE T&R 3000 | LARGE T&R 3000 | LARGE T&R 250 | SMALL T&R 250 | SMALL T&R 250 | SMALL T&R 3000 | LARGE T&R 3000 | LARGE T&R 3000 | LARGE T&R
+
+RoHS
+(3)
+Yes Yes Yes Yes Yes Yes Yes Yes Yes Yes Yes Yes Yes Yes Yes Yes Yes Yes Yes Yes Yes Yes Yes Yes Yes Yes Yes Yes Yes
+
+Lead finish/ Ball material
+(4)
+NIPDAU NIPDAU NIPDAU NIPDAU NIPDAU NIPDAU NIPDAU NIPDAU NIPDAU NIPDAU NIPDAU NIPDAU NIPDAU NIPDAU NIPDAU Call TI | Nipdau Call TI | Nipdau Call TI | Nipdau Call TI | Nipdau NIPDAU NIPDAU NIPDAU NIPDAU NIPDAU NIPDAU NIPDAU NIPDAU NIPDAU NIPDAU
+
+MSL rating/ Peak reflow
+(5)
+Level-2-260C-1 YEAR Level-2-260C-1 YEAR Level-2-260C-1 YEAR Level-2-260C-1 YEAR Level-2-260C-1 YEAR Level-2-260C-1 YEAR Level-2-260C-1 YEAR Level-2-260C-1 YEAR Level-2-260C-1 YEAR Level-1-260C-UNLIM Level-1-260C-UNLIM Level-1-260C-UNLIM Level-1-260C-UNLIM Level-1-260C-UNLIM Level-1-260C-UNLIM Level-2-260C-1 YEAR Level-2-260C-1 YEAR Level-2-260C-1 YEAR Level-2-260C-1 YEAR Level-2-260C-1 YEAR Level-2-260C-1 YEAR Level-2-260C-1 YEAR Level-2-260C-1 YEAR Level-2-260C-1 YEAR Level-2-260C-1 YEAR Level-2-260C-1 YEAR Level-2-260C-1 YEAR Level-2-260C-1 YEAR Level-2-260C-1 YEAR
+
+Op temp (°C)
+-40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85
+
+Addendum-Page 1
+
+Part marking
+(6)
+CKP CKP CKP CKP CKP CKP CKP CKP CKP CKQ CKQ CKQ CKQ CKQ CKQ CKQ CKQ CKQ CKQ (BZF, NXK) (BZF, NXK) (BZF, NXK) (BZF, NXK) (BZF, NXK) (BZF, NXK) (BZF, NXK) CDU CDU CDU
+
+www.ti.com
+
+PACKAGE OPTION ADDENDUM
+8-Jan-2026
+
+Orderable part number
+
+Status Material type
+
+(1)
+
+(2)
+
+Package | Pins
+
+Package qty | Carrier
+
+BQ24075RGTRG4 BQ24075RGTRG4.A BQ24075RGTRG4.B
+BQ24075RGTT BQ24075RGTT.A BQ24075RGTT.B BQ24079RGTR BQ24079RGTR.B BQ24079RGTRG4 BQ24079RGTRG4.B BQ24079RGTT BQ24079RGTT.B
+
+Active Active Active Active Active Active Active Active Active Active Active Active
+
+Production Production Production Production Production Production Production Production Production Production Production Production
+
+VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16 VQFN (RGT) | 16
+
+(1) Status: For more details on status, see our product life cycle.
+
+3000 | LARGE T&R 3000 | LARGE T&R 3000 | LARGE T&R 250 | SMALL T&R 250 | SMALL T&R 250 | SMALL T&R 3000 | LARGE T&R 3000 | LARGE T&R 3000 | LARGE T&R 3000 | LARGE T&R 250 | SMALL T&R 250 | SMALL T&R
+
+RoHS
+(3)
+Yes Yes Yes Yes Yes Yes Yes Yes Yes Yes Yes Yes
+
+Lead finish/ Ball material
+(4)
+NIPDAU NIPDAU NIPDAU NIPDAU NIPDAU NIPDAU NIPDAU NIPDAU NIPDAU NIPDAU NIPDAU NIPDAU
+
+MSL rating/ Peak reflow
+(5)
+Level-2-260C-1 YEAR Level-2-260C-1 YEAR Level-2-260C-1 YEAR Level-2-260C-1 YEAR Level-2-260C-1 YEAR Level-2-260C-1 YEAR Level-2-260C-1 YEAR Level-2-260C-1 YEAR Level-2-260C-1 YEAR Level-2-260C-1 YEAR Level-2-260C-1 YEAR Level-2-260C-1 YEAR
+
+Op temp (°C)
+-40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85 -40 to 85
+
+Part marking
+(6)
+CDU CDU CDU CDU CDU CDU ODI ODI ODI ODI ODI ODI
+
+(2) Material type: When designated, preproduction parts are prototypes/experimental devices, and are not yet approved or released for full production. Testing and final process, including without limitation quality assurance, reliability performance testing, and/or process qualification, may not yet be complete, and this item is subject to further changes or possible discontinuation. If available for ordering, purchases will be subject to an additional waiver at checkout, and are intended for early internal evaluation purposes only. These items are sold without warranties of any kind.
+
+(3) RoHS values: Yes, No, RoHS Exempt. See the TI RoHS Statement for additional information and value definition.
+
+(4) Lead finish/Ball material: Parts may have multiple material finish options. Finish options are separated by a vertical ruled line. Lead finish/Ball material values may wrap to two lines if the finish value exceeds the maximum column width.
+
+(5) MSL rating/Peak reflow: The moisture sensitivity level ratings and peak solder (reflow) temperatures. In the event that a part has multiple moisture sensitivity ratings, only the lowest level per JEDEC standards is shown. Refer to the shipping label for the actual reflow temperature that will be used to mount the part to the printed circuit board.
+
+(6) Part marking: There may be an additional marking, which relates to the logo, the lot trace code information, or the environmental category of the part.
+
+Multiple part markings will be inside parentheses. Only one part marking contained in parentheses and separated by a "~" will appear on a part. If a line is indented then it is a continuation of the previous line and the two combined represent the entire part marking for that device.
+
+Addendum-Page 2
+
+www.ti.com
+
+PACKAGE OPTION ADDENDUM
+8-Jan-2026
+
+Important Information and Disclaimer:The information provided on this page represents TI's knowledge and belief as of the date that it is provided. TI bases its knowledge and belief on information provided by third parties, and makes no representation or warranty as to the accuracy of such information. Efforts are underway to better integrate information from third parties. TI has taken and continues to take reasonable steps to provide representative and accurate information but may not have conducted destructive testing or chemical analysis on incoming materials and chemicals. TI and TI suppliers consider certain information to be proprietary, and thus CAS numbers and other limited information may not be available for release.
+In no event shall TI's liability arising out of such information exceed the total purchase price of the TI part(s) at issue in this document sold by TI to Customer on an annual basis.
+OTHER QUALIFIED VERSIONS OF BQ24075 :
+· Automotive : BQ24075-Q1
+NOTE: Qualified Version Definitions:
+· Automotive - Q100 devices qualified for high-reliability automotive applications targeting zero defects
+
+Addendum-Page 3
+
+PACKAGE MATERIALS INFORMATION
+
+www.ti.com
+TAPE AND REEL INFORMATION
+REEL DIMENSIONS
+
+TAPE DIMENSIONS K0 P1
+
+Reel Diameter
+
+B0 W
+
+Cavity
+
+A0
+
+A0 Dimension designed to accommodate the component width B0 Dimension designed to accommodate the component length K0 Dimension designed to accommodate the component thickness W Overall width of the carrier tape P1 Pitch between successive cavity centers
+
+Reel Width (W1) QUADRANT ASSIGNMENTS FOR PIN 1 ORIENTATION IN TAPE
+Sprocket Holes
+
+Q1 Q2 Q3 Q4
+
+Q1 Q2 Q3 Q4
+
+User Direction of Feed
+
+5-May-2026
+
+Pocket Quadrants
+
+*All dimensions are nominal
+
+Device
+
+Package Package Pins Type Drawing
+
+BQ24072RGTR BQ24072RGTRG4
+BQ24072RGTT BQ24073RGTR BQ24073RGTR BQ24073RGTRG4 BQ24073RGTT BQ24074RGTR BQ24074RGTT BQ24075RGTR BQ24075RGTR BQ24075RGTRG4 BQ24075RGTT BQ24079RGTR BQ24079RGTRG4 BQ24079RGTT
+
+VQFN RGT 16 VQFN RGT 16 VQFN RGT 16 VQFN RGT 16 VQFN RGT 16 VQFN RGT 16 VQFN RGT 16 VQFN RGT 16 VQFN RGT 16 VQFN RGT 16 VQFN RGT 16 VQFN RGT 16 VQFN RGT 16 VQFN RGT 16 VQFN RGT 16 VQFN RGT 16
+
+SPQ
+3000 3000 250 3000 3000 3000 250 3000 250 3000 3000 3000 250 3000 3000 250
+
+Reel Reel A0 B0 K0 P1 W
+
+Pin1
+
+Diameter Width (mm) (mm) (mm) (mm) (mm) Quadrant
+
+(mm) W1 (mm)
+
+330.0 12.4 3.3 3.3 1.1 8.0 12.0
+
+Q2
+
+330.0 12.4 3.3 3.3 1.1 8.0 12.0
+
+Q2
+
+180.0 12.4 3.3 3.3 1.1 8.0 12.0
+
+Q2
+
+330.0 12.4 3.3 3.3 1.1 8.0 12.0
+
+Q2
+
+330.0 12.4 3.3 3.3 1.1 8.0 12.0
+
+Q2
+
+330.0 12.4 3.3 3.3 1.1 8.0 12.0
+
+Q2
+
+180.0 12.4 3.3 3.3 1.1 8.0 12.0
+
+Q2
+
+330.0 12.4 3.3 3.3 1.1 8.0 12.0
+
+Q2
+
+180.0 12.4 3.3 3.3 1.1 8.0 12.0
+
+Q2
+
+330.0 12.4 3.3 3.3 1.1 8.0 12.0
+
+Q2
+
+330.0 12.4 3.3 3.3 1.1 8.0 12.0
+
+Q2
+
+330.0 12.4 3.3 3.3 1.1 8.0 12.0
+
+Q2
+
+180.0 12.4 3.3 3.3 1.1 8.0 12.0
+
+Q2
+
+330.0 12.4 3.3 3.3 1.1 8.0 12.0
+
+Q2
+
+330.0 12.4 3.3 3.3 1.1 8.0 12.0
+
+Q2
+
+180.0 12.4 3.3 3.3 1.1 8.0 12.0
+
+Q2
+
+Pack Materials-Page 1
+
+www.ti.com TAPE AND REEL BOX DIMENSIONS
+
+PACKAGE MATERIALS INFORMATION
+5-May-2026
+
+Width (mm)
+H
+
+W
+
+L
+
+*All dimensions are nominal Device
+BQ24072RGTR BQ24072RGTRG4
+BQ24072RGTT BQ24073RGTR BQ24073RGTR BQ24073RGTRG4 BQ24073RGTT BQ24074RGTR BQ24074RGTT BQ24075RGTR BQ24075RGTR BQ24075RGTRG4 BQ24075RGTT BQ24079RGTR BQ24079RGTRG4 BQ24079RGTT
+
+Package Type VQFN VQFN VQFN VQFN VQFN VQFN VQFN VQFN VQFN VQFN VQFN VQFN VQFN VQFN VQFN VQFN
+
+Package Drawing Pins
+
+RGT
+
+16
+
+RGT
+
+16
+
+RGT
+
+16
+
+RGT
+
+16
+
+RGT
+
+16
+
+RGT
+
+16
+
+RGT
+
+16
+
+RGT
+
+16
+
+RGT
+
+16
+
+RGT
+
+16
+
+RGT
+
+16
+
+RGT
+
+16
+
+RGT
+
+16
+
+RGT
+
+16
+
+RGT
+
+16
+
+RGT
+
+16
+
+SPQ 3000 3000 250 3000 3000 3000 250 3000 250 3000 3000 3000 250 3000 3000 250
+
+Length (mm) 346.0 346.0 210.0 367.0 346.0 367.0 210.0 346.0 210.0 346.0 338.0 346.0 210.0 346.0 346.0 210.0
+
+Width (mm) 346.0 346.0 185.0 367.0 346.0 367.0 185.0 346.0 185.0 346.0 355.0 346.0 185.0 346.0 346.0 185.0
+
+Height (mm) 33.0 33.0 35.0 35.0 33.0 35.0 35.0 33.0 35.0 33.0 35.0 33.0 35.0 33.0 33.0 35.0
+
+Pack Materials-Page 2
+
+RGT0016C
+A PIN 1 INDEX AREA
+
+SCALE 3.600
+3.1 2.9
+
+PACKAGE OUTLINE
+VQFN - 1 mm max height
+PLASTIC QUAD FLATPACK - NO LEAD
+B
+
+3.1 2.9
+
+SIDE WALL METAL THICKNESS
+DIM A
+
+OPTION 1 OPTION 2
+
+0.1
+
+0.2
+
+1.0 0.8
+
+C
+
+SEATING PLANE
+
+0.05
+
+0.08
+
+0.00
+
+4X (0.45) 12X 0.5
+4X 1.5
+
+5 4
+
+1.68 0.07 8
+
+EXPOSED THERMAL PAD
+9
+SYMM
+
+(DIM A) TYP
+
+1
+PIN 1 ID (OPTIONAL)
+
+16
+
+13
+
+SYMM
+
+16X
+
+0.5 0.3
+
+12
+
+16X
+
+0.30 0.18
+
+0.1 C A B
+
+0.05 C
+
+NOTES:
+
+4222419/E 07/2025
+
+1. All linear dimensions are in millimeters. Any dimensions in parenthesis are for reference only. Dimensioning and tolerancing per ASME Y14.5M.
+2. This drawing is subject to change without notice. 3. The package thermal pad must be soldered to the printed circuit board for thermal and mechanical performance.
+
+www.ti.com
+
+RGT0016C
+
+EXAMPLE BOARD LAYOUT
+VQFN - 1 mm max height
+PLASTIC QUAD FLATPACK - NO LEAD
+
+16X (0.6) 1
+16X (0.24)
+12X (0.5) 4
+( 0.2) TYP VIA
+(R0.05) ALL PAD CORNERS
+
+( 1.68)
+
+SYMM
+
+16
+
+13
+
+12
+
+SYMM
+
+(0.58) TYP
+
+(2.8)
+
+9
+
+5
+
+8
+
+(0.58) TYP
+
+(2.8)
+
+LAND PATTERN EXAMPLE
+EXPOSED METAL SHOWN SCALE:20X
+
+0.07 MAX ALL AROUND
+
+METAL
+
+0.07 MIN ALL AROUND
+
+SOLDER MASK OPENING
+
+EXPOSED METAL
+
+SOLDER MASK OPENING
+
+EXPOSED METAL
+
+METAL UNDER SOLDER MASK
+
+NON SOLDER MASK DEFINED
+(PREFERRED)
+
+SOLDER MASK DEFINED
+SOLDER MASK DETAILS
+
+4222419/E 07/2025
+
+NOTES: (continued)
+
+4. This package is designed to be soldered to a thermal pad on the board. For more information, see Texas Instruments literature number SLUA271 (www.ti.com/lit/slua271).
+5. Vias are optional depending on application, refer to device data sheet. If any vias are implemented, refer to their locations shown on this view. It is recommended that vias under paste be filled, plugged or tented.
+
+www.ti.com
+
+RGT0016C
+
+EXAMPLE STENCIL DESIGN
+VQFN - 1 mm max height
+PLASTIC QUAD FLATPACK - NO LEAD
+
+( 1.55)
+
+16
+
+13
+
+16X (0.6) 1
+16X (0.24)
+12X (0.5) 4
+
+12
+
+17
+
+SYMM
+
+(2.8)
+
+9
+
+METAL ALL AROUND
+
+(R0.05) TYP
+
+5
+
+8
+
+SYMM
+
+(2.8)
+
+SOLDER PASTE EXAMPLE
+BASED ON 0.125 mm THICK STENCIL
+EXPOSED PAD 17: 85% PRINTED SOLDER COVERAGE BY AREA UNDER PACKAGE
+SCALE:25X
+
+4222419/E 07/2025 NOTES: (continued) 6. Laser cutting apertures with trapezoidal walls and rounded corners may offer better paste release. IPC-7525 may have alternate
+design recommendations.
+www.ti.com
+
+IMPORTANT NOTICE AND DISCLAIMER
+TI PROVIDES TECHNICAL AND RELIABILITY DATA (INCLUDING DATASHEETS), DESIGN RESOURCES (INCLUDING REFERENCE DESIGNS), APPLICATION OR OTHER DESIGN ADVICE, WEB TOOLS, SAFETY INFORMATION, AND OTHER RESOURCES "AS IS" AND WITH ALL FAULTS, AND DISCLAIMS ALL WARRANTIES, EXPRESS AND IMPLIED, INCLUDING WITHOUT LIMITATION ANY IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR NON-INFRINGEMENT OF THIRD PARTY INTELLECTUAL PROPERTY RIGHTS.
+These resources are intended for skilled developers designing with TI products. You are solely responsible for (1) selecting the appropriate TI products for your application, (2) designing, validating and testing your application, and (3) ensuring your application meets applicable standards, and any other safety, security, regulatory or other requirements.
+These resources are subject to change without notice. TI grants you permission to use these resources only for development of an application that uses the TI products described in the resource. Other reproduction and display of these resources is prohibited. No license is granted to any other TI intellectual property right or to any third party intellectual property right. TI disclaims responsibility for, and you fully indemnify TI and its representatives against any claims, damages, costs, losses, and liabilities arising out of your use of these resources.
+TI's products are provided subject to TI's Terms of Sale, TI's General Quality Guidelines, or other applicable terms available either on ti.com or provided in conjunction with such TI products. TI's provision of these resources does not expand or otherwise alter TI's applicable warranties or warranty disclaimers for TI products. Unless TI explicitly designates a product as custom or customer-specified, TI products are standard, catalog, general purpose devices.
+TI objects to and rejects any additional or different terms you may propose.
+IMPORTANT NOTICE
+Copyright © 2026, Texas Instruments Incorporated
+Last updated 10/2025
+
+

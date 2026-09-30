@@ -1,0 +1,1994 @@
+--- FILE1 P2 ---
+Product Specifications 
+Customer 
+Standard 
+Description 
+2.13” EPD with Front-light & Touch
+ 
+Model Name 
+ 
+GDEY0213B74-FT11
+Date 
+ 
+2024/10/30
+Revision 
+1.0 
+Design Engineering 
+Approval 
+Check 
+Design 
+Zhongnan Building, No.18, Zhonghua West ST,Ganjingzi DST,Dalian,CHINA
+Tel: +86-411-84619565
+Email: info@good-display.com 
+Website: www.good-display.com 
+GOODISPLAY
+GDEY0213B74-FT11
+www.good-display.com
+2/36
+2.13 inch Series
+
+--- FILE1 P3 ---
+CONTENTS
+2.
+Features ..............................................................................
+  6.3.1 MCU Interface Selection...............................................
+         6.3.2 MCU Serial Interface (4-wire SPI)..................................
+         6.3.3 MCU Serial Interface (3-wire SPI)..................................
+         6.3.4 Interface Timing.........................................................
+7.
+Command Table...................................................................... 13 
+8.
+Optical Specification................................................................ 24 
+9.
+Handling, Safety, and Environment Requirements....................... 25 
+10. Reliability Test........................................................................ 2
+10 
+10 
+11 
+6.3 Panel AC Characteristics..................................................... 1
+6.1 Absolute Maximum Rating.................................................. 8
+1.
+Over View.............................................................................. 5
+5
+3.
+Mechanical Specification.......................................................... 5
+ 
+4.
+Mechanical Drawing of EPD Module............................................ 6
+ 
+5.
+Input/output Pin Assignment.................................................... 7
+ 
+6.
+Electrical Characteristics.......................................................... 8
+6.2 Panel DC Characteristics..................................................... 9
+0
+12
+6
+GOODISPLAY
+GDEY0213B74-FT11
+www.good-display.com
+3/36
+2.13 inch Series
+
+--- FILE1 P5 ---
+1. Over View
+ 
+2.Features
+●250×122 pixels display
+●High contrast High reflectance
+●Ultra wide viewing angle Ultra low power consumption
+●Pure reflective mode
+●Bi-stable display
+●Commercial temperature range
+●Landscape portrait modes
+●Hard-coat antiglare display surface
+●Ultra Low current deep sleep mode
+●On chip display RAM
+●Waveform can stored in On-chip OTP or written by MCU
+●Serial peripheral interface available
+●On-chip oscillator
+●On-chip booster and regulator control for generating VCOM, Gate and Source driving 
+GDEY0213B74-FT11 is an Active Matrix Electrophoretic Display (AM EPD), with front light 
+and touch panel. The display is capable to display images at 1-bit white, black full display 
+capabilities. The 2.13inch active area contains 250×122 pixels. The module is a TFT-array 
+driving electrophoresis display, with integrated circuits including gate driver, source driver, 
+MCU interface, timing controller, oscillator, DC-DC, SRAM, LUT, VCOM. Module can be used 
+in portable electronic devices, such as Electronic Shelf Label (ESL) System.
+voltage
+●I2C signal master interface to read external temperature sensor 
+●Built-in temperature sensor
+●With front light (3 LEDs in parallell) and touch screen (FT6336U Controller)
+●Opearting voltage for front light: 3.0V, for touch screen:3.3V
+Parameter 
+Specifications 
+Unit 
+Remark 
+Screen Size 
+2.13 
+Inch 
+Display Resolution 
+122(H)×250(V) 
+Pixel 
+Dpi:130 
+Active Area 
+23.7046×48.55 
+mm 
+Pixel Pitch 
+0.1943×0.1942 
+mm 
+Pixel Configuration 
+Square 
+Outline Dimension 
+mm 
+ 
+ 
+ 
+29.2(H)×59.2 (V) ×2.15 (D)
+Weight 
+4.75±0.5 
+g 
+3.
+Mechanical Specifications
+GOODISPLAY
+GDEY0213B74-FT11
+www.good-display.com
+5/36
+2.13 inch Series
+
+--- FILE1 P7 ---
+5. Input /Output Pin Assignment
+No. 
+Name 
+I/O 
+Description 
+Remark 
+1 
+NC 
+Do not connect with other NC pins 
+Keep Open 
+2 
+GDR 
+O 
+N-Channel MOSFET Gate Drive Control
+3 
+RESE 
+I 
+Current Sense Input for the Control Loop 
+4 
+NC 
+NC Do not connect with other NC pins 
+Keep Open 
+5 
+VSH2 
+C 
+Positive Source driving voltage(Red) 
+6 
+TSCL 
+O 
+I2C Interface to digital temperature sensor Clock pin
+7 
+TSDA 
+I/O I2C Interface to digital temperature sensor Data pin
+8 
+BS1 
+I 
+Bus Interface selection pin 
+Note 5-5 
+9 
+BUSY 
+O 
+Busy state output pin 
+Note 5-4 
+10 
+RES# 
+I 
+Reset signal input. Active Low. 
+Note 5-3 
+11 
+D/C# 
+I 
+Data /Command control pin 
+Note 5-2 
+12 
+CS# 
+I 
+Chip select input pin 
+Note 5-1 
+13 
+SCL 
+I 
+Serial Clock pin (SPI) 
+14 
+SDA 
+I/O Serial Data pin (SPI) 
+15 
+VDDIO 
+P 
+Power Supply for interface logic pins It should be 
+connected with VCI 
+16 
+VCI 
+P 
+Power Supply for the chip 
+17 
+VSS 
+P 
+Ground 
+18 
+VDD 
+C 
+Core logic power pin VDD can be regulated 
+internally from VCI. A capacitor should be 
+connected between VDD and VSS 
+19 
+VPP 
+P 
+FOR TEST 
+20 
+VSH1 
+C 
+Positive Source driving voltage 
+21 
+VGH 
+C 
+Power Supply pin for Positive Gate driving voltage 
+and VSH1 
+22 
+VSL 
+C 
+Negative Source driving voltage 
+23 
+VGL 
+C 
+Power Supply pin for Negative Gate driving voltage 
+VCOM and VSL 
+24 
+VCOM 
+C 
+VCOM driving voltage 
+GOODISPLAY
+GDEY0213B74-FT11
+www.good-display.com
+7/36
+2.13 inch Series
+
+--- FILE1 P8 ---
+I = Input Pin, O =Output Pin, I/O = Bi-directional Pin (Input/output), P = Power 
+V
+Pin, C = Capacitor Pin 
+Note 5-1: This pin (CS#) is the chip select input connecting to the MCU. The chip 
+is enabled for MCU communication only when CS# is pulled LOW. 
+Note 5-2: This pin is (D/C#) Data/Command control pin connecting to the MCU in 
+4-wire SPI mode. When the pin is pulled HIGH, the data at SDA will be interpreted
+as data. When the pin is pulled LOW, the data at SDA will be interpreted as
+command.
+Note 5-3: This pin (RES#) is reset signal input. The Reset is active low.
+Note 5-4: This pin is Busy state output pin. When Busy is High, the operation of
+chip should not be interrupted, command should not be sent. The chip would put
+Busy pin High when –Outputting display waveform -Communicating with digital
+temperature sensor
+Note 5-5: Bus interface selection pin
+ 
+6. Electrical Characteristics
+6.1 Absolute Maximum Rating
+Symbol 
+VCI 
+Rating 
+-0.5 to +4.0
+Parameter 
+Logic supply voltage 
+Logic Input voltage 
+VIN 
+-0.5 to VCI +0.5
+Unit 
+V 
+V 
+Logic Output voltage 
+VOUT 
+-0.5 to VCI +0.5
+V 
+Operating Temp range 
+TOPR 
+0 to +50 
+ºC 
+Storage Temp range 
+TSTG 
+ºC 
+Optimal Storage Humidity 
+HSTGo 
+-25 to+70
+55±10 
+%RH 
+Note: 
+Maximum ratings are those values beyond which damages to the device may 
+occur. Functional operation should be restricted to the limits in the Panel DC 
+Characteristics tables. 
+BS1 State 
+MCU Interface 
+L 
+4-lines serial peripheral interface(SPI) - 8 bits SPI
+H 
+3- lines serial peripheral interface(SPI) - 9 bits SPI
+6.2 Panel DC Characteristics
+The following specifications apply for: VSS=0V, VCI=3.0V, TOPR =25ºC.
+Touch Panel Operating Voltage
+Touch Panel Operating Current
+Touch Panel Standby Current
+GOODISPLAY
+GDEY0213B74-FT11
+www.good-display.com
+8/36
+2.13 inch Series
+2.8~3.6
+4.32
+55
+mA
+μA
+
+--- FILE1 P10 ---
+6.3 Panel AC Characteristics
+6.3.1 MCU Interface Selection 
+Pin Name 
+Data/Command Interface 
+Control Signal 
+Bus interface 
+SDA 
+SCL 
+CS# 
+D/C# 
+RES# 
+BS1=L 4-wire SPI 
+SDA 
+SCL 
+CS# 
+D/C# 
+RES# 
+BS1=H 3-wire SPI 
+SDA 
+SCL 
+CS# 
+L 
+RES# 
+6.3.2 MCU Serial Interface (4-wire SPI) 
+The serial interface consists of serial clock SCL, serial data SDA, D/C#, CS#. This 
+interface supports Write mode and Read mode. 
+Function 
+CS# 
+D/C# 
+SCL 
+Write command 
+L 
+L 
+↑ 
+Write data 
+L 
+H 
+↑ 
+Note: ↑ stands for rising edge of signal 
+In the write mode SDA is shifted into an 8-bit shift register on every rising edge of SCL 
+in the order of D7, D6, ... D0. The level of D/C# should be kept over the whole byte . 
+The data byte in the shift register is written to the Graphic Display Data RAM /Data 
+Byte register or command Byte register according to D/C# pin. 
+The pin assignment at different interface mode is summarized in Table 6-4-1. Different 
+MCU mode can be set by hardware selection on BS1 pins. The display panel only supports 
+4-wire SPI or 3-wire SPI interface mode. 
+GOODISPLAY
+GDEY0213B74-FT11
+www.good-display.com
+10/36
+2.13 inch Series
+
+--- FILE1 P11 ---
+6.3.3 MCU Serial Interface (3-wire SPI)
+The 3-wire serial interface consists of serial clock SCL, serial data SDA and CS#. 
+This interface also supports Write mode and Read mode. 
+The operation is similar to 4-wire serial interface while D/C# pin is not used. There 
+are altogether 9-bits will be shifted into the shift register on every ninth clock in 
+sequence: D/C# bit, D7 to D0 bit. The D/C# bit (first bit of the sequential data) 
+will determine the following data byte in the shift register is written to the 
+Display Data RAM (D/C# bit = 1) or the command register (D/C# bit = 0). 
+Function 
+CS# 
+D/C# 
+SCL 
+Write command 
+L 
+Tie 
+↑
+Write data 
+L 
+Tie 
+↑
+Note：↑ stands for rising edge of signal 
+In the Read mode: 
+1. After driving CS# to low, MCU need to define the register to be read.
+2. D/C=0 is shifted thru SDA with one rising edge of SCL
+3. SDA is shifted into an 8-bit shift register on every rising edge of SCL in the order
+of D7, D6, ... D0.
+4. D/C=1 is shifted thru SDA with one rising edge of SCL
+5. SDA is shifted out an 8-bit data on every falling edge of SCL in the order of D7,
+D6, … D0.
+6. Depending on register type, more than 1 byte can be read out. After all byte are
+read, CS# need to drive to high to stop the read operation.
+GOODISPLAY
+GDEY0213B74-FT11
+www.good-display.com
+11/36
+2.13 inch Series
+
+--- FILE1 P14 ---
+c。”3阿1and Table 
+R/W# D/C# Hex 
+07 
+06 
+05 
+04 
+DJ 
+02 
+01 
+DO Co町、阿1and
+。。
+04 。。。。。
+1 。。
+Source Driving voltage 
+。
+A1 
+As 
+A5 
+AA 
+A3 
+A2 
+A1 
+Ao Control 
+。
+81 
+Bs 
+85 
+B4 
+83 
+82 
+81 
+Bo 
+。
+C1 
+Cs 
+c5 
+c4 
+c3 
+C2 
+C1 
+Co 
+A[7]/B[7] = 1, 
+A[7]/B[7] = 0, 
+VSH1NSH2 voltage setting from 2.4V 
+VSH1NSH2 voltage setting f「om 9V 
+to 8.8V 
+to 17V 
+Description 
+Set Source driving voltage 
+A[7:0] = 41h [POR], VSH1 at 15V 
+8[7:0] = A8h [POR], VSH2 at 5V. 
+C[7:0J = 32h [PO町，VSL at -15V 
+Rema「k: VSH1>=VSH2 
+C[7] = 0, 
+VSL setting from -5V to -17V 
+A/B(7:0J 
+VSH1NSH2 
+A/B(7:0J 
+VSH1NSH2 
+A/B(7:0J 
+VSH1NSH2 
+A/B[7:0J 
+VSH1NSH2 
+C[7:0] 
+VSL 
+8Eh 
+2.4 
+AFh 
+5.7 
+23h 
+9 
+3Ch 
+14 
+OAh 
+-5 
+8Fh 
+2.5 
+BOh 
+5.8 
+24h 
+9.2 
+3Dh 
+14.2 
+。Ch
+-5 5 
+90h 
+2.6 
+B1h 
+5.9 
+25h 
+9 4  
+3Eh 
+14 4 
+OEh 
+91h 
+2.7 
+日2h
+6 
+26h 
+9 6  
+3Fh 
+14 6 
+10h 
+-6.5 
+92h 
+2.8 
+B3h 
+6.1 
+27h 
+9.8 
+40h 
+14.8 
+93h 
+2.9 
+B4h 
+6.2 
+28h 
+10 
+41h 
+15 
+12h 
+-7 
+94h 
+3 
+B5h 
+6.3 
+29h 
+10 2 
+42h 
+15.2 
+14h 
+-7 5 
+95h 
+3.1 
+B6h 
+6.4 
+2Ah 
+10.4 
+43h 
+15.4 
+16h 
+-a 
+96h 
+3.2 
+B7h 
+6.5 
+2Bh 
+10 6 
+44h 
+15号6
+18h 
+』5
+97h 
+3.3 
+B8h 
+6.6 
+2Ch 
+10 8 
+45h 
+15 8 
+1Ah 
+-9 
+98h 
+3.4 
+B9h 
+6.7 
+2Dh 
+11 
+46h 
+16 
+1Ch 
+-9 5 
+99h 
+3令5
+BAh 
+6.8 
+2Eh 
+11.2 
+47h 
+16 2 
+1Eh 
+-10 
+9Ah 
+3.6 
+BBh 
+6.9 
+2Fh 
+11 4 
+48h 
+16 4 
+9Bh 
+3.7 
+BCh 
+7 
+30h 
+11 6 
+49h 
+16 6 
+20h 
+-10.5 
+9Ch 
+3.8 
+BDh 
+7.1 
+31h 
+11.8 
+4Ah 
+16.8 
+22h 
+-11 
+9Dh 
+3.9 
+BEh 
+7.2 
+32h 
+12 
+4Bh 
+17 
+24h 
+-11.5 
+91:h 
+4 
+Brh 
+7.3 
+JJh 
+12.2 
+other 
+NA 
+26h 
+12 
+9Fh 
+4 1 
+COh 
+7.4 
+34h 
+12.4 
+28h 
+-12 5 
+A Oh 
+4.2 
+C1h 
+7.5 
+35h 
+12 6 
+2Ah 
+-13 
+A1h 
+4.3 
+C2h 
+7.6 
+36h 
+12 8 
+2Ch 
+-13.5 
+A2h 
+4 4  
+C3h 
+7.7 
+37h 
+13 
+2Eh 
+-14 
+A3h 
+4令5
+C4h 
+7.8 
+38们
+13.2 
+A4h 
+4 6  
+C5h 
+7.9 
+39h 
+13 4 
+30h 
+-14.5 
+A5h 
+4.7 
+C6h 
+8 
+3Ah 
+13 6 
+32h 
+-15 
+A6h 
+4且
+C7h 
+8.1 
+3Bh 
+13.8 
+34h 
+-15.5 
+36h 
+-16 
+A7h 
+4.9 
+C8h 
+8.2 
+A8h 
+5 
+C9h 
+8.3 
+38h 
+-16.5 
+A9h 
+5，’ 
+CAh 
+8.4 
+3Ah 
+-17 
+AAh 
+5.2 
+CBh 
+8.5 
+Other 
+NA 
+ABh 
+5 3  
+CCh 
+8.6 
+A Ch 
+5.4 
+CDh 
+8.7 
+ADh 
+5令5
+CEh 
+8.8 
+AEh 
+5.6 
+other 
+NA 
+。。
+08 。。。。
+。。。
+Initial Code Setting 
+Program Initial Code Setting 
+OTP Program 
+The command required CLKEN=1. 
+Refe「to Registe『Ox22 for detail. 
+BUSY pad will output high du『ing
+operation. 
+。。
+09 。。。。
+。。
+Write Register for Initial Write Registe「for Initial Code Setting 
+。
+A1 
+As 
+A5 
+AA 
+A3 
+A2 
+A1 
+Ao Code Setting 
+Selection 
+。
+81 
+86 
+85 
+84 
+83 
+82 
+81 
+Bo 
+A[7:0J - 0[7:0]: Reserved 
+Details refe『to Application Notes of Initial 
+。
+C1 
+C6 
+C5 
+c4 
+C3 
+C2 
+C1 
+Co 
+Code Setting 
+。
+D1 
+06 
+05 
+04 
+03 
+D2 
+D1 
+Do 
+。。
+OA 。。。。
+。
+。
+Read Register for Initial Read Register for Initial Code Setting 
+Code Setting 
+GOODISPLAY
+GDEY0213B74-FT11
+www.good-display.com
+14/36
+2.13 inch Series
+
+--- FILE1 P24 ---
+8.Optical Specifications
+Measurements are made with that the illumination is under an angle of 45
+degree, the detection is perpendicular unless otherwise specified
+Symbol 
+Parameter 
+Conditions 
+Min 
+Typ. 
+Max 
+Units 
+Notes 
+R 
+White Reflectivity 
+White 
+30 
+35 
+- 
+% 
+8-1
+CR 
+Contrast Ratio 
+Indoor 
+8:1 
+- 
+8-2
+GN 
+2Grey Level 
+- 
+DS+(WS-DS)*n(m-1) 
+8-3
+T update 
+Image update time 
+at 25 °C 
+3 
+- 
+sec 
+Life 
+Topr 
+1000000times or 5years 
+Notes: 
+8-1. Luminance meter: Eye-One Pro Spectrophotometer.
+8-2. CR=Surface Reflectance with all white pixel/Surface Reflectance withall black pixels.
+8-3 WS: White state, DS: Dark state
+GOODISPLAY
+GDEY0213B74-FT11
+www.good-display.com
+24/36
+2.13 inch Series
+
+--- FILE1 P26 ---
+10.Reliability test
+NO 
+Test items 
+Test condition 
+1 
+Low-Temperature 
+Storage 
+T = -25°C, 240 h 
+Test in white pattern 
+2 
+High-Temperature 
+Storage 
+T=70ºC，RH=40%，240h 
+Test in white pattern 
+3 
+High-Temperature Operation 
+T=50ºC，RH=35%，240h 
+4 
+Low-Temperature Operation 
+0ºC，240h 
+5 
+High-Temperature, 
+High-Humidity Operation 
+T=40ºC，RH=80%，240h 
+6 
+High Temperature,  
+High Humidity Storage 
+T=50ºC，RH=80%, 240h 
+Test in white pattern 
+7 
+Temperature Cycle 
+1 cycle:[-25°C 30min]→[+70 °C 30 min] : 50 cycles 
+Test in white pattern 
+8 
+UV exposure Resistance 
+765W/m² for 168hrs,40 °C 
+Test in white pattern 
+9 
+ESD Gun 
+Air+/-15KV;Contact+/-8KV 
+(Test finished product shell, not display only) 
+Air+/-8KV;Contact+/-6KV 
+(Naked EPD display, no including IC and FPC area) 
+Air+/-4KV;Contact+/-2KV 
+(Naked EPD display, including IC and FPC area) 
+Note: Put in normal temperature for 1hour after test finished, display performance is ok. 
+GOODISPLAY
+GDEY0213B74-FT11
+www.good-display.com
+26/36
+2.13 inch Series
+
+--- FILE1 P29 ---
+13.  Matched Development Kit 
+Our Development Kit designed for SPI E-paper Display aims to help users 
+to learn how to use E-paper Display more easily. It can refresh black-
+white E-paper Display and three-color (black, white and red/Yellow) Good 
+Display ‘s E-paper Display. And it is also added the functions of USB serial 
+port, Raspberry Pi and LED indicator light ect.
+DESPI Development Kit consists of the development board and the 
+pinboard.
+More details about the Development Kit, please click to the following link:
+https://www.good-display.com/product/53/
+GOODISPLAY
+GDEY0213B74-FT11
+www.good-display.com
+29/36
+2.13 inch Series
+
+--- FILE1 P34 ---
+TFT edge bulge 
+TFT edge bulge: 
+Visual 
+Zone A 
+8 
+/TFT chromatic 
+x::s;3mm, y：：；三0.3mm
+Allowed 
+岛但
+I Microscope 
+Zone B 
+aberration 
+TFT chromatic aberration :Allowed 
+PCB damaged/ 
+PCB C Circuit area) damaged Not 
+Allow 
+9 
+Poor welding/ 
+PCB Poor welding Not Allow 
+Curl 
+PCB Curl三1%
+Edge Adhesives H三PS surface 
+岛11
+Visual 
+(Including protect film) Edge 
+I Ruler 
+Zone B 
+adhesives seep in三1/2 Margin width 
+10 
+Edge glue height/ 
+Length excluding 
+Edge glue bubble 
+Edge adhesives bubble: bubble 
+Width 
+主1/2 Margin width; Length 
+<0.5mm。n<5
+Surface scratch but not effect protect 
+Visual 
+11 
+Protect film 
+function, Allowed 
+Inspection 
+Thickness运PS surface(With protect film): 
+Full cover the IC; 
+Visual 
+Shape: 
+L但
+12 
+Silicon glue 
+The width on the FPC 运0.5mm (Front) 
+Inspection 
+The width on the FPC运I.Omm (Back) 
+smooth surface,No obvious raised. 
+13 
+Warp degree 
+MI 
+Ruler 
+(TFT substrate) 
+t运2.0mm
+Color difference 
+Visual 
+in COM area 
+14 
+(Silver point 
+Allowed 
+Inspection 
+GOODISPLAY
+GDEY0213B74-FT11
+www.good-display.com
+34/36
+2.13 inch Series
+
+--- FILE2 P1 ---
+ 
+ 
+FT6336U 
+ 
+ 
+FocalTech Systems Co., Ltd               ·              www.focaltech-systems.com                 ·             support@focaltech-systems.com  
+ 
+ 
+ 
+Self-Capacitive Touch
+Panel Controller
+ 
+ 
+INTRODUCTION 
+The FT6336U are single-chip capacitive touch panel controller IC with a built-in 16 bit enhanced Micro-controller unit (MCU).They 
+adopt the self-capacitance technology, which supports single point and gesture touch or  two points. In conjunction with a 
+self-capacitive touch panel, The FT6336U implement the user-friendly input function and are widely used in various portable devices, 
+such as smart phones, MIDs ad GPS. 
+ 
+FEATURES 
+ Self-Capacitive Sensing Techniques support single point 
+touch and gesture or two point touch 
+ Absolute X and Y coordinates or gesture 
+ 1 point and gestures / 2 points supported 
+ High immunity to RF and power Interferences 
+ Auto-calibration: Insensitive to Capacitance and Environ-
+mental Variations 
+ Built-in Enhanced MCU  
+ FT6336U supports up to 39 channels of sensors /drivers 
+ Report Rate: Up to 100Hz 
+ Support Interfaces :I2C 
+ Support single film material TP and triangle pattern without 
+additional shield 
+ 
+ Internal accuracy ADC and smooth filters 
+ Support 2.8V to 3.6V Operating Voltage 
+ Support  independent  IOVCC 
+ Built-in LDO for Digital Circuits 
+ High efficient power management with 3 Operating Modes  
+ 
+Active Mode  
+ 
+Monitor Mode  
+ 
+Hibernation Mode  
+ Operating Temperature Range: -40°C to +85°C 
+ ESD:HBM≥7500V, MM≥500V
+
+--- FILE2 P2 ---
+                       FT6336U 
+                             DATASHEET Preliminary 
+                                             
+FocalTech Systems Co., Ltd               ·              www.focaltech-systems.com                 ·             support@focaltech-systems.com  
+ 
+ 
+ 
+ 
+\\ 
+ 
+INTRODUCTION .......................................................................................................................................................... I 
+FEATURES ..................................................................................................................................................................... I 
+1 
+OVERVIEW .......................................................................................................................................................... 1 
+1.1 
+TYPICAL APPLICATIONS ................................................................................................................................... 1 
+2 
+FUNCTIONAL DESCRIPTION .......................................................................................................................... 1 
+2.1 
+ARCHITECTURAL OVERVIEW............................................................................................................................ 1 
+2.2 
+MCU ................................................................................................................................................................ 2 
+2.3 
+OPERATION MODES .......................................................................................................................................... 2 
+2.4 
+SERIAL INTERFACE ........................................................................................................................................... 3 
+2.4.1 
+I2C ........................................................................................................................................................... 3 
+3 
+ELECTRICAL SPECIFICATIONS .................................................................................................................... 4 
+3.1 
+ABSOLUTE MAXIMUM RATINGS ....................................................................................................................... 4 
+3.2 
+DC CHARACTERISTICS ..................................................................................................................................... 4 
+3.3 
+AC CHARACTERISTICS ..................................................................................................................................... 5 
+3.4 
+I/O PORTS CIRCUITS ......................................................................................................................................... 6 
+3.5 
+POWER ON/RESET/WAKE SEQUENCE ............................................................................................................ 6 
+4 
+PIN CONFIGURATIONS .................................................................................................................................... 8 
+5 
+PACKAGE INFORMATION ............................................................................................................................ 10 
+5.1 
+PACKAGE INFORMATION OF QFN-5X5-48L PACKAGE ................................................................................... 10 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+TABLE OF CONTENTS 
+
+--- FILE2 P3 ---
+ 
+THIS DOCUMENT CONTAINS INFORMATION PROPRIETARY TO FOCALTECH SYSTEMS CO.,LTD., AND MAY NOT BE 
+REPRODUCED, DISCLOSED OR USED IN WHOLE OR PART WITHOUT THE EXPRESS WRITTEN PERMISSION OF 
+FOCALTECH SYSTEMS CO.,LTD.                                                                                                                 
+Copyright © 2015, FocalTech Systems Co.,Ltd .    All rights reserved                                                   Version 1.0 ︱Page 1 of 10 
+1 
+OVERVIEW 
+1.1 
+Typical Applications                       
+FT6336U accommodate a wide range of applications with a set of buttons up to a 2D touch sensing device, their typical applications 
+are listed below.   
+ Mobile phones, smart phones 
+ GPS 
+ Game consoles 
+ POS (Point of Sales) devices  
+ Portable MP3 and MP4 media players 
+ Digital cameras 
+ MIDs 
+FT6336U series ICs support up to 5 inch Touch Panel; users may find out their target IC from the specs listed in the following table, 
+Model Name 
+Panel 
+Package 
+Touch Panel Size 
+Channel 
+Type 
+Pin 
+Size 
+FT6336U 
+39 
+QFN5*5 
+48 
+0.6-P0.35 
+≤5.0 inch 
+ 
+2 
+FUNCTIONAL DESCRIPTION 
+2.1 
+Architectural Overview 
+Figure2-1 shows the overall architecture for the FT6336U. 
+ 
+Figure 2-1  FT6336U System Architecture Diagram 
+ 
+The FT6336U is comprised of five main functional parts listed below, 
+ Touch Panel Interface Circuits 
+The main function for the AFE and AFE controller is to interface with the touch panel. It scans the panel by sending AC signals to the 
+panel and processes the received signals from the panel. So it supports both driver and Sensor functions. Key parameters to configure 
+this circuit can be sent via serial interfaces. 
+   Enhanced MCU 
+For the Enhanced MCU, larger program and data memories are supported. Furthermore, A Flash ROM is implemented to store 
+
+--- FILE2 P4 ---
+ 
+THIS DOCUMENT CONTAINS INFORMATION PROPRIETARY TO FOCALTECH SYSTEMS CO.,LTD., AND MAY NOT BE 
+REPRODUCED, DISCLOSED OR USED IN WHOLE OR PART WITHOUT THE EXPRESS WRITTEN PERMISSION OF 
+FOCALTECH SYSTEMS CO.,LTD.                                                                                                                 
+Copyright © 2015, FocalTech Systems Co.,Ltd .    All rights reserved                                                   Version 1.0 ︱Page 2 of 10 
+programs and some key parameters. 
+Complex signal processing algorithms are implemented by MCU to detect the touches reliably and efficiently.  
+Communication protocol software is also implemented on this MCU to exchange data and control information with the host pro-
+cessor. 
+ External Interface 
+ 
+I2C: an interface for data exchange with host 
+ 
+INT: an interrupt signal to inform the host processor that touch data is ready for read 
+ 
+RSTN: an external low signal reset the chip. 
+ A watch dog timer is implemented to ensure the robustness of the chip. 
+ A voltage regulator to generate 1.5V for digital circuits from the input VDDA supply. 
+ 
+2.2 
+MCU 
+This section describes some critical features and operations supported by the Enhanced MCU.  
+Figure 2-2 shows the overall structure of the MCU block. In addition to the Enhanced MCU core, we have added the following 
+circuits, 
+ Memory: 48KB Flash 
+ Data Memory: 5KB SRAM 
+ Timer: A number of timers are available to generate different clocks 
+ Master Clock:18MHz from a 36MHz RC Oscillator 
+ 
+ Clock Manager: To control various clocks under different operation conditions of the system 
+ 
+Figure 2-2  MCU Block Diagram 
+2.3 
+Operation Modes 
+FT6336U operates in the following three modes: 
+ Active Mode 
+In this mode, FT6336U actively scans the panel. The default scan rate is 60 frames per second. The host processor can configure 
+FT6336U to speed up or to slow down.  
+ Monitor  Mode 
+In this mode, FT6336U scans the panel at a reduced speed. The default scan rate is 25 frames per second and the host processor can 
+increase or decrease this rate. When in this mode, most algorithms are stopped. A simpler algorithm is being executed to determine if 
+there is a touch or not. When a touch is detected, FT6336U shall enter the Active mode immediately to acquire the touch information 
+quickly. During this mode, the serial port is closed and no data shall be transferred with the host processor 
+ Hibernation  Mode 
+In this mode, the chip is set in a power down mode. It shall respond to the “RESET” or “Wakeup” signal from the host processor. The 
+chip therefore consumes very little current, which help prolong the standby time for the portable devices. 
+Host Interface Figure 2-3 shows the interface between a host processor and FT6336U. This interface consists of the following 
+three sets of signals: 
+ Serial Interface 
+
+--- FILE2 P5 ---
+ 
+THIS DOCUMENT CONTAINS INFORMATION PROPRIETARY TO FOCALTECH SYSTEMS CO.,LTD., AND MAY NOT BE 
+REPRODUCED, DISCLOSED OR USED IN WHOLE OR PART WITHOUT THE EXPRESS WRITTEN PERMISSION OF 
+FOCALTECH SYSTEMS CO.,LTD.                                                                                                                 
+Copyright © 2015, FocalTech Systems Co.,Ltd .    All rights reserved                                                   Version 1.0 ︱Page 3 of 10 
+ Interrupt from FT6336U to the Host 
+ Reset Signal from the Host to FT6336U 
+ 
+ 
+Figure 2-3  Host Interface Diagram 
+ 
+The serial interface of FT6336U is I2C. The details of this interface are described in detail in Section 2.4. The interrupt signal (/INT) 
+is used for FT6336U to inform the host that data are ready for the host to receive. The RSTN signal is used for the host to reset 
+FT6336U. After resetting, FT6336U shall enter the Active mode. 
+ 
+2.4 
+Serial Interface 
+FT6336U supports the I2C interfaces, which can be used by a host processor or other devices.  
+2.4.1 
+I2C 
+The I2C is always configured in the Slave mode. The data transfer format is shown in Figure 2-4. 
+ 
+                                                 Figure 2-4   I2C Serial Data Transfer Format 
+ 
+ 
+Figure 2-5  I2C master write, slave read 
+ 
+ 
+Figure 2-6  I2C master read, slave write 
+Table 2-1 lists the meanings of the mnemonics used in the above figures. 
+ 
+Table 2-1  Mnemonics Description 
+
+--- FILE2 P6 ---
+ 
+THIS DOCUMENT CONTAINS INFORMATION PROPRIETARY TO FOCALTECH SYSTEMS CO.,LTD., AND MAY NOT BE 
+REPRODUCED, DISCLOSED OR USED IN WHOLE OR PART WITHOUT THE EXPRESS WRITTEN PERMISSION OF 
+FOCALTECH SYSTEMS CO.,LTD.                                                                                                                 
+Copyright © 2015, FocalTech Systems Co.,Ltd .    All rights reserved                                                   Version 1.0 ︱Page 4 of 10 
+Mnemonics 
+Description 
+S 
+I2C Start or I2C Restart 
+A[6:0] 
+Slave address 
+R/W 
+READ/WRITE bit, ‘1’ for read, ‘0’for write 
+A(N) 
+ACK(NACK) 
+P 
+STOP: the indication of the end of a packet (if this bit is missing, S will indicate the end of the current 
+packet and the beginning of the next packet) 
+I2C Interface Timing Characteristics is shown in Table 2-2. 
+Table 2-2 I2C Timing Characteristics 
+Parameter 
+Min 
+Max 
+Unit 
+SCL frequency 
+10 
+400 
+KHz 
+Bus free time between a STOP and START condition  
+4.7 
+\ 
+us 
+Hold time (repeated) START condition 
+4.0 
+\ 
+us 
+Data setup time  
+250 
+\ 
+ns 
+Setup time for a repeated START condition  
+4.7 
+\ 
+us 
+Setup Time for STOP condition 
+4.0 
+\ 
+us 
+3 
+ELECTRICAL SPECIFICATIONS 
+3.1 
+Absolute Maximum Ratings 
+Table 3-1 Absolute Maximum Ratings 
+Item 
+Symbol 
+Value 
+Unit 
+Note 
+Power Supply Voltage  
+VDDA - VSSA 
+-0.3 ~ +3.6 
+V 
+1, 2 
+Power Supply Voltage2 
+VDD3 - VSS 
+-0.3 ~ +3.6 
+V 
+1, 3 
+I/O Digital Voltage 
+IOVCC 
+1.8~3.6 
+V 
+1 
+Operating Temperature 
+Topr 
+-40 ~ +85 
+℃ 
+1 
+Storage Temperature 
+Tstg 
+-55 ~ +150 
+℃ 
+1 
+ 
+Notes 
+1. If used beyond the absolute maximum ratings, FT6336U may be permanently damaged. It is strongly recommended that the device 
+be used within the electrical characteristics in normal operations. If exposed to the condition not within the electrical characteristics, 
+it may affect the reliability of the device. 
+2. Make sure VDDA (high) ≥VSSA (low). 
+3. Make sure VDD3(high) ≥VSS(low). 
+ 
+3.2 
+DC Characteristics 
+Table 3-2 DC Characteristics (VDDA=2.8~3.6V, Ta=-40~85℃) 
+Item 
+Symbol 
+Test Condition 
+Min. 
+Typ.
+Max. 
+Unit
+Note
+Input high-level voltage 
+VIH 
+ 
+0.7 x IOVCC 
+- 
+IOVCC 
+V 
+ 
+Input low -level voltage 
+VIL 
+ 
+-0.3 
+- 
+0.3 x IOVCC 
+V 
+ 
+Output high -level voltage 
+VOH 
+IOH=-0.1mA 
+0.7 x IOVCC 
+- 
+- 
+V 
+ 
+Output low -level voltage 
+VOL 
+IOH=0.1mA 
+- 
+- 
+0.3  x IOVCC 
+V 
+ 
+I/O leakage current 
+ILI 
+Vin=0~VDDA 
+-1 
+- 
+1 
+μA
+ 
+
+--- FILE2 P7 ---
+ 
+THIS DOCUMENT CONTAINS INFORMATION PROPRIETARY TO FOCALTECH SYSTEMS CO.,LTD., AND MAY NOT BE 
+REPRODUCED, DISCLOSED OR USED IN WHOLE OR PART WITHOUT THE EXPRESS WRITTEN PERMISSION OF 
+FOCALTECH SYSTEMS CO.,LTD.                                                                                                                 
+Copyright © 2015, FocalTech Systems Co.,Ltd .    All rights reserved                                                   Version 1.0 ︱Page 5 of 10 
+Current consumption 
+（Normal operation mode）
+Iopr 
+VDDA =VDD3= 2.8V 
+Ta=25℃ 
+MCLK=18MHz 
+- 
+4.32*1
+- 
+ 
+mA
+ 
+Current consumption 
+（Monitor mode） 
+Imon 
+VDDA =VDD3= 2.8V 
+Ta=25℃ 
+MCLK=18MHz 
+- 
+220*2
+- 
+uA
+ 
+Current consumption 
+（Sleep mode） 
+Islp 
+VDDA =VDD3= 2.8V 
+Ta=25℃  
+- 
+55 
+- 
+uA
+ 
+Step-up output voltage 
+VDD5 
+VDDA = VDD3=2.8V 
+- 
+5 
+- 
+V 
+ 
+Power Supply voltage 
+VDDA 
+VDD3 
+ 
+2.8 
+- 
+3.3 
+V 
+ 
+*1: Report Rate: 75Hz @ 4”TP 
+*2: Report Rate: 25Hz @ 4”TP 
+3.3 
+AC Characteristics 
+Table 3-3 AC Characteristics of Oscillators 
+ 
+ 
+Table 3-4 AC Characteristics of sensor  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Item 
+Symbol 
+Test Condition 
+Min 
+Typ. 
+Max 
+Unit
+Note
+OSC clock 1 
+fosc1 
+VDDA= 2.8V；Ta=25℃ 
+34.64
+36 
+36.36 
+MHz
+ 
+Item 
+Symbol 
+Test Condition 
+Min 
+Typ. 
+Max 
+Unit
+Note
+Sensor acceptable clock 
+ftx 
+VDDA= 2.8V；Ta=25℃ 
+0 
+100 
+300 
+KHz
+ 
+Sensor output  rise time 
+Ttxr 
+VDDA= 2.8V；Ta=25℃ 
+- 
+100 
+- 
+nS 
+ 
+Sensor output  fall time 
+Ttxf 
+VDDA= 2.8V；Ta=25℃ 
+- 
+80 
+- 
+nS 
+ 
+Sensor input voltage 
+Trxi 
+VDDA= 2.8V；Ta=25℃ 
+- 
+5 
+- 
+V 
+ 
+
+--- FILE2 P8 ---
+ 
+THIS DOCUMENT CONTAINS INFORMATION PROPRIETARY TO FOCALTECH SYSTEMS CO.,LTD., AND MAY NOT BE 
+REPRODUCED, DISCLOSED OR USED IN WHOLE OR PART WITHOUT THE EXPRESS WRITTEN PERMISSION OF 
+FOCALTECH SYSTEMS CO.,LTD.                                                                                                                 
+Copyright © 2015, FocalTech Systems Co.,Ltd .    All rights reserved                                                   Version 1.0 ︱Page 6 of 10 
+3.4 
+I/O Ports Circuits
+    
+      
+Figure 3-1 Digital In/Out Port Circuit 
+   
+ 
+Figure 3-2 Reset Input Port Circuits    
+ 
+3.5 
+POWER ON/Reset/Wake Sequence 
+The GPIO such as INT and I2C are advised to be low before powering on. Reset should be pulled down to be low before powering on. 
+INT signal will be sent to the host after initializing all parameters and then start to report points to the host. If Power is down, the 
+voltage of supply must be below 0.3V and Trst is more than 5ms.   
+T r i s
+P o w e r
+ 
+
+--- FILE2 P9 ---
+ 
+THIS DOCUMENT CONTAINS INFORMATION PROPRIETARY TO FOCALTECH SYSTEMS CO.,LTD., AND MAY NOT BE 
+REPRODUCED, DISCLOSED OR USED IN WHOLE OR PART WITHOUT THE EXPRESS WRITTEN PERMISSION OF 
+FOCALTECH SYSTEMS CO.,LTD.                                                                                                                 
+Copyright © 2015, FocalTech Systems Co.,Ltd .    All rights reserved                                                   Version 1.0 ︱Page 7 of 10 
+Figure 3-7 Power on time 
+P o w e r
+0 . 3 V
+T r s t
+ 
+Figure 3-8 Power Cycle requirement 
+ 
+Powe
+r
+Reset
+INT
+I2C
+Tpon
+Tprt
+ 
+ 
+Figure 3-9 Power on Sequence 
+ 
+Reset time must be enough to guarantee reliable reset, the time of starting to report point after resetting approach to the time of 
+starting to report point after powering on. 
+ 
+Figure 3-10 Reset Sequence 
+ 
+Table 3-5 Power on/Reset/Wake Sequence Parameters 
+Parameter 
+Description 
+Min 
+Max 
+Units 
+Tris 
+Rise time from  0.1VDD to 0.9VDD 
+- 
+3 
+ms 
+Tpon 
+Time of starting to report point after powering on 
+300 
+- 
+ms 
+Tprt 
+Time of being low after powering on 
+1 
+- 
+ms 
+Trsi 
+Time of starting to report point after resetting 
+300 
+- 
+ms 
+Trst 
+Reset time  
+5 
+- 
+ms 
+ 
+ 
+ 
+
+--- FILE2 P10 ---
+ 
+THIS DOCUMENT CONTAINS INFORMATION PROPRIETARY TO FOCALTECH SYSTEMS CO.,LTD., AND MAY NOT BE 
+REPRODUCED, DISCLOSED OR USED IN WHOLE OR PART WITHOUT THE EXPRESS WRITTEN PERMISSION OF 
+FOCALTECH SYSTEMS CO.,LTD.                                                                                                                 
+Copyright © 2015, FocalTech Systems Co.,Ltd .    All rights reserved                                                   Version 1.0 ︱Page 8 of 10 
+4 
+PIN CONFIGURATIONS 
+Table 4-1 Pin Definition of FT6336U 
+Name 
+Pin No. 
+Type
+Description 
+VREF 
+46 
+PWR
+Generated internal reference voltage. 
+A 1μF ceramic capacitor to ground is 
+required. 
+S1 
+47 
+I/O 
+Capacitance sensor /driver channel 
+S2 
+48 
+I/O 
+Capacitance sensor /driver channel 
+S3 
+1 
+I/O 
+Capacitance sensor /driver channel 
+S4 
+2 
+I/O 
+Capacitance sensor /driver channel 
+S5 
+3 
+I/O 
+Capacitance sensor /driver channel 
+S6 
+4 
+I/O 
+Capacitance sensor /driver channel 
+S7 
+5 
+I/O 
+Capacitance sensor /driver channel 
+S8 
+6 
+I/O 
+Capacitance sensor /driver channel 
+S9 
+7 
+I/O 
+Capacitance sensor /driver channel 
+S10 
+8 
+I/O 
+Capacitance sensor /driver channel 
+S11 
+9 
+I/O 
+Capacitance sensor /driver channel 
+S12 
+10 
+I/O 
+Capacitance sensor /driver channel 
+S13 
+11 
+I/O 
+Capacitance sensor /driver channel 
+S14 
+12 
+I/O 
+Capacitance sensor /driver channel 
+S15 
+13 
+I/O 
+Capacitance sensor /driver channel 
+S16 
+14 
+I/O 
+Capacitance sensor /driver channel 
+S17 
+15 
+I/O 
+Capacitance sensor /driver channel 
+S18 
+16 
+I/O 
+Capacitance sensor /driver channel 
+S19 
+17 
+I/O 
+Capacitance sensor /driver channel 
+S20 
+18 
+I/O 
+Capacitance sensor /driver channel 
+S21 
+19 
+I/O 
+Capacitance sensor /driver channel 
+S22 
+20 
+I/O 
+Capacitance sensor /driver channel 
+S23 
+21 
+I/O 
+Capacitance sensor /driver channel 
+S24 
+22 
+I/O 
+Capacitance sensor /driver channel 
+S25 
+23 
+I/O 
+Capacitance sensor /driver channel 
+S26 
+24 
+I/O 
+Capacitance sensor /driver channel 
+S27 
+25 
+I/O 
+Capacitance sensor /driver channel 
+S28 
+26 
+I/O 
+Capacitance sensor /driver channel 
+S29 
+27 
+I/O 
+Capacitance sensor /driver channel 
+S30 
+28 
+I/O 
+Capacitance sensor /driver channel 
+S31 
+29 
+I/O 
+Capacitance sensor /driver channel 
+S32 
+30 
+I/O 
+Capacitance sensor /driver channel 
+S33 
+31 
+I/O 
+Capacitance sensor /driver channel 
+S34 
+32 
+I/O 
+Capacitance sensor /driver channel 
+S35 
+33 
+I/O 
+Capacitance sensor /driver channel 
+S36 
+34 
+I/O 
+Capacitance sensor /driver channel 
+S37 
+35 
+I/O 
+Capacitance sensor /driver channel 
+S38 
+36 
+I/O 
+Capacitance sensor /driver channel 
+S39 
+37 
+I/O 
+Capacitance sensor /driver channel 
+VDD5 
+38 
+PWR
+High voltage power supply from the 
+
+--- FILE2 P11 ---
+ 
+THIS DOCUMENT CONTAINS INFORMATION PROPRIETARY TO FOCALTECH SYSTEMS CO.,LTD., AND MAY NOT BE 
+REPRODUCED, DISCLOSED OR USED IN WHOLE OR PART WITHOUT THE EXPRESS WRITTEN PERMISSION OF 
+FOCALTECH SYSTEMS CO.,LTD.                                                                                                                 
+Copyright © 2015, FocalTech Systems Co.,Ltd .    All rights reserved                                                   Version 1.0 ︱Page 9 of 10 
+charge pump LDO generated inter-
+nally. A 1μF ceramic to ground is 
+required. 
+VDDA 
+39 
+PWR
+Analog power supply, A 1μF ceramic 
+capacitor to ground is required. 
+VDDD 
+40 
+PWR
+Digital power supply. A 1μF ceramic 
+capacitor to ground is required. 
+RSTN 
+41 
+I 
+External Reset, Low is active 
+IOVCC 
+42 
+PWR
+I/O power supply 
+SCL 
+43 
+I/O 
+I2C clock input 
+SDA 
+44 
+I/O 
+I2C data input and output 
+INT 
+45 
+I/O 
+External interrupt to the host 
+ 
+ 
+S33
+8
+9
+10
+11
+12
+7
+6
+5
+4
+3
+2
+1
+36
+35
+34
+33
+S10
+S9
+S8
+S7
+S6
+S5
+S4
+S3
+S29
+S30
+S28
+S32
+S37
+S35
+S34
+S38
+S27
+32
+27
+29
+26
+25
+30
+28
+31
+S36
+S14
+S13
+S12
+S11
+S31
+ 
+                                                          FT6336U  Package Diagram 
+ 
+
+--- FILE2 P12 ---
+ 
+THIS DOCUMENT CONTAINS INFORMATION PROPRIETARY TO FOCALTECH SYSTEMS CO.,LTD., AND MAY NOT BE 
+REPRODUCED, DISCLOSED OR USED IN WHOLE OR PART WITHOUT THE EXPRESS WRITTEN PERMISSION OF 
+FOCALTECH SYSTEMS CO.,LTD.                                                                                                                 
+Copyright © 2015, FocalTech Systems Co.,Ltd .    All rights reserved                                                   Version 1.0 ︱Page 10 of 10 
+5 
+PACKAGE INFORMATION 
+5.1 
+Package Information of QFN-5x5-48L Package 
+ 
+Item 
+Symbol 
+Millimeter 
+Min
+Type
+Max 
+Total Thickness 
+A 
+0.5
+0.55
+0.6 
+Stand Off 
+A1 
+0 
+0.035
+0.05 
+Mold Thickness 
+A2 
+----
+0.4 
+---- 
+L/F Thickness 
+A3 
+0.152 REF 
+Lead Width 
+b 
+0.13
+0.18
+0.23 
+b1 
+0.07
+0.12
+0.17 
+Body Size 
+D 
+5 BSC 
+E 
+5 BSC 
+Lead Pitch 
+e  
+0.35 BSC 
+EP Size 
+J 
+3.6
+3.7 
+3.8 
+K 
+3.6
+3.7 
+3.8 
+Lead Length 
+L 
+0.35
+0.4 
+0.45 
+Package Edge Tolerance 
+aaa 
+0.1 
+Mold Flatness 
+bbb 
+0.1 
+Co Planarity 
+ccc 
+0.08 
+Lead Offset 
+ddd 
+0.1 
+Exposed Pad Offset 
+eee 
+0.1 
+ 
+END OF DATASHEET 
+ 
+

@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Name -Directory \"d:\\\\codeOfVSCODE\\\\desk clock\")",
+      "PowerShell(git -C \"d:\\\\codeOfVSCODE\\\\desk clock\" log --oneline -10)",
+      "PowerShell(Get-Content \"d:\\\\codeOfVSCODE\\\\desk clock\\\\totalPLAN.md\" -First 50)",
+      "Bash(Get-ChildItem -Recurse -Depth 3 \"d:\\\\codeOfVSCODE\\\\desk clock\\\\S-GDEY0213B74-FP-Touch20240826\")",
+      "Bash(Select-Object Mode, LastWriteTime, Length, FullName)",
+      "Bash(Select-Object -First 5)",
+      "Bash(git ls-tree *)",
+      "Bash(Select-Object -First 30)",
+      "PowerShell(git ls-tree -r --name-only HEAD)",
+      "PowerShell(git checkout -- totalPLAN.md)",
+      "Bash(Get-ChildItem -Recurse -File \"d:\\\\codeOfVSCODE\\\\desk clock\\\\S-GDEY0213B74-FP-Touch20240826\")",
+      "Bash(Select-Object FullName)",
+      "WebSearch",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:www.buydisplay.com)"
+    ]
+  }
+}
