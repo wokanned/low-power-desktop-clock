@@ -1,4 +1,4 @@
---cpu=Cortex-M4.fp.sp --branchpatch=sdcomp-29491-629360
+--cpu=Cortex-M4.fp.sp
 "elinktest\startup_stm32l471xx.o"
 "elinktest\main.o"
 "elinktest\gpio.o"

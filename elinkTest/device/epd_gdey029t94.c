@@ -696,7 +696,7 @@ epd_gdey029t94_status_t epd_gdey029t94_fast_refresh(
     device->fast_refreshes++;
     device->refreshes_since_full++;
 
-    /* 快刷和局刷共用一个残影计数；第 5 次更新后立即对最新完整图像执行全刷。 */
+    /* 快刷和局刷共用一个残影计数；达到阈值后立即对最新完整图像执行全刷。 */
     if (device->refreshes_since_full >= EPD_GDEY029T94_CLEANUP_INTERVAL) {
         return epd_gdey029t94_full_refresh(device,
                                           device->background_image,

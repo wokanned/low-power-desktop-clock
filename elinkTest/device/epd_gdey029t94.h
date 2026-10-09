@@ -13,7 +13,15 @@ extern "C" {
 #define EPD_GDEY029T94_FRAME_BUFFER_SIZE   \
     (EPD_GDEY029T94_BYTES_PER_ROW * EPD_GDEY029T94_HEIGHT_PIXELS)
 #define EPD_GDEY029T94_X_ALIGNMENT_PIXELS  8U
-#define EPD_GDEY029T94_CLEANUP_INTERVAL    5U
+
+/*
+ * 原厂演示在 5 次局刷后清一次残影。时钟每秒局刷时会造成明显整屏闪烁，
+ * 因此产品默认放宽到 120 次（通常约两分钟）；可由构建参数按实测残影覆盖。
+ * 这是成功快刷/局刷的次数，不是毫秒时间；首帧建立 0x24/0x26 背景的全刷不计入。
+ */
+#ifndef EPD_GDEY029T94_CLEANUP_INTERVAL
+#define EPD_GDEY029T94_CLEANUP_INTERVAL    120U
+#endif
 
 typedef enum {
     EPD_GDEY029T94_OK = 0,
@@ -97,8 +105,9 @@ epd_gdey029t94_status_t epd_gdey029t94_set_background(
     const uint8_t *image,
     uint32_t image_length);
 
-/* 图像参数是窗口行紧密排列的数据，不包含整屏行跨度；每 5 次成功的快刷/局刷后，
-   使用驱动保存的完整图像立即执行一次全刷，以减少残影累积。 */
+/* 图像参数是窗口行紧密排列的数据，不包含整屏行跨度；达到
+   EPD_GDEY029T94_CLEANUP_INTERVAL 次成功的快刷/局刷后，使用驱动保存的完整图像
+   执行一次全刷，以减少残影累积。 */
 epd_gdey029t94_status_t epd_gdey029t94_partial_refresh(
     epd_gdey029t94_t *device,
     const epd_gdey029t94_rect_t *window,

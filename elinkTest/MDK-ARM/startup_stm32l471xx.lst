@@ -683,8 +683,8 @@ ARM Macro Assembler    Page 11
               00000000 
 Command Line: --debug --xref --diag_suppress=9931 --cpu=Cortex-M4.fp.sp --apcs=
 interwork --depend=elinktest\startup_stm32l471xx.d -oelinktest\startup_stm32l47
-1xx.o --predefine="__UVISION_VERSION SETA 543" --predefine="STM32L471xx SETA 1"
- --list=startup_stm32l471xx.lst startup_stm32l471xx.s
+1xx.o --predefine="__UVISION_VERSION SETA 543" --list=startup_stm32l471xx.lst s
+tartup_stm32l471xx.s
 
 
 
@@ -1764,4 +1764,4 @@ Symbol: __use_two_region_memory
       None
 Comment: __use_two_region_memory unused
 3 symbols
-445 symbols in table
+444 symbols in table
