@@ -1,0 +1,10 @@
+elinktest\epd_vendor_demo.o: ../app/epd_vendor_demo.c
+elinktest\epd_vendor_demo.o: ../app/epd_vendor_demo.h
+elinktest\epd_vendor_demo.o: ../app/../device/epd_gdey029t94.h
+elinktest\epd_vendor_demo.o: D:\realThirdKeil\ARM\ARMCC\Bin\..\include\stdint.h
+elinktest\epd_vendor_demo.o: ../app/../gui/GUI_Paint.h
+elinktest\epd_vendor_demo.o: ../app/../gui/../fonts/fonts.h
+elinktest\epd_vendor_demo.o: ../app/../gui/../fonts/fonts_cn.h
+elinktest\epd_vendor_demo.o: ../app/../resources/epd_vendor_assets.h
+elinktest\epd_vendor_demo.o: D:\realThirdKeil\ARM\ARMCC\Bin\..\include\stddef.h
+elinktest\epd_vendor_demo.o: D:\realThirdKeil\ARM\ARMCC\Bin\..\include\string.h

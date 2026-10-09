@@ -13,6 +13,15 @@ extern "C" {
 #define EPD_GDEY029T94_FRAME_BUFFER_SIZE   \
     (EPD_GDEY029T94_BYTES_PER_ROW * EPD_GDEY029T94_HEIGHT_PIXELS)
 #define EPD_GDEY029T94_X_ALIGNMENT_PIXELS  8U
+#define EPD_GDEY029T94_GRAY4_SIZE (32U * EPD_GDEY029T94_HEIGHT_PIXELS)
+#define EPD_GDEY029T94_MAX_PARTIAL_WINDOWS 5U
+
+typedef enum {
+    EPD_PROFILE_BW_296 = 0,
+    EPD_PROFILE_BW_180,
+    EPD_PROFILE_GUI_342,
+    EPD_PROFILE_GRAY4
+} epd_gdey029t94_profile_t;
 
 /*
  * 原厂演示在 5 次局刷后清一次残影。时钟每秒局刷时会造成明显整屏闪烁，
@@ -43,6 +52,12 @@ typedef struct {
 } epd_gdey029t94_rect_t;
 
 typedef struct {
+    epd_gdey029t94_rect_t window;
+    const uint8_t *image;
+    uint32_t image_length;
+} epd_gdey029t94_partial_item_t;
+
+typedef struct {
     uint32_t full_refreshes;
     uint32_t fast_refreshes;
     uint32_t partial_refreshes;
@@ -67,6 +82,7 @@ typedef struct {
 typedef struct {
     /* 控制器状态集中保存在设备对象中，不放到应用层。 */
     epd_gdey029t94_io_t io;
+    epd_gdey029t94_profile_t profile;
     uint8_t initialized;
     uint8_t sleeping;
     uint8_t fast_initialized;
@@ -82,6 +98,24 @@ typedef struct {
 epd_gdey029t94_status_t epd_gdey029t94_init(
     epd_gdey029t94_t *device,
     const epd_gdey029t94_io_t *io);
+
+/* Zero-initialize the object before its first profile init. Cumulative stats
+   survive profile changes; session state and cleanup count do not. */
+epd_gdey029t94_status_t epd_gdey029t94_init_profile(
+    epd_gdey029t94_t *device, const epd_gdey029t94_io_t *io,
+    epd_gdey029t94_profile_t profile);
+epd_gdey029t94_status_t epd_gdey029t94_profile_refresh(
+    epd_gdey029t94_t *device, const uint8_t *image, uint32_t image_length);
+epd_gdey029t94_status_t epd_gdey029t94_gray4_refresh(
+    epd_gdey029t94_t *device, const uint8_t *image, uint32_t image_length);
+/* Low/high plane, including vendor output inversion. */
+uint8_t epd_gdey029t94_gray4_encode_pair(uint8_t first, uint8_t second,
+                                       uint8_t plane);
+/* Validate the whole batch before IO. Windows may not overlap; source bytes
+   may not alias the device object. One reset and one activation per batch. */
+epd_gdey029t94_status_t epd_gdey029t94_partial_refresh_batch(
+    epd_gdey029t94_t *device,
+    const epd_gdey029t94_partial_item_t *items, uint8_t count);
 
 /* 全刷同时同步旧图 RAM，并清零快刷/局刷共用的残影计数器。 */
 epd_gdey029t94_status_t epd_gdey029t94_full_refresh(
@@ -105,7 +139,7 @@ epd_gdey029t94_status_t epd_gdey029t94_set_background(
     const uint8_t *image,
     uint32_t image_length);
 
-/* 图像参数是窗口行紧密排列的数据，不包含整屏行跨度；达到
+/* 图像参数是窗口行紧密排列的数据，不包含整屏行跨度，不得与设备对象别名；达到
    EPD_GDEY029T94_CLEANUP_INTERVAL 次成功的快刷/局刷后，使用驱动保存的完整图像
    执行一次全刷，以减少残影累积。 */
 epd_gdey029t94_status_t epd_gdey029t94_partial_refresh(

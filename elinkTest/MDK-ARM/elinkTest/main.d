@@ -41,3 +41,4 @@ elinktest\main.o: ../Core/Inc/usart.h
 elinktest\main.o: ../Core/Inc/gpio.h
 elinktest\main.o: ../Core/Src/../../app/epd_bringup.h
 elinktest\main.o: ../Core/Src/../../app/../device/epd_gdey029t94.h
+elinktest\main.o: ../Core/Src/../../app/epd_vendor_demo.h

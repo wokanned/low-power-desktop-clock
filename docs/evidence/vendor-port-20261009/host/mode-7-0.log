@@ -1,0 +1,5 @@
+In file included from D:/codeOfVSCODE/desk clock/elinkTest/app/epd_bringup.h:5,
+                 from D:\codeOfVSCODE\desk clock\elinkTest\tests\mode_config_test.c:2:
+D:/codeOfVSCODE/desk clock/elinkTest/app/epd_vendor_demo.h:15:2: error: #error Invalid EPD_VENDOR_DEMO_MODE
+ #error Invalid EPD_VENDOR_DEMO_MODE
+  ^~~~~

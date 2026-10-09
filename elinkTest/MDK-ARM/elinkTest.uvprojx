@@ -491,9 +491,69 @@
           <GroupName>Application/User/App</GroupName>
           <Files>
             <File>
+              <FileName>epd_vendor_demo.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../app/epd_vendor_demo.c</FilePath>
+            </File>
+            <File>
               <FileName>epd_bringup.c</FileName>
               <FileType>1</FileType>
               <FilePath>../app/epd_bringup.c</FilePath>
+            </File>
+            <File>
+              <FileName>epd_clock_view.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../app/epd_clock_view.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Application/User/GUI</GroupName>
+          <Files>
+            <File>
+              <FileName>GUI_Paint.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../gui/GUI_Paint.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Application/User/Fonts</GroupName>
+          <Files>
+            <File>
+              <FileName>font12CN.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../fonts/font12CN.c</FilePath>
+            </File>
+            <File>
+              <FileName>font24CN.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../fonts/font24CN.c</FilePath>
+            </File>
+            <File>
+              <FileName>font8.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../fonts/font8.c</FilePath>
+            </File>
+            <File>
+              <FileName>font12.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../fonts/font12.c</FilePath>
+            </File>
+            <File>
+              <FileName>font16.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../fonts/font16.c</FilePath>
+            </File>
+            <File>
+              <FileName>font20.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../fonts/font20.c</FilePath>
+            </File>
+            <File>
+              <FileName>font24.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../fonts/font24.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -504,6 +564,16 @@
               <FileName>epd_gdey029t94.c</FileName>
               <FileType>1</FileType>
               <FilePath>../device/epd_gdey029t94.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Application/User/Resources</GroupName>
+          <Files>
+            <File>
+              <FileName>epd_vendor_assets.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../resources/epd_vendor_assets.c</FilePath>
             </File>
           </Files>
         </Group>

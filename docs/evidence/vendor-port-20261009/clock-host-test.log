@@ -1,0 +1,8 @@
+Preview BMP: D:\codeOfVSCODE\desk clock\docs\evidence\vendor-port-20261009\clock-host/clock-12-34-42.bmp
+Preview BMP: D:\codeOfVSCODE\desk clock\docs\evidence\vendor-port-20261009\clock-host/gui-font-demo.bmp
+Preview BMP: D:\codeOfVSCODE\desk clock\docs\evidence\vendor-port-20261009\clock-host/orientation.bmp
+PASS: GUI and clock host tests (294134 checks)
+Coverage: guards, transforms, primitives, 475 ASCII glyphs, scaling, strings, signed numbers, time and 476-byte seconds window
+PASS: all 8 mode combinations, with 4 invalid combinations rejected by the intended diagnostic.
+Host executable: D:\codeOfVSCODE\desk clock\docs\evidence\vendor-port-20261009\clock-host\gui_host_test.exe
+These tests verify framebuffer behavior; hardware refresh and timing still require board tests.

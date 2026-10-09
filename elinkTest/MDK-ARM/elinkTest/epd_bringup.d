@@ -2,6 +2,8 @@ elinktest\epd_bringup.o: ../app/epd_bringup.c
 elinktest\epd_bringup.o: ../app/epd_bringup.h
 elinktest\epd_bringup.o: ../app/../device/epd_gdey029t94.h
 elinktest\epd_bringup.o: D:\realThirdKeil\ARM\ARMCC\Bin\..\include\stdint.h
+elinktest\epd_bringup.o: ../app/epd_vendor_demo.h
+elinktest\epd_bringup.o: ../app/epd_clock_view.h
 elinktest\epd_bringup.o: ../app/../Core/Inc/rtc.h
 elinktest\epd_bringup.o: ../app/../Core/Inc/main.h
 elinktest\epd_bringup.o: ../Drivers/STM32L4xx_HAL_Driver/Inc/stm32l4xx_hal.h

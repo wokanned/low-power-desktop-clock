@@ -1,0 +1,10 @@
+..\..\docs\evidence\vendor-port-20261009\builds\mode-4\epd_vendor_demo.o: ../app/epd_vendor_demo.c
+..\..\docs\evidence\vendor-port-20261009\builds\mode-4\epd_vendor_demo.o: ../app/epd_vendor_demo.h
+..\..\docs\evidence\vendor-port-20261009\builds\mode-4\epd_vendor_demo.o: ../app/../device/epd_gdey029t94.h
+..\..\docs\evidence\vendor-port-20261009\builds\mode-4\epd_vendor_demo.o: D:\realThirdKeil\ARM\ARMCC\Bin\..\include\stdint.h
+..\..\docs\evidence\vendor-port-20261009\builds\mode-4\epd_vendor_demo.o: ../app/../gui/GUI_Paint.h
+..\..\docs\evidence\vendor-port-20261009\builds\mode-4\epd_vendor_demo.o: ../app/../gui/../fonts/fonts.h
+..\..\docs\evidence\vendor-port-20261009\builds\mode-4\epd_vendor_demo.o: ../app/../gui/../fonts/fonts_cn.h
+..\..\docs\evidence\vendor-port-20261009\builds\mode-4\epd_vendor_demo.o: ../app/../resources/epd_vendor_assets.h
+..\..\docs\evidence\vendor-port-20261009\builds\mode-4\epd_vendor_demo.o: D:\realThirdKeil\ARM\ARMCC\Bin\..\include\stddef.h
+..\..\docs\evidence\vendor-port-20261009\builds\mode-4\epd_vendor_demo.o: D:\realThirdKeil\ARM\ARMCC\Bin\..\include\string.h

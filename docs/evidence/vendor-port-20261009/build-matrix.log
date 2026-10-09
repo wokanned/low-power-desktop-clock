@@ -1,0 +1,42 @@
+PASS: mode=0 ROM=22800 RAM=12120, 0 errors/warnings
+
+Algorithm : SHA256
+Hash      : DCE3B5B58DC287D3D47787FACF051B22B982DF79F678E5AF7F1E29B15FF13A06
+Path      : D:\codeOfVSCODE\desk clock\docs\evidence\vendor-port-20261009\builds\mode-0\elinkTest.hex
+
+PASS: mode=1 ROM=87632 RAM=22888, 0 errors/warnings
+
+Algorithm : SHA256
+Hash      : ACBCBB57AB248CEA51E93D71F669D639EF491817C765A0650A80D4BDC6BB75BF
+Path      : D:\codeOfVSCODE\desk clock\docs\evidence\vendor-port-20261009\builds\mode-1\elinkTest.hex
+
+PASS: mode=2 ROM=33136 RAM=21608, 0 errors/warnings
+
+Algorithm : SHA256
+Hash      : FDC325C871701A96A15A9CDE71D7E13E03D9B81623943675EA36FB6CCCF4A9D7
+Path      : D:\codeOfVSCODE\desk clock\docs\evidence\vendor-port-20261009\builds\mode-2\elinkTest.hex
+
+PASS: mode=3 ROM=31188 RAM=13416, 0 errors/warnings
+
+Algorithm : SHA256
+Hash      : AC9D10C0BCBE4BFD108303C8DFBA717A785024C27492068DBE0DE76E09857B99
+Path      : D:\codeOfVSCODE\desk clock\docs\evidence\vendor-port-20261009\builds\mode-3\elinkTest.hex
+
+PASS: mode=4 ROM=56092 RAM=12136, 0 errors/warnings
+
+Algorithm : SHA256
+Hash      : 5F620298D53BA38EC98AE6D770108F87159A3B0EDB6DAD76B5872A3BC49B9D2F
+Path      : D:\codeOfVSCODE\desk clock\docs\evidence\vendor-port-20261009\builds\mode-4\elinkTest.hex
+
+PASS: mode=5 ROM=28336 RAM=12136, 0 errors/warnings
+
+Algorithm : SHA256
+Hash      : EB09292780A9040FEB1D2C4F75C12F6C11525E14F290D06CDFA1F80B8C823BB9
+Path      : D:\codeOfVSCODE\desk clock\docs\evidence\vendor-port-20261009\builds\mode-5\elinkTest.hex
+
+PASS: mode=6 ROM=36232 RAM=12136, 0 errors/warnings
+
+Algorithm : SHA256
+Hash      : 8EB8FBB9F630AC7AE93E8C6A3C6AB4892771F18B921FE7908FE10ECB0A14EBBD
+Path      : D:\codeOfVSCODE\desk clock\docs\evidence\vendor-port-20261009\builds\mode-6\elinkTest.hex
+

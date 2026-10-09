@@ -1,0 +1,3 @@
+PASS: all vendor asset bytes, font indices, matrices and comments match reproducible imports.
+PASS: 616084 checks: profiles, planes, faults, transforms, CN, batch and complete demo.
+PASS: 72 mode combinations (including invalid selectors).

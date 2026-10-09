@@ -1,0 +1,3 @@
+Preview BMP: .\docs\evidence\gui-port-20261009\clock/target-frame.bmp
+PASS: target RAM framebuffer uniquely decodes to 00:32:29 and all 4736 bytes match the independent Font24 oracle
+Evidence covers the captured RAM image; panel appearance and physical refresh timing require separate observation

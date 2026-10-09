@@ -1,0 +1,32 @@
+      -------------------------------------------------------------------
+                       STM32CubeProgrammer v2.22.0                  
+      -------------------------------------------------------------------
+
+ST-LINK SN  : 37FF71064E57343617CE1A43
+ST-LINK FW  : V2J46S7
+Board       : --
+Voltage     : 3.29V
+SWD freq    : 4000 KHz
+Connect mode: Hot Plug
+Reset mode  : Software reset
+Device ID   : 0x415
+Revision ID : Rev 4
+Device name : STM32L4x1/STM32L475xx/STM32L476xx/STM32L486xx
+NVM size  : 512 KBytes
+Device type : MCU
+Device CPU  : Cortex-M4
+BL Version  : 0x92
+Debug in Low Power mode enabled
+
+�������������������������������������������������� 0%
+�������������������������������������������������� 100%
+
+0x20000000 : 00
+
+
+Reading 32-bit memory content
+  Size          : 16 Bytes
+  Address:      : 0x200028C8
+0x200028C8 : 00000001 00000001 00000030 00000031
+Core is running
+PC       = 0x08001E76

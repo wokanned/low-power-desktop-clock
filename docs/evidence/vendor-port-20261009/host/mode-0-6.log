@@ -1,0 +1,4 @@
+In file included from D:\codeOfVSCODE\desk clock\elinkTest\tests\mode_config_test.c:2:
+D:/codeOfVSCODE/desk clock/elinkTest/app/epd_bringup.h:19:2: error: #error Select only one EPD diagnostic or GUI demo mode
+ #error Select only one EPD diagnostic or GUI demo mode
+  ^~~~~
