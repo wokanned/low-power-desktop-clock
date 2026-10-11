@@ -67,8 +67,6 @@ void Error_Handler(void);
 #define DC_GPIO_Port GPIOB
 #define CS2_Pin GPIO_PIN_2
 #define CS2_GPIO_Port GPIOB
-#define TOUCHINT_Pin GPIO_PIN_14
-#define TOUCHINT_GPIO_Port GPIOB
 #define SENEN_Pin GPIO_PIN_6
 #define SENEN_GPIO_Port GPIOC
 #define ELINKEN_Pin GPIO_PIN_7

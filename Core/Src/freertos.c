@@ -26,6 +26,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "debug.h"
+#include "display.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -103,6 +104,9 @@ void MX_FREERTOS_Init(void) {
     .priority = osPriorityBelowNormal,
   };
   debugTaskHandle = osThreadNew(StartDebugTask, NULL, &debugTask_attributes);
+  if (!display_start()) {
+    Debug_Log("display: task creation failed\r\n");
+  }
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */

@@ -21,7 +21,7 @@
 #include "rtc.h"
 
 /* USER CODE BEGIN 0 */
-
+#define RTC_INITIALIZED_MARKER 0x52544331U
 /* USER CODE END 0 */
 
 RTC_HandleTypeDef hrtc;
@@ -58,7 +58,8 @@ void MX_RTC_Init(void)
   }
 
   /* USER CODE BEGIN Check_RTC_BKUP */
-
+  /* Preserve calendar and alarm configuration while the backup domain lives. */
+  if (HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR0) != RTC_INITIALIZED_MARKER) {
   /* USER CODE END Check_RTC_BKUP */
 
   /** Initialize RTC and set the Time and Date
@@ -108,7 +109,12 @@ void MX_RTC_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN RTC_Init 2 */
-
+    HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR0, RTC_INITIALIZED_MARKER);
+  }
+  /* Alarm registers survive a CPU reset; EXTI routing does not. Restore the
+     interrupt path without replacing the retained alarm time or enable bits. */
+  __HAL_RTC_ALARM_EXTI_ENABLE_IT();
+  __HAL_RTC_ALARM_EXTI_ENABLE_RISING_EDGE();
   /* USER CODE END RTC_Init 2 */
 
 }

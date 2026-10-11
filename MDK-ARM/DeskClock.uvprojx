@@ -338,9 +338,9 @@
             <v6Rtti>0</v6Rtti>
             <VariousControls>
               <MiscControls></MiscControls>
-              <Define>USE_HAL_DRIVER,STM32L471xx</Define>
+              <Define>USE_HAL_DRIVER,STM32L471xx,EPD_VENDOR_DEMO_MODE=0</Define>
               <Undefine></Undefine>
-              <IncludePath>../app;../Core/Inc;../Drivers/STM32L4xx_HAL_Driver/Inc;../Drivers/STM32L4xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32L4xx/Include;../Drivers/CMSIS/Include;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F</IncludePath>
+              <IncludePath>../app;../device;../platform;../gui;../fonts;../resources;../Core/Inc;../Drivers/STM32L4xx_HAL_Driver/Inc;../Drivers/STM32L4xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32L4xx/Include;../Drivers/CMSIS/Include;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -1865,13 +1865,157 @@
               <FileType>5</FileType>
               <FilePath>..\app\vofa.h</FilePath>
             </File>
+            <File>
+              <FileName>display.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../app/display.c</FilePath>
+            </File>
+            <File>
+              <FileName>display.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../app/display.h</FilePath>
+            </File>
+            <File>
+              <FileName>epd_bringup.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../app/epd_bringup.c</FilePath>
+            </File>
+            <File>
+              <FileName>epd_bringup.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../app/epd_bringup.h</FilePath>
+            </File>
+            <File>
+              <FileName>epd_clock_view.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../app/epd_clock_view.c</FilePath>
+            </File>
+            <File>
+              <FileName>epd_clock_view.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../app/epd_clock_view.h</FilePath>
+            </File>
+            <File>
+              <FileName>epd_vendor_demo.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../app/epd_vendor_demo.c</FilePath>
+            </File>
+            <File>
+              <FileName>epd_vendor_demo.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../app/epd_vendor_demo.h</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
           <GroupName>device</GroupName>
+          <Files>
+            <File>
+              <FileName>epd_gdey029t94.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../device/epd_gdey029t94.c</FilePath>
+            </File>
+            <File>
+              <FileName>epd_gdey029t94.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../device/epd_gdey029t94.h</FilePath>
+            </File>
+          </Files>
         </Group>
         <Group>
           <GroupName>platform</GroupName>
+          <Files>
+            <File>
+              <FileName>stm32_gdey029t94.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../platform/stm32_gdey029t94.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32_gdey029t94.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../platform/stm32_gdey029t94.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>gui</GroupName>
+          <Files>
+            <File>
+              <FileName>GUI_Paint.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../gui/GUI_Paint.c</FilePath>
+            </File>
+            <File>
+              <FileName>GUI_Paint.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../gui/GUI_Paint.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>fonts</GroupName>
+          <Files>
+            <File>
+              <FileName>font12.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../fonts/font12.c</FilePath>
+            </File>
+            <File>
+              <FileName>font12CN.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../fonts/font12CN.c</FilePath>
+            </File>
+            <File>
+              <FileName>font16.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../fonts/font16.c</FilePath>
+            </File>
+            <File>
+              <FileName>font20.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../fonts/font20.c</FilePath>
+            </File>
+            <File>
+              <FileName>font24.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../fonts/font24.c</FilePath>
+            </File>
+            <File>
+              <FileName>font24CN.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../fonts/font24CN.c</FilePath>
+            </File>
+            <File>
+              <FileName>font8.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../fonts/font8.c</FilePath>
+            </File>
+            <File>
+              <FileName>fonts.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../fonts/fonts.h</FilePath>
+            </File>
+            <File>
+              <FileName>fonts_cn.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../fonts/fonts_cn.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>resources</GroupName>
+          <Files>
+            <File>
+              <FileName>epd_vendor_assets.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../resources/epd_vendor_assets.c</FilePath>
+            </File>
+            <File>
+              <FileName>epd_vendor_assets.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../resources/epd_vendor_assets.h</FilePath>
+            </File>
+          </Files>
         </Group>
         <Group>
           <GroupName>::CMSIS</GroupName>
