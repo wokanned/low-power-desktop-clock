@@ -53,7 +53,7 @@ Keil 默认 `EPD_VENDOR_DEMO_MODE=0`，直接运行时钟：首次背景全刷�
 | 主控 MCU | STM32L471RET6 | 80MHz，512KB Flash，128KB SRAM，64Pin | 当前主控方案已经定下，能覆盖 FreeRTOS、电子纸、ESP32-C3-WROOM-02-N4、传感器、外部 Flash 和日志系统需求。下单前核对嘉立创实时库存和货期 |
 | 显示屏 | GDEY029T94-FL03 | SSD1680Z8，296×128，SPI，无触摸 | 复用 `EinKTest@8583f09` 的已测试驱动、GUI、字库和资源；本板移植与验证状态见 `epd_gdey029t94_port.md` |
 | WiFi 模块 | ESP32-C3-WROOM-02-N4 | 邮票孔模组，2.4GHz Wi-Fi + BLE，支持 USB Serial/JTAG 下载调试 | 运行时按任务上电。邮票孔模组更适合直接焊到主板，调试时预留 USB 上电旁路 |
-| 加速度计 | ADXL345 | LGA-14，3mm x 5mm，23uA 测量电流，支持 single tap、double tap、activity 和 inactivity | 用于本地唤醒。封装明显大于 LIS2DW12，归入首版可接受的 B 级封装，建议热台预热加热风回流 |
+| 加速度计 | ADXL345BCCZ-RL7 | LGA-14，3mm x 5mm，23uA 测量电流，支持 single tap、double tap、activity 和 inactivity | 用于本地唤醒和三轴原始数据验证，建议热台预热加热风回流 |
 | 环境光传感器 | VEML7700 | 侧贴 SMD，6.8mm x 2.35mm x 3.0mm，I2C 数字环境光传感器 | 用于前置光自动策略。体积比常见微型环境光器件更大，能直接焊到主板 |
 | 气压传感器 | MPL3115A2 | 5mm x 3mm x 1.1mm LGA，I2C，20-bit 气压/高度输出，支持中断和 FIFO | 用于气压采样。封装明显大于 LPS22HH，归入首版可接受的 B 级封装，建议热台预热加热风回流 |
 | 温度传感器 | TMP1075DR | I2C，SOIC-8，支持 one-shot | 用于板载温度采样。SOIC-8 归入首版优先保留的 A 级封装 |
@@ -70,7 +70,7 @@ Keil 默认 `EPD_VENDOR_DEMO_MODE=0`，直接运行时钟：首次背景全刷�
 
 首版封装路线也一起锁定。W25Q128JV 只买 SOIC-8 或 SOP-8，MAX17043 只买 2mm x 3mm TDFN-8，BQ24074 固定 VQFN-16 (RGT)，TPS631000 固定 SOT-5X3-8 (DRL)。这版不再接受只写通用型号、不写封装约束的下单方式。
 
-本地唤醒用的 IMU 改为 ADXL345。它的封装是 3mm x 5mm LGA，比 LIS2DW12 更大，保留 tap 和 activity 这类唤醒能力，首版在手工焊接和调试上更现实。
+本地唤醒用的三轴加速度计为 ADXL345BCCZ-RL7。首版通过 I2C2 读取原始三轴数据，暂不将其称为角速度陀螺仪。
 
 气压传感器改为 MPL3115A2。它是 5mm x 3mm x 1.1mm LGA，1.25mm 引脚间距，封装比 LPS22HH 大一档，手焊容错更高。它的采样电流比 LPS22HH 略高，但本方案本来就是按需上电采样，这个取舍对首版更合理。
 

@@ -19,3 +19,7 @@ MDK-ARM/*.uvoptx
 .vscode/
 .mxproject
 .claude/settings.local.json
+
+# Python generated cache
+__pycache__/
+*.py[cod]

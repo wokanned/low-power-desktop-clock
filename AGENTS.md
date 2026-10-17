@@ -26,7 +26,7 @@ Drivers/           # CMSIS + STM32L4 HAL 库（厂商提供，禁止修改）
 Middlewares/       # FreeRTOS 内核源码（V10.3.1）+ CMSIS_RTOS_V2 适配层
 app/               # 调试/VOFA、显示任务、时钟绘制和硬件调试策略
 device/            # 不依赖 HAL 的 GDEY029T94 控制器驱动
-platform/          # STM32 SPI2/GPIO/电源/延时适配
+platform/          # STM32 SPI2/GPIO/延时适配
 gui/               # 复用的厂商 Paint 绘图代码（全局画布）
 fonts/             # 复用的拉丁字符和中文字库
 resources/         # 复用的厂商显示资源
@@ -56,19 +56,18 @@ DeskClock.ioc      # CubeMX 工程配置
 
 ### 电源域 GPIO
 
-以下三个 GPIO 控制 SY6288D20AAC 负载开关，用于控制外设供电：
+以下两个 GPIO 控制 SY6288D20AAC 负载开关，用于控制 WiFi 和传感器供电。墨水屏在系统供电期间持续上电，显示负载开关已移除。
 
 | 引脚 | 网络名   | 电源域             | 控制对象                            |
 | :--- | :------- | :----------------- | :---------------------------------- |
 | PC6  | SENEN    | 3V3_SENS_SW        | U15：MPL3115A2、TMP1075DR、VEML7700 |
-| PC7  | ELINKEN  | 3V3_HMI / ELINKPWR | U14：显示供电；前光控制尚未明确     |
 | PC8  | ESPPWREN | 3V3_WIFI           | U13：ESP32-C3 模块                  |
 
 ### 硬件架构
 
-显示移植使用 Git 中 `origin/EinKTest@8583f09` 保留的主板和显示转接板网表，并与 `Core/Inc/main.h` 和 `Core/Src/` 中的外设初始化进行核对。连接器映射记录在 `docs/epd_gdey029t94_port.md` 中。已删除的网表未恢复到工作区。在目标板验证前，必须确认实物板版本和接线。
+显示移植使用 Git 中 `origin/EinKTest@8583f09` 保留的主板和显示转接板网表，并与 `Core/Inc/main.h` 和 `Core/Src/` 中的外设初始化进行核对。连接器映射记录在 `docs/epd_gdey029t94_port.md` 中。当前显示供电已改为持续上电，历史网表中的显示负载开关连接不再适用。已删除的网表未恢复到工作区。在目标板验证前，必须确认实物板版本和接线。
 
-- **电源**：USB Type-C 和 1000mAh 锂聚合物电池 → BQ24074（U10，充电/电源路径管理）→ BATPOWER → TPS631000（U12，升降压至 3.3V）→ 3 个 SY6288D20AAC 电源域开关
+- **电源**：USB Type-C 和 1000mAh 锂聚合物电池 → BQ24074（U10，充电/电源路径管理）→ BATPOWER → TPS631000（U12，升降压至 3.3V）；墨水屏持续供电，WiFi 和传感器使用 2 个 SY6288D20AAC 电源域开关
 - **MCU**：U1 = STM32L471RET6，LQFP-64
 - **传感器**：U2 = ADXL345，U3 = MPL3115A2（气压），U16 = TMP1075DR（SOIC-8），U18 = MAX17043（TDFN-8），U37 = VEML7700
 - **WiFi**：U20 = ESP32-C3-WROOM-02-N4（邮票孔模块）
@@ -92,12 +91,12 @@ DeskClock.ioc      # CubeMX 工程配置
 
 ## 显示模块集成
 
-- 复用远端 `EinKTest` 的设备驱动、GUI、字库和资源，不得随意重构协议或资源。`device/` 保持不依赖 HAL；`platform/stm32_gdey029t94` 负责绑定 SPI2、控制引脚、PC7 电源和延时。
+- 复用远端 `EinKTest` 的设备驱动、GUI、字库和资源，不得随意重构协议或资源。`device/` 保持不依赖 HAL；`platform/stm32_gdey029t94` 负责绑定 SPI2、控制引脚和延时。
 - `app/display` 独占显示控制器、帧缓冲区和全局 `Paint` 画布。在 RTOS 初始化阶段通过 `display_start()` 启动。禁止从其他任务或 ISR 调用绘制、演示或刷新函数。
 - `app/epd_bringup` 保留参考时钟策略：初始背景全刷新，秒更新使用局部刷新，分钟更新使用整帧快速刷新；快速刷新和局部刷新共同计数，成功更新 120 次后执行一次清理刷新。
 - Keil 默认设置为 `EPD_VENDOR_DEMO_MODE=0`。模式 1–6 是可选的厂商演示，其编号映射见显示移植文档。其他构建方式必须显式设置该宏，因为导入头文件的回退值为模式 1。
 - 显示启动/恢复最多尝试三次，失败后间隔一秒再尝试。尝试耗尽后记录保留的状态，并仅挂起显示任务。调度器启动后，平台延时通过 RTOS 让出执行权。
-- PC7 低电平表示上电，这是现有工程约定，尚未通过数据手册验证极性。必须在目标板上确认。参考网表尚未明确独立的前光 GPIO 或 PWM。
+- 墨水屏持续供电，初始化、错误恢复和休眠策略均不控制显示供电开关。前光独立控制方式仍待确认。
 - `.ioc` 与生成的 SPI2 初始化必须保持一致，预分频为 32（2.5MHz）。普通 MCU 复位应保留 RTC 备份标记和日历。
 
 ## 分层边界（必须严格遵守）

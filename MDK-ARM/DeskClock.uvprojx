@@ -1846,6 +1846,16 @@
           <GroupName>app</GroupName>
           <Files>
             <File>
+              <FileName>accel.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../app/accel.c</FilePath>
+            </File>
+            <File>
+              <FileName>accel.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../app/accel.h</FilePath>
+            </File>
+            <File>
               <FileName>vofa.c</FileName>
               <FileType>1</FileType>
               <FilePath>../app/vofa.c</FilePath>
@@ -1911,6 +1921,16 @@
           <GroupName>device</GroupName>
           <Files>
             <File>
+              <FileName>imu_adxl345.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../device/imu_adxl345.c</FilePath>
+            </File>
+            <File>
+              <FileName>imu_adxl345.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../device/imu_adxl345.h</FilePath>
+            </File>
+            <File>
               <FileName>epd_gdey029t94.c</FileName>
               <FileType>1</FileType>
               <FilePath>../device/epd_gdey029t94.c</FilePath>
@@ -1925,6 +1945,26 @@
         <Group>
           <GroupName>platform</GroupName>
           <Files>
+            <File>
+              <FileName>stm32_adxl345.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../platform/stm32_adxl345.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32_adxl345.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../platform/stm32_adxl345.h</FilePath>
+            </File>
+            <File>
+              <FileName>stm32_debug_uart.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../platform/stm32_debug_uart.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32_debug_uart.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../platform/stm32_debug_uart.h</FilePath>
+            </File>
             <File>
               <FileName>stm32_gdey029t94.c</FileName>
               <FileType>1</FileType>

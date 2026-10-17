@@ -3,6 +3,8 @@
 -mfloat-abi=hard
 -mfpu=fpv4-sp-d16
 -Iapp
+-Idevice
+-Iplatform
 -ICore/Inc
 -IDrivers/STM32L4xx_HAL_Driver/Inc
 -IDrivers/STM32L4xx_HAL_Driver/Inc/Legacy

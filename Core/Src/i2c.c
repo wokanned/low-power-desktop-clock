@@ -21,6 +21,7 @@
 #include "i2c.h"
 
 /* USER CODE BEGIN 0 */
+#include "stm32_adxl345.h"
 
 /* USER CODE END 0 */
 
@@ -109,7 +110,11 @@ void MX_I2C2_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN I2C2_Init 2 */
-
+  /* Keep fast-mode timing in a CubeMX-preserved extension point. */
+  __HAL_I2C_DISABLE(&hi2c2);
+  hi2c2.Init.Timing = STM32_I2C2_FAST_TIMING;
+  WRITE_REG(hi2c2.Instance->TIMINGR, hi2c2.Init.Timing);
+  __HAL_I2C_ENABLE(&hi2c2);
   /* USER CODE END I2C2_Init 2 */
 
 }

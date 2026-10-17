@@ -27,6 +27,7 @@
 /* USER CODE BEGIN Includes */
 #include "debug.h"
 #include "display.h"
+#include "accel.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -104,6 +105,9 @@ void MX_FREERTOS_Init(void) {
     .priority = osPriorityBelowNormal,
   };
   debugTaskHandle = osThreadNew(StartDebugTask, NULL, &debugTask_attributes);
+  if (debugTaskHandle != NULL) {
+    (void)accel_start();
+  }
   if (!display_start()) {
     Debug_Log("display: task creation failed\r\n");
   }
