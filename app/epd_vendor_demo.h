@@ -32,7 +32,7 @@ void epd_vendor_image_rotate180(uint8_t *destination, const uint8_t *source,
                                 uint16_t width, uint16_t height, uint8_t bpp);
 void epd_vendor_gui_page(uint8_t *frame, uint8_t page);
 /* Device/IO/frame are caller-owned. Success leaves the controller asleep;
-   caller reinitializes BW296 before entering the clock. */
+   caller reinitializes the production gray4 profile before entering the clock. */
 epd_gdey029t94_status_t epd_vendor_demo_run(
     epd_gdey029t94_t *device, const epd_gdey029t94_io_t *io, uint8_t *frame);
 #endif

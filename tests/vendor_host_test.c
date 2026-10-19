@@ -1,5 +1,6 @@
 #include "../device/epd_gdey029t94.h"
 #include "../app/epd_vendor_demo.h"
+#include "../app/epd_clock_view.h"
 #include "../gui/GUI_Paint.h"
 #include "../resources/epd_vendor_assets.h"
 #include <stdio.h>
@@ -19,6 +20,9 @@ typedef struct {
     uint32_t writes;
     uint32_t fail_write;
     uint32_t resets;
+    uint32_t busy_reads;
+    uint32_t fail_busy_read;
+    uint32_t hold_busy_read;
     uint32_t count;
     record_t records[4096];
 } fake_t;
@@ -44,14 +48,24 @@ static int32_t fake_write(void *handle,const uint8_t *data,uint32_t n,uint32_t t
     }
     return 0;
 }
-static int32_t fake_busy(void *h,uint8_t *level) {fake_t *f=h;*level=f->busy;return f->busy_error ? -1:0;}
+static int32_t fake_busy(void *h,uint8_t *level)
+{
+    fake_t *f=h;
+    f->busy_reads++;
+    *level=(uint8_t)(f->busy || (f->hold_busy_read != 0U && f->busy_reads >= f->hold_busy_read));
+    return f->busy_error || (f->fail_busy_read != 0U && f->busy_reads == f->fail_busy_read) ? -1:0;
+}
 static void fake_cs(void *h,uint8_t v) {((fake_t*)h)->cs=v;}
 static void fake_dc(void *h,uint8_t v) {((fake_t*)h)->dc=v;}
 static void fake_reset(void *h,uint8_t v) {if(v==0U)((fake_t*)h)->resets++;}
 static void fake_delay(void *h,uint32_t n) {((fake_t*)h)->tick+=n;}
 static uint32_t fake_tick(void *h) {return ((fake_t*)h)->tick;}
 static epd_gdey029t94_io_t io={fake_write,fake_busy,fake_cs,fake_dc,fake_reset,fake_delay,fake_tick,&fake};
-static void clear_trace(void) {fake.count=0U;fake.writes=0U;fake.fail_write=0U;fake.resets=0U;}
+static void clear_trace(void)
+{
+    fake.count=0U;fake.writes=0U;fake.fail_write=0U;fake.resets=0U;
+    fake.busy_reads=0U;fake.fail_busy_read=0U;fake.hold_busy_read=0U;
+}
 static void initialize(epd_gdey029t94_profile_t p)
 {
     memset(&fake,0,sizeof(fake)); memset(&device,0,sizeof(device));
@@ -147,6 +161,110 @@ static void gray_test(void)
     CHECK(epd_gdey029t94_init_profile(&device,&io,EPD_PROFILE_BW_296)==0);
     CHECK(device.full_refreshes==1U); CHECK(device.background_valid==0U);
     CHECK(epd_gdey029t94_gray4_refresh(&device,gImage_4G1,9472U)==-4);
+}
+
+static epd_gdey029t94_status_t gray_cycle(void)
+{
+    epd_gdey029t94_status_t status;
+    status=epd_gdey029t94_init_profile(&device,&io,EPD_PROFILE_GRAY4);
+    if(status!=EPD_GDEY029T94_OK)return status;
+    status=epd_gdey029t94_gray4_refresh(&device,transformed,sizeof(transformed));
+    if(status!=EPD_GDEY029T94_OK)return status;
+    return epd_gdey029t94_sleep(&device);
+}
+
+/* This validates emitted bytes and state transitions only. The fake does not
+   invent a RAM cursor reset, wrap address, or a panel waveform model. */
+static void gray_repeated_cycle_test(void)
+{
+    clock_view_model_t model;
+    uint32_t round;
+    uint32_t pair;
+    uint32_t plane;
+    uint32_t total_writes;
+    uint32_t refresh_end;
+    uint32_t failure;
+    uint32_t success_before;
+    uint32_t committed;
+    uint32_t total_busy_reads;
+    uint32_t before_tick;
+    epd_gdey029t94_status_t status;
+    static const uint8_t activation[]={0xC7U};
+    static const uint8_t sleep_code[]={0x01U};
+    memset(&model,0,sizeof(model));
+    model.format=CLOCK_FORMAT_24;
+    model.calendar_state=CLOCK_DATA_READY;
+    model.calendar=(clock_calendar_t){2026U,10U,18U,7U,21U,30U,0U};
+    memset(&fake,0,sizeof(fake));memset(&device,0,sizeof(device));
+    total_writes=0U;refresh_end=0U;total_busy_reads=0U;
+    for(round=0U;round<3U;round++) {
+        model.memory_mode=(clock_memory_mode_t)round;
+        model.calendar.minute=(uint8_t)(30U+round);
+        CHECK(epd_clock_view_draw_gray4(transformed,sizeof(transformed),&model)==1U);
+        clear_trace();before_tick=fake.tick;
+        CHECK(epd_gdey029t94_init_profile(&device,&io,EPD_PROFILE_GRAY4)==EPD_GDEY029T94_OK);
+        CHECK(fake.resets==1U);CHECK(fake.tick-before_tick==20U);
+        CHECK(fake.count==7U);CHECK(fake.records[0].command==0x12U);
+        CHECK(device.full_refreshes==round);CHECK(device.sleeping==0U);
+        CHECK(epd_gdey029t94_gray4_refresh(&device,transformed,sizeof(transformed))==EPD_GDEY029T94_OK);
+        CHECK(fake.count==11U);CHECK(count_cmd(0x24U)==1U);CHECK(count_cmd(0x26U)==1U);
+        for(plane=0U;plane<2U;plane++) {
+            CHECK(fake.records[7U+plane].command==(plane==0U?0x24U:0x26U));
+            CHECK(fake.records[7U+plane].length==4736U);
+            for(pair=0U;pair<4736U;pair++) {
+                CHECK(fake.records[7U+plane].data[pair]==oracle(
+                    (uint16_t)(((uint16_t)transformed[pair*2U]<<8U)|transformed[pair*2U+1U]),
+                    (uint8_t)plane));
+            }
+        }
+        expect(9U,0x22U,activation,sizeof(activation));
+        expect(10U,0x20U,NULL,0U);
+        CHECK(device.full_refreshes==round+1U);CHECK(device.background_valid==0U);
+        CHECK(device.fast_refreshes==0U && device.partial_refreshes==0U);
+        refresh_end=fake.writes;total_busy_reads=fake.busy_reads;
+        CHECK(epd_gdey029t94_sleep(&device)==EPD_GDEY029T94_OK);
+        expect(11U,0x10U,sleep_code,sizeof(sleep_code));
+        CHECK(device.sleeping==1U);CHECK(device.full_refreshes==round+1U);
+        CHECK(fake.count==12U);CHECK(fake.resets==1U);
+        total_writes=fake.writes;
+    }
+    CHECK(total_writes==refresh_end+2U);
+    /* Every SPI failure in the third cycle preserves the first two commits.
+       Sleep errors occur after a committed frame and must keep that commit. */
+    for(failure=1U;failure<=total_writes;failure++) {
+        memset(&fake,0,sizeof(fake));memset(&device,0,sizeof(device));
+        CHECK(gray_cycle()==EPD_GDEY029T94_OK);
+        CHECK(gray_cycle()==EPD_GDEY029T94_OK);
+        success_before=device.full_refreshes;
+        clear_trace();fake.fail_write=failure;
+        CHECK(gray_cycle()==EPD_GDEY029T94_ERROR_IO);
+        committed=failure>refresh_end?1U:0U;
+        CHECK(device.full_refreshes==success_before+committed);
+        CHECK(fake.writes==failure);CHECK(fake.cs==1U);CHECK(fake.resets==1U);
+        CHECK(device.initialized==0U);
+        clear_trace();
+        CHECK(gray_cycle()==EPD_GDEY029T94_OK);
+        CHECK(device.full_refreshes==success_before+committed+1U);
+    }
+    /* BUSY read errors during reset, gray initialization, and final activation
+       also fail without a new successful refresh. */
+    for(failure=1U;failure<=total_busy_reads;failure++) {
+        memset(&fake,0,sizeof(fake));memset(&device,0,sizeof(device));
+        CHECK(gray_cycle()==EPD_GDEY029T94_OK);
+        clear_trace();fake.fail_busy_read=failure;
+        CHECK(gray_cycle()==EPD_GDEY029T94_ERROR_IO);
+        CHECK(device.full_refreshes==1U);CHECK(device.initialized==0U);
+        CHECK(fake.cs==1U);CHECK(fake.resets==1U);
+    }
+    memset(&fake,0,sizeof(fake));memset(&device,0,sizeof(device));
+    CHECK(gray_cycle()==EPD_GDEY029T94_OK);
+    clear_trace();fake.hold_busy_read=total_busy_reads;before_tick=fake.tick;
+    status=gray_cycle();
+    CHECK(status==EPD_GDEY029T94_ERROR_BUSY_TIMEOUT);
+    CHECK(fake.tick-before_tick>=10020U);
+    CHECK(device.full_refreshes==1U);CHECK(device.initialized==0U);
+    CHECK(fake.records[fake.count-1U].command==0x20U);
+    CHECK(count_cmd(0x10U)==0U);
 }
 static void partial_test(void)
 {
@@ -351,8 +469,9 @@ static void export_buffers(const char *directory)
 }
 int main(int argc,char **argv)
 {
-    profiles();gray_test();partial_test();fault_test();transforms();cn_test();demo_test();contracts();
+    profiles();gray_test();gray_repeated_cycle_test();partial_test();fault_test();transforms();cn_test();demo_test();contracts();
     if(argc>1)export_buffers(argv[1]);
-    printf("PASS: %lu checks: profiles, planes, faults, transforms, CN, batch and complete demo.\n",checks);
+    printf("PASS: %lu checks: profiles, planes, three gray init/frame/sleep cycles, "
+        "all cycle SPI/BUSY failures, faults, transforms, CN, batch and complete demo.\n",checks);
     return 0;
 }

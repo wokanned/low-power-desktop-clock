@@ -568,9 +568,121 @@
               </FileOption>
             </File>
             <File>
+              <FileName>dma.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Core/Src/dma.c</FilePath>
+              <FileOption>
+                <CommonProperty>
+                  <UseCPPCompiler>2</UseCPPCompiler>
+                  <RVCTCodeConst>0</RVCTCodeConst>
+                  <RVCTZI>0</RVCTZI>
+                  <RVCTOtherData>0</RVCTOtherData>
+                  <ModuleSelection>0</ModuleSelection>
+                  <IncludeInBuild>1</IncludeInBuild>
+                  <AlwaysBuild>2</AlwaysBuild>
+                  <GenerateAssemblyFile>2</GenerateAssemblyFile>
+                  <AssembleAssemblyFile>2</AssembleAssemblyFile>
+                  <PublicsOnly>2</PublicsOnly>
+                  <StopOnExitCode>11</StopOnExitCode>
+                  <CustomArgument></CustomArgument>
+                  <IncludeLibraryModules></IncludeLibraryModules>
+                  <ComprImg>1</ComprImg>
+                </CommonProperty>
+                <FileArmAds>
+                  <Cads>
+                    <interw>2</interw>
+                    <Optim>0</Optim>
+                    <oTime>2</oTime>
+                    <SplitLS>2</SplitLS>
+                    <OneElfS>2</OneElfS>
+                    <Strict>2</Strict>
+                    <EnumInt>2</EnumInt>
+                    <PlainCh>2</PlainCh>
+                    <Ropi>2</Ropi>
+                    <Rwpi>2</Rwpi>
+                    <wLevel>0</wLevel>
+                    <uThumb>2</uThumb>
+                    <uSurpInc>2</uSurpInc>
+                    <uC99>2</uC99>
+                    <uGnu>2</uGnu>
+                    <useXO>2</useXO>
+                    <v6Lang>0</v6Lang>
+                    <v6LangP>0</v6LangP>
+                    <vShortEn>2</vShortEn>
+                    <vShortWch>2</vShortWch>
+                    <v6Lto>2</v6Lto>
+                    <v6WtE>2</v6WtE>
+                    <v6Rtti>2</v6Rtti>
+                    <VariousControls>
+                      <MiscControls></MiscControls>
+                      <Define></Define>
+                      <Undefine></Undefine>
+                      <IncludePath></IncludePath>
+                    </VariousControls>
+                  </Cads>
+                </FileArmAds>
+              </FileOption>
+            </File>
+            <File>
               <FileName>i2c.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Core/Src/i2c.c</FilePath>
+              <FileOption>
+                <CommonProperty>
+                  <UseCPPCompiler>2</UseCPPCompiler>
+                  <RVCTCodeConst>0</RVCTCodeConst>
+                  <RVCTZI>0</RVCTZI>
+                  <RVCTOtherData>0</RVCTOtherData>
+                  <ModuleSelection>0</ModuleSelection>
+                  <IncludeInBuild>1</IncludeInBuild>
+                  <AlwaysBuild>2</AlwaysBuild>
+                  <GenerateAssemblyFile>2</GenerateAssemblyFile>
+                  <AssembleAssemblyFile>2</AssembleAssemblyFile>
+                  <PublicsOnly>2</PublicsOnly>
+                  <StopOnExitCode>11</StopOnExitCode>
+                  <CustomArgument></CustomArgument>
+                  <IncludeLibraryModules></IncludeLibraryModules>
+                  <ComprImg>1</ComprImg>
+                </CommonProperty>
+                <FileArmAds>
+                  <Cads>
+                    <interw>2</interw>
+                    <Optim>0</Optim>
+                    <oTime>2</oTime>
+                    <SplitLS>2</SplitLS>
+                    <OneElfS>2</OneElfS>
+                    <Strict>2</Strict>
+                    <EnumInt>2</EnumInt>
+                    <PlainCh>2</PlainCh>
+                    <Ropi>2</Ropi>
+                    <Rwpi>2</Rwpi>
+                    <wLevel>0</wLevel>
+                    <uThumb>2</uThumb>
+                    <uSurpInc>2</uSurpInc>
+                    <uC99>2</uC99>
+                    <uGnu>2</uGnu>
+                    <useXO>2</useXO>
+                    <v6Lang>0</v6Lang>
+                    <v6LangP>0</v6LangP>
+                    <vShortEn>2</vShortEn>
+                    <vShortWch>2</vShortWch>
+                    <v6Lto>2</v6Lto>
+                    <v6WtE>2</v6WtE>
+                    <v6Rtti>2</v6Rtti>
+                    <VariousControls>
+                      <MiscControls></MiscControls>
+                      <Define></Define>
+                      <Undefine></Undefine>
+                      <IncludePath></IncludePath>
+                    </VariousControls>
+                  </Cads>
+                </FileArmAds>
+              </FileOption>
+            </File>
+            <File>
+              <FileName>lptim.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Core/Src/lptim.c</FilePath>
               <FileOption>
                 <CommonProperty>
                   <UseCPPCompiler>2</UseCPPCompiler>
@@ -1063,6 +1175,62 @@
               <FileName>stm32l4xx_hal_exti.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_exti.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32l4xx_hal_lptim.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_lptim.c</FilePath>
+              <FileOption>
+                <CommonProperty>
+                  <UseCPPCompiler>2</UseCPPCompiler>
+                  <RVCTCodeConst>0</RVCTCodeConst>
+                  <RVCTZI>0</RVCTZI>
+                  <RVCTOtherData>0</RVCTOtherData>
+                  <ModuleSelection>0</ModuleSelection>
+                  <IncludeInBuild>1</IncludeInBuild>
+                  <AlwaysBuild>2</AlwaysBuild>
+                  <GenerateAssemblyFile>2</GenerateAssemblyFile>
+                  <AssembleAssemblyFile>2</AssembleAssemblyFile>
+                  <PublicsOnly>2</PublicsOnly>
+                  <StopOnExitCode>11</StopOnExitCode>
+                  <CustomArgument></CustomArgument>
+                  <IncludeLibraryModules></IncludeLibraryModules>
+                  <ComprImg>1</ComprImg>
+                </CommonProperty>
+                <FileArmAds>
+                  <Cads>
+                    <interw>2</interw>
+                    <Optim>0</Optim>
+                    <oTime>2</oTime>
+                    <SplitLS>2</SplitLS>
+                    <OneElfS>2</OneElfS>
+                    <Strict>2</Strict>
+                    <EnumInt>2</EnumInt>
+                    <PlainCh>2</PlainCh>
+                    <Ropi>2</Ropi>
+                    <Rwpi>2</Rwpi>
+                    <wLevel>0</wLevel>
+                    <uThumb>2</uThumb>
+                    <uSurpInc>2</uSurpInc>
+                    <uC99>2</uC99>
+                    <uGnu>2</uGnu>
+                    <useXO>2</useXO>
+                    <v6Lang>0</v6Lang>
+                    <v6LangP>0</v6LangP>
+                    <vShortEn>2</vShortEn>
+                    <vShortWch>2</vShortWch>
+                    <v6Lto>2</v6Lto>
+                    <v6WtE>2</v6WtE>
+                    <v6Rtti>2</v6Rtti>
+                    <VariousControls>
+                      <MiscControls></MiscControls>
+                      <Define></Define>
+                      <Undefine></Undefine>
+                      <IncludePath></IncludePath>
+                    </VariousControls>
+                  </Cads>
+                </FileArmAds>
+              </FileOption>
             </File>
             <File>
               <FileName>stm32l4xx_hal_rtc.c</FileName>
@@ -1915,6 +2083,76 @@
               <FileType>5</FileType>
               <FilePath>../app/epd_vendor_demo.h</FilePath>
             </File>
+            <File>
+              <FileName>storage.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../app/storage.c</FilePath>
+            </File>
+            <File>
+              <FileName>storage.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../app/storage.h</FilePath>
+            </File>
+            <File>
+              <FileName>clock_model.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../app/clock_model.c</FilePath>
+            </File>
+            <File>
+              <FileName>clock_model.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../app/clock_model.h</FilePath>
+            </File>
+            <File>
+              <FileName>clock_faults.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../app/clock_faults.c</FilePath>
+            </File>
+            <File>
+              <FileName>clock_faults.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../app/clock_faults.h</FilePath>
+            </File>
+            <File>
+              <FileName>clock_service.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../app/clock_service.c</FilePath>
+            </File>
+            <File>
+              <FileName>clock_service.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../app/clock_service.h</FilePath>
+            </File>
+            <File>
+              <FileName>clock_schedule.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../app/clock_schedule.c</FilePath>
+            </File>
+            <File>
+              <FileName>clock_schedule.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../app/clock_schedule.h</FilePath>
+            </File>
+            <File>
+              <FileName>clock_config.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../app/clock_config.c</FilePath>
+            </File>
+            <File>
+              <FileName>clock_config.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../app/clock_config.h</FilePath>
+            </File>
+            <File>
+              <FileName>debug_console.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../app/debug_console.c</FilePath>
+            </File>
+            <File>
+              <FileName>debug_console.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../app/debug_console.h</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -1939,6 +2177,16 @@
               <FileName>epd_gdey029t94.h</FileName>
               <FileType>5</FileType>
               <FilePath>../device/epd_gdey029t94.h</FilePath>
+            </File>
+            <File>
+              <FileName>flash_w25q128.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../device/flash_w25q128.c</FilePath>
+            </File>
+            <File>
+              <FileName>flash_w25q128.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../device/flash_w25q128.h</FilePath>
             </File>
           </Files>
         </Group>
@@ -1974,6 +2222,26 @@
               <FileName>stm32_gdey029t94.h</FileName>
               <FileType>5</FileType>
               <FilePath>../platform/stm32_gdey029t94.h</FilePath>
+            </File>
+            <File>
+              <FileName>stm32_w25q128.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../platform/stm32_w25q128.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32_w25q128.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../platform/stm32_w25q128.h</FilePath>
+            </File>
+            <File>
+              <FileName>stm32_clock.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../platform/stm32_clock.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32_clock.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../platform/stm32_clock.h</FilePath>
             </File>
           </Files>
         </Group>
@@ -2054,6 +2322,16 @@
               <FileName>epd_vendor_assets.h</FileName>
               <FileType>5</FileType>
               <FilePath>../resources/epd_vendor_assets.h</FilePath>
+            </File>
+            <File>
+              <FileName>clock_gray_assets.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../resources/clock_gray_assets.c</FilePath>
+            </File>
+            <File>
+              <FileName>clock_gray_assets.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../resources/clock_gray_assets.h</FilePath>
             </File>
           </Files>
         </Group>

@@ -20,7 +20,9 @@
 #include "main.h"
 #include "cmsis_os.h"
 #include "adc.h"
+#include "dma.h"
 #include "i2c.h"
+#include "lptim.h"
 #include "rtc.h"
 #include "spi.h"
 #include "tim.h"
@@ -94,6 +96,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_I2C1_Init();
   MX_I2C2_Init();
   MX_SPI1_Init();
@@ -103,6 +106,7 @@ int main(void)
   MX_RTC_Init();
   MX_TIM4_Init();
   MX_ADC1_Init();
+  MX_LPTIM1_Init();
   /* USER CODE BEGIN 2 */
   Debug_Init();
   /* USER CODE END 2 */

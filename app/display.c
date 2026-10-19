@@ -26,7 +26,7 @@ static void s_display_log_error(epd_gdey029t94_status_t status)
         Debug_Log("display: BUSY timeout\r\n");
         break;
     case EPD_GDEY029T94_ERROR_IO:
-        Debug_Log("display: IO or RTC error\r\n");
+        Debug_Log("display: transport IO error\r\n");
         break;
     case EPD_GDEY029T94_ERROR_ARGUMENT:
         Debug_Log("display: invalid argument\r\n");
@@ -49,16 +49,21 @@ static void s_display_log_error(epd_gdey029t94_status_t status)
 static void s_display_run(void *p_argument)
 {
     uint32_t attempt;
+    uint32_t completed;
     epd_gdey029t94_status_t status;
 
     (void)p_argument;
     Debug_Log("display: starting clock\r\n");
-    for (attempt = 0U; attempt < DISPLAY_START_ATTEMPTS; attempt++) {
+    attempt = 0U;
+    while (attempt < DISPLAY_START_ATTEMPTS) {
+        completed = epd_bringup_get_completed_frames();
         /* The clock stays here on success and returns a concrete failure. */
         status = epd_bringup_run_clock();
+        if (epd_bringup_get_completed_frames() != completed) { attempt = 0U; }
+        attempt++;
         s_display_last_status = status;
         s_display_log_error(status);
-        if ((attempt + 1U) < DISPLAY_START_ATTEMPTS) {
+        if (attempt < DISPLAY_START_ATTEMPTS) {
             Debug_Log("display: retry in 1000 ms\r\n");
             (void)osDelay((uint32_t)pdMS_TO_TICKS(DISPLAY_RETRY_DELAY_MS));
         }

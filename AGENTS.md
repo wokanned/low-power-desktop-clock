@@ -93,11 +93,14 @@ DeskClock.ioc      # CubeMX 工程配置
 
 - 复用远端 `EinKTest` 的设备驱动、GUI、字库和资源，不得随意重构协议或资源。`device/` 保持不依赖 HAL；`platform/stm32_gdey029t94` 负责绑定 SPI2、控制引脚和延时。
 - `app/display` 独占显示控制器、帧缓冲区和全局 `Paint` 画布。在 RTOS 初始化阶段通过 `display_start()` 启动。禁止从其他任务或 ISR 调用绘制、演示或刷新函数。
-- `app/epd_bringup` 保留参考时钟策略：初始背景全刷新，秒更新使用局部刷新，分钟更新使用整帧快速刷新；快速刷新和局部刷新共同计数，成功更新 120 次后执行一次清理刷新。
+- `app/epd_bringup` 的生产时钟使用四灰阶分钟全刷：每帧复位、灰阶初始化、双平面发送、BUSY 完成后提交、休眠。错误集合或持久化格式变化申请额外全刷；原厂黑白快刷/局刷仅保留在演示与诊断路径。
 - Keil 默认设置为 `EPD_VENDOR_DEMO_MODE=0`。模式 1–6 是可选的厂商演示，其编号映射见显示移植文档。其他构建方式必须显式设置该宏，因为导入头文件的回退值为模式 1。
 - 显示启动/恢复最多尝试三次，失败后间隔一秒再尝试。尝试耗尽后记录保留的状态，并仅挂起显示任务。调度器启动后，平台延时通过 RTOS 让出执行权。
 - 墨水屏持续供电，初始化、错误恢复和休眠策略均不控制显示供电开关。前光独立控制方式仍待确认。
 - `.ioc` 与生成的 SPI2 初始化必须保持一致，预分频为 32（2.5MHz）。普通 MCU 复位应保留 RTC 备份标记和日历。
+- 用户已确认实物屏幕沿用原板 PC3 MOSI。`.ioc` 与 Core 必须使用 PC3 AF5，BUSY 使用 PC5 并保留 `BUSY` 标签；不得将 MOSI 自动分配到 PB15。USART2 中断入口由 CubeMX 生成，平台仅保留 HAL 接收和错误回调，详见 `docs/clock_gray4_ui.md`。
+- `defaultTask` 每秒运行时钟服务、每十秒缓存内存统计；只有显示任务绘制。不存在的数据提供者显示 N/A。静态故障表按七类聚合，EPD 故障只保留诊断，不上屏。
+- USART2 默认 JustFloat；显式 `CONSOLE ON` 后暂停遥测，支持持久化 FORMAT 和 ERRORS。storageTask 独占配置事务，预留 W25Q 最后两个独立扇区；不可与启动测试区混用。
 
 ## 分层边界（必须严格遵守）
 
@@ -140,6 +143,7 @@ Core ---------> 仅负责系统初始化，不放业务逻辑
 | `docs/嵌入式遥测与实验调试工作流.md`                     | 遥测契约、实验准备、观测、日志和调试工作流                          | 遥测、串口观测、实验或硬件调试任务 |
 | `docs/totalPLAN.md`                                      | 完整技术方案：含封装约束的 BOM、电源树、低功耗流程、开发阶段        | 架构或硬件决策                     |
 | `docs/epd_gdey029t94_port.md`                            | 显示源码来源、GPIO/连接器映射、刷新/任务归属、验证状态              | 显示移植或硬件调试                 |
+| `docs/clock_gray4_ui.md`                               | 四灰阶界面、快照与故障契约、内存统计、刷新调度和验证状态           | 时钟界面和数据接入                 |
 | `.github/copilot-instructions.md`                        | AI 启动规则和仓库级指导                                             | 所有任务                           |
 | `.github/instructions/project-structure.instructions.md` | 分层边界和构建同步规则                                              | 新增/移动源文件                    |
 | `.github/instructions/cubemx-generated.instructions.md`  | CubeMX 文件修改安全规则                                             | 修改 Core/ 或`.ioc`              |

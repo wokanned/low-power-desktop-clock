@@ -19,7 +19,6 @@ typedef struct {
     stm32_gdey029t94_pin_t dc;
     stm32_gdey029t94_pin_t reset;
     stm32_gdey029t94_pin_t busy;
-    stm32_gdey029t94_pin_t power;
 } stm32_gdey029t94_context_t;
 
 /* Bind SPI2 and the DeskClock main-board netlist pins. Does not perform IO. */
@@ -27,8 +26,8 @@ epd_gdey029t94_status_t stm32_gdey029t94_make_io(
     epd_gdey029t94_io_t *io,
     stm32_gdey029t94_context_t *context);
 
-/* Call after make_io and before every controller init. Keeps CS inactive,
-   holds reset low, enables the HMI supply, then waits for supply settling. */
+/* Call after make_io and before controller init. CS inactive, reset low.
+   The display supply is continuous; no power-enable GPIO is accessed. */
 epd_gdey029t94_status_t stm32_gdey029t94_prepare(
     stm32_gdey029t94_context_t *context);
 

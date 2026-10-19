@@ -31,6 +31,7 @@ epd_gdey029t94_status_t epd_bringup_run_once(void);
 /* Run only from the single display task after the RTOS scheduler starts. */
 epd_gdey029t94_status_t epd_bringup_run_clock(void);
 epd_gdey029t94_status_t epd_bringup_get_last_status(void);
+uint32_t epd_bringup_get_completed_frames(void);
 
 #ifdef __cplusplus
 }

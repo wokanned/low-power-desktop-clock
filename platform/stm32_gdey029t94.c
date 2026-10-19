@@ -9,10 +9,6 @@
 #define STM32_EPD_SPI_MAX_TRANSFER       0xFFFFU
 #define STM32_EPD_MS_PER_SECOND          1000U
 #define STM32_EPD_MAX_DELAY_TICKS        0xFFFFFFFEU
-/* Engineering settling margin; verify the switched rail on the target board. */
-#define STM32_EPD_POWER_SETTLE_MS        10U
-/* Project power-tree convention in docs/totalPLAN.md: SY6288 EN is active low. */
-#define STM32_EPD_POWER_ON_LEVEL         GPIO_PIN_RESET
 
 static void stm32_epd_write_pin(const stm32_gdey029t94_pin_t *p_pin,
                                 uint8_t level)
@@ -134,8 +130,6 @@ epd_gdey029t94_status_t stm32_gdey029t94_make_io(
     context->reset.pin = RES_Pin;
     context->busy.port = BUSY_GPIO_Port;
     context->busy.pin = BUSY_Pin;
-    context->power.port = ELINKEN_GPIO_Port;
-    context->power.pin = ELINKEN_Pin;
 
     io->spi_write = stm32_epd_spi_write;
     io->read_busy = stm32_epd_read_busy;
@@ -153,15 +147,11 @@ epd_gdey029t94_status_t stm32_gdey029t94_prepare(
 {
     if ((context == NULL) || (context->spi_handle == NULL) ||
         (context->cs.port == NULL) || (context->dc.port == NULL) ||
-        (context->reset.port == NULL) || (context->busy.port == NULL) ||
-        (context->power.port == NULL)) {
+        (context->reset.port == NULL) || (context->busy.port == NULL)) {
         return EPD_GDEY029T94_ERROR_ARGUMENT;
     }
     stm32_epd_set_cs(context, 1U);
     stm32_epd_set_dc(context, 0U);
     stm32_epd_set_reset(context, 0U);
-    HAL_GPIO_WritePin((GPIO_TypeDef *)context->power.port, context->power.pin,
-                      STM32_EPD_POWER_ON_LEVEL);
-    stm32_epd_delay_ms(context, STM32_EPD_POWER_SETTLE_MS);
     return EPD_GDEY029T94_OK;
 }

@@ -1,5 +1,6 @@
 #include "accel.h"
 #include "debug.h"
+#include "clock_faults.h"
 #include "stm32_adxl345.h"
 #include "FreeRTOS.h"
 #include "task.h"
@@ -22,6 +23,35 @@ static StackType_t s_stack[ACCEL_STACK_WORDS];
 static StaticTask_t s_control;
 static osThreadId_t s_task;
 static adxl345_ctx_t s_ctx;
+static accel_snapshot_t s_snapshot;
+
+static void s_publish(adxl345_status_t result, uint32_t flags, TickType_t now)
+{
+    uint32_t mask = 0U;
+    if ((flags & ACCEL_STATUS_IO_ERROR) != 0U) { mask = CLOCK_FAULT_IO; }
+    if ((flags & ACCEL_STATUS_CONFIG_ERROR) != 0U) {
+        mask = result == ADXL345_ERROR_ID ? CLOCK_FAULT_ID : CLOCK_FAULT_CONFIGURATION;
+    }
+    if ((flags & ACCEL_STATUS_NOT_READY) != 0U) { mask = CLOCK_FAULT_TIMEOUT; }
+    taskENTER_CRITICAL();
+    if (mask != 0U) {
+        if (s_snapshot.state != CLOCK_DATA_ERROR) { s_snapshot.first_fault_tick = now; }
+        s_snapshot.state = CLOCK_DATA_ERROR;
+    } else if ((flags & ACCEL_STATUS_VALID) != 0U) {
+        s_snapshot.state = CLOCK_DATA_READY;
+        s_snapshot.last_sample_tick = now;
+    } else if (s_snapshot.state != CLOCK_DATA_ERROR) {
+        s_snapshot.state = CLOCK_DATA_INITIALIZING;
+    }
+    s_snapshot.result = result;
+    s_snapshot.flags = flags;
+    s_snapshot.generation++;
+    taskEXIT_CRITICAL();
+    /* Recovery warmup does not clear an episode before a usable sample. */
+    if (mask != 0U || (flags & ACCEL_STATUS_VALID) != 0U) {
+        clock_fault_report(CLOCK_FAULT_IMU, mask);
+    }
+}
 
 static float s_nan(void)
 {
@@ -126,6 +156,7 @@ static void s_run(void *p_argument)
         now = xTaskGetTickCount();
         late = (now - iteration_start) >= pdMS_TO_TICKS(ACCEL_SAMPLE_MS);
         if (late) { flags |= ACCEL_STATUS_LATE; }
+        s_publish(result, flags, now);
         frame[0] = (float)((now * (1000U / configTICK_RATE_HZ)) % ACCEL_WIRE_MODULUS);
         frame[1] = (float)sequence;
         frame[12] = (float)errors;
@@ -147,7 +178,24 @@ bool accel_start(void)
         .priority = osPriorityAboveNormal
     };
     if (s_task != NULL) { return true; }
-    if (!Debug_IsReady() || stm32_adxl345_bind(&s_ctx) != 0) { return false; }
+    if (!Debug_IsReady() || stm32_adxl345_bind(&s_ctx) != 0) {
+        s_snapshot.state = CLOCK_DATA_ERROR;
+        clock_fault_report(CLOCK_FAULT_IMU, CLOCK_FAULT_START);
+        return false;
+    }
     s_task = osThreadNew(s_run, NULL, &attributes);
+    if (s_task == NULL) {
+        s_snapshot.state = CLOCK_DATA_ERROR;
+        clock_fault_report(CLOCK_FAULT_IMU, CLOCK_FAULT_START);
+    }
     return s_task != NULL;
+}
+
+void accel_get_snapshot(accel_snapshot_t *p_snapshot)
+{
+    if (p_snapshot != NULL) {
+        taskENTER_CRITICAL();
+        *p_snapshot = s_snapshot;
+        taskEXIT_CRITICAL();
+    }
 }

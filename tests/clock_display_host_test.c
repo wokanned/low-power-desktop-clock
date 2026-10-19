@@ -1,0 +1,412 @@
+/* Real display/bringup/schedule; mock only RTOS, data, raster and transport.
+ * Each scenario is a fresh process so production private statics stay private. */
+#include "../app/display.h"
+#include "../app/epd_bringup.h"
+#include "../app/epd_clock_view.h"
+#include "../app/clock_service.h"
+#include "../platform/stm32_gdey029t94.h"
+#include "stubs/display/FreeRTOS.h"
+#include "stubs/display/cmsis_os.h"
+
+#include <setjmp.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define MAX_EVENTS 32U
+#define STOP_COMPLETE 1
+#define STOP_SUSPENDED 2
+#define CHECK(condition) do { \
+    s_checks++; \
+    if (!(condition)) { \
+        fprintf(stderr,"FAIL %s:%d (%s): %s\n",__FILE__,__LINE__,s_scenario,#condition); \
+        exit(1); \
+    } \
+} while (0)
+
+static const char *s_scenario;
+static unsigned long s_checks;
+static jmp_buf s_stop;
+static clock_view_model_t s_live;
+static clock_view_model_t s_render_models[MAX_EVENTS];
+static clock_view_model_t s_committed_models[MAX_EVENTS];
+static uint32_t s_frame_hashes[MAX_EVENTS];
+static uint32_t s_frame_ticks[MAX_EVENTS];
+static uint32_t s_delay_ticks[MAX_EVENTS];
+static uint32_t s_tick;
+static uint32_t s_renders;
+static uint32_t s_refreshes;
+static uint32_t s_committed;
+static uint32_t s_sleeps;
+static uint32_t s_init_calls;
+static uint32_t s_bind_calls;
+static uint32_t s_prepare_calls;
+static uint32_t s_retry_delays;
+static uint32_t s_poll_delays;
+static uint32_t s_model_reads;
+static uint32_t s_thread_creates;
+static uint32_t s_suspends;
+static uint8_t s_sleep_error_observed;
+static osThreadFunc_t s_thread_function;
+static void *s_thread_argument;
+
+static int scenario(const char *p_name)
+{
+    return strcmp(s_scenario,p_name)==0;
+}
+
+static uint32_t frame_hash(const uint8_t *p_data, uint32_t length)
+{
+    uint32_t hash=2166136261UL;
+    uint32_t i;
+    for(i=0U;i<length;i++) { hash=(hash^p_data[i])*16777619UL; }
+    return hash;
+}
+
+static void change_live(uint32_t revision, uint8_t active)
+{
+    s_live.faults.revision=revision;
+    s_live.faults.active_categories=active;
+    s_live.format_revision=revision;
+    s_live.format=revision%2U==0U?CLOCK_FORMAT_24:CLOCK_FORMAT_12;
+}
+
+void clock_service_get_model(clock_view_model_t *p_model)
+{
+    s_model_reads++;
+    *p_model=s_live;
+}
+
+uint8_t epd_clock_view_draw_gray4(uint8_t *p_frame,size_t length,
+                                const clock_view_model_t *p_model)
+{
+    CHECK(s_renders<MAX_EVENTS);
+    CHECK(length==EPD_CLOCK_VIEW_GRAY4_BYTES);
+    CHECK(p_model->startup_ready==1U);
+    s_render_models[s_renders++]=*p_model;
+    memset(p_frame,0x5A,length);
+    memcpy(p_frame,&p_model->calendar,sizeof(p_model->calendar));
+    memcpy(p_frame+16U,&p_model->faults.revision,sizeof(uint32_t));
+    memcpy(p_frame+20U,&p_model->format_revision,sizeof(uint32_t));
+    p_frame[24U]=(uint8_t)p_model->memory_mode;
+    p_frame[25U]=(uint8_t)p_model->calendar_state;
+    p_frame[26U]=p_model->faults.active_categories;
+    return 1U;
+}
+
+epd_gdey029t94_status_t stm32_gdey029t94_make_io(
+    epd_gdey029t94_io_t *p_io,stm32_gdey029t94_context_t *p_context)
+{
+    CHECK(p_io!=NULL && p_context!=NULL);
+    s_bind_calls++;
+    memset(p_io,0,sizeof(*p_io));
+    p_io->handle=p_context;
+    return EPD_GDEY029T94_OK;
+}
+
+epd_gdey029t94_status_t stm32_gdey029t94_prepare(stm32_gdey029t94_context_t *p_context)
+{
+    CHECK(p_context!=NULL);
+    s_prepare_calls++;
+    return EPD_GDEY029T94_OK;
+}
+
+epd_gdey029t94_status_t epd_gdey029t94_init_profile(
+    epd_gdey029t94_t *p_device,const epd_gdey029t94_io_t *p_io,
+    epd_gdey029t94_profile_t profile)
+{
+    CHECK(p_device!=NULL && p_io!=NULL);
+    CHECK(profile==EPD_PROFILE_GRAY4);
+    CHECK(s_live.startup_ready==1U);
+    s_init_calls++;
+    if(scenario("init-retry") && s_init_calls<3U) { return EPD_GDEY029T94_ERROR_IO; }
+    p_device->profile=profile;
+    p_device->initialized=1U;
+    p_device->sleeping=0U;
+    return EPD_GDEY029T94_OK;
+}
+
+epd_gdey029t94_status_t epd_gdey029t94_gray4_refresh(
+    epd_gdey029t94_t *p_device,const uint8_t *p_frame,uint32_t length)
+{
+    uint8_t fail=0U;
+    uint32_t before=epd_bringup_get_completed_frames();
+    CHECK(s_refreshes<MAX_EVENTS);
+    CHECK(p_device->initialized==1U && p_device->sleeping==0U);
+    CHECK(p_device->profile==EPD_PROFILE_GRAY4);
+    CHECK(length==EPD_CLOCK_VIEW_GRAY4_BYTES);
+    CHECK(before==s_committed);
+    s_frame_hashes[s_refreshes]=frame_hash(p_frame,length);
+    s_frame_ticks[s_refreshes]=s_tick;
+    s_refreshes++;
+    if(scenario("retry-limit")) {
+        fail=1U;
+    } else if(scenario("retry-success") && s_refreshes<3U) {
+        fail=1U;
+        change_live(s_refreshes,1U);
+    } else if(scenario("failed-fault-coalesce") || scenario("failed-recovery-coalesce")) {
+        fail=(uint8_t)(s_refreshes<3U);
+    } else if(scenario("retry-budget")) {
+        fail=(uint8_t)(s_refreshes!=3U);
+    } else if(scenario("coalesce")) {
+        if(s_refreshes==1U) {
+            s_tick+=1000U;change_live(1U,1U);
+            s_tick+=1000U;change_live(2U,2U);
+            s_live.calendar.minute=31U;
+        } else if(s_refreshes==2U) {
+            s_tick+=1000U;change_live(3U,0U);
+            s_live.calendar.minute=32U;
+        }
+        /* Updates during the blocking call cannot commit the pending frame. */
+        CHECK(epd_bringup_get_completed_frames()==before);
+        CHECK(frame_hash(p_frame,length)==s_frame_hashes[s_refreshes-1U]);
+    }
+    CHECK(epd_bringup_get_completed_frames()==before);
+    if(fail) { return EPD_GDEY029T94_ERROR_BUSY_TIMEOUT; }
+    s_committed_models[s_committed]=s_render_models[s_renders-1U];
+    s_committed++;
+    p_device->full_refreshes++;
+    return EPD_GDEY029T94_OK;
+}
+
+epd_gdey029t94_status_t epd_gdey029t94_sleep(epd_gdey029t94_t *p_device)
+{
+    CHECK(p_device!=NULL);
+    s_sleeps++;
+    CHECK(epd_bringup_get_completed_frames()==s_committed);
+    CHECK(s_sleeps==s_committed);
+    if(scenario("sleep-failure") && s_sleeps==1U) {
+        return EPD_GDEY029T94_ERROR_IO;
+    }
+    p_device->sleeping=1U;
+    return EPD_GDEY029T94_OK;
+}
+
+void Debug_Log(const char *p_message)
+{
+    CHECK(p_message!=NULL);
+}
+
+TickType_t xTaskGetTickCount(void) { return s_tick; }
+
+osThreadId_t osThreadNew(osThreadFunc_t function,void *p_argument,
+                         const osThreadAttr_t *p_attributes)
+{
+    CHECK(function!=NULL && p_attributes!=NULL);
+    CHECK(p_attributes->cb_mem!=NULL && p_attributes->cb_size>0U);
+    CHECK(p_attributes->stack_mem!=NULL && p_attributes->stack_size==2048U);
+    CHECK(p_attributes->priority==osPriorityNormal);
+    CHECK(strcmp(p_attributes->name,"displayTask")==0);
+    s_thread_creates++;
+    s_thread_function=function;s_thread_argument=p_argument;
+    return (osThreadId_t)&s_thread_function;
+}
+
+osThreadId_t osThreadGetId(void) { return (osThreadId_t)&s_thread_function; }
+
+int32_t osThreadSuspend(osThreadId_t thread)
+{
+    CHECK(thread==osThreadGetId());
+    s_suspends++;
+    longjmp(s_stop,STOP_SUSPENDED);
+    return 0;
+}
+
+int32_t osDelay(uint32_t ticks)
+{
+    CHECK(ticks==200U || ticks==1000U);
+    if(ticks==1000U) {
+        CHECK(s_retry_delays<MAX_EVENTS);
+        s_delay_ticks[s_retry_delays++]=s_tick;
+    } else {
+        s_poll_delays++;
+    }
+    s_tick+=ticks;
+    if(scenario("startup")) {
+        if(s_poll_delays==5U) {
+            CHECK(s_refreshes==0U && s_renders==0U && s_init_calls==0U);
+            s_live.startup_ready=1U;
+        }
+        if(s_committed==1U) { longjmp(s_stop,STOP_COMPLETE); }
+    } else if(scenario("minute")) {
+        s_live.calendar.second=(uint8_t)((s_tick/1000U)%60U);
+        if(s_tick==10000U) { s_live.temperature.value=100; }
+        if(s_tick>=60000U) { s_live.calendar.minute=31U; }
+        if(s_committed==2U) { longjmp(s_stop,STOP_COMPLETE); }
+    } else if(scenario("rtc-error")) {
+        if(s_tick>=2000U) { longjmp(s_stop,STOP_COMPLETE); }
+    } else if(scenario("retry-success")) {
+        if(s_committed==1U && s_tick>=4000U) { longjmp(s_stop,STOP_COMPLETE); }
+    } else if(scenario("failed-fault-coalesce")) {
+        if(ticks==1000U && s_retry_delays==1U) {
+            change_live(1U,1U);change_live(2U,2U);change_live(3U,1U);
+        } else if(ticks==1000U && s_retry_delays==2U) {
+            change_live(4U,2U);change_live(5U,0U);change_live(6U,2U);
+        }
+        if(s_committed==1U && s_tick>=4000U) { longjmp(s_stop,STOP_COMPLETE); }
+    } else if(scenario("failed-recovery-coalesce")) {
+        if(ticks==1000U && s_retry_delays==1U) {
+            change_live(2U,2U);change_live(3U,0U);
+        } else if(ticks==1000U && s_retry_delays==2U) {
+            change_live(4U,1U);change_live(5U,0U);
+        }
+        if(s_committed==1U && s_tick>=4000U) { longjmp(s_stop,STOP_COMPLETE); }
+    } else if(scenario("init-retry")) {
+        if(s_committed==1U) { longjmp(s_stop,STOP_COMPLETE); }
+    } else if(scenario("retry-budget")) {
+        if(s_refreshes==3U && s_committed==1U) { change_live(1U,0U); }
+    } else if(scenario("sleep-failure")) {
+        if(s_committed==1U) {
+            CHECK(display_get_last_status()==EPD_GDEY029T94_ERROR_IO);
+            s_sleep_error_observed=1U;
+            s_live.calendar.minute=31U;
+        }
+        if(s_committed==2U) { longjmp(s_stop,STOP_COMPLETE); }
+    } else if(scenario("coalesce")) {
+        if(s_committed==3U) { longjmp(s_stop,STOP_COMPLETE); }
+    }
+    CHECK(s_tick<70000U);
+    return 0;
+}
+
+static void init_model(void)
+{
+    memset(&s_live,0,sizeof(s_live));
+    s_live.startup_ready=1U;
+    s_live.format=CLOCK_FORMAT_24;
+    s_live.calendar_state=CLOCK_DATA_READY;
+    s_live.calendar=(clock_calendar_t){2026U,10U,18U,7U,21U,30U,0U};
+    if(scenario("startup")) { s_live.startup_ready=0U; }
+    if(scenario("rtc-error")) {
+        s_live.calendar_state=CLOCK_DATA_ERROR;
+        s_live.faults.revision=1U;
+        s_live.faults.active_categories=1U;
+    }
+    if(scenario("failed-recovery-coalesce")) { change_live(1U,1U); }
+}
+
+static void check_retry_intervals(uint32_t expected)
+{
+    uint32_t i;
+    CHECK(s_retry_delays==expected);
+    for(i=0U;i<expected;i++) {
+        CHECK(s_delay_ticks[i]%200U==0U);
+    }
+}
+
+static void verify(int stopped)
+{
+    uint32_t i;
+    CHECK(s_thread_creates==1U);
+    CHECK(s_bind_calls==s_prepare_calls);
+    CHECK(epd_bringup_get_completed_frames()==s_committed);
+    if(scenario("startup")) {
+        CHECK(stopped==STOP_COMPLETE);CHECK(s_init_calls==1U && s_renders==1U);
+        CHECK(s_frame_ticks[0]==1000U);check_retry_intervals(0U);
+    } else if(scenario("minute")) {
+        CHECK(stopped==STOP_COMPLETE);CHECK(s_refreshes==2U && s_renders==2U);
+        CHECK(s_frame_ticks[0]==0U && s_frame_ticks[1]==60000U);
+        CHECK(s_render_models[0].calendar.second==0U);
+        CHECK(s_render_models[1].calendar.minute==31U);
+        CHECK(s_render_models[1].memory_mode==CLOCK_MEMORY_IFLASH);
+        check_retry_intervals(0U);
+    } else if(scenario("rtc-error")) {
+        CHECK(stopped==STOP_COMPLETE);CHECK(s_refreshes==1U && s_renders==1U);
+        CHECK(s_render_models[0].calendar_state==CLOCK_DATA_ERROR);
+        CHECK(s_init_calls==1U && s_bind_calls==1U);check_retry_intervals(0U);
+    } else if(scenario("retry-limit")) {
+        CHECK(stopped==STOP_SUSPENDED);CHECK(s_suspends==1U);
+        CHECK(s_refreshes==3U && s_init_calls==3U);
+        CHECK(s_committed==0U && s_sleeps==0U && s_renders==3U);
+        CHECK(s_frame_hashes[0]==s_frame_hashes[1] && s_frame_hashes[1]==s_frame_hashes[2]);
+        CHECK(s_frame_ticks[0]==0U && s_frame_ticks[1]==1000U && s_frame_ticks[2]==2000U);
+        CHECK(display_get_last_status()==EPD_GDEY029T94_ERROR_BUSY_TIMEOUT);
+        check_retry_intervals(2U);
+    } else if(scenario("retry-success")) {
+        CHECK(stopped==STOP_COMPLETE);CHECK(s_refreshes==3U && s_renders==3U);
+        CHECK(s_committed==1U && s_sleeps==1U);
+        CHECK(s_frame_hashes[0]!=s_frame_hashes[1] && s_frame_hashes[1]!=s_frame_hashes[2]);
+        CHECK(s_render_models[0].faults.revision==0U);
+        CHECK(s_render_models[1].faults.revision==1U);
+        CHECK(s_render_models[2].faults.revision==2U);
+        CHECK(s_committed_models[0].faults.revision==2U);
+        CHECK(s_committed_models[0].faults.active_categories==1U);
+        CHECK(s_committed_models[0].format_revision==2U);
+        for(i=0U;i<3U;i++) { CHECK(s_render_models[i].memory_mode==CLOCK_MEMORY_SRAM); }
+        CHECK(s_frame_ticks[0]==0U && s_frame_ticks[1]==1000U && s_frame_ticks[2]==2000U);
+        check_retry_intervals(2U);
+    } else if(scenario("failed-fault-coalesce") || scenario("failed-recovery-coalesce")) {
+        CHECK(stopped==STOP_COMPLETE);CHECK(s_refreshes==3U && s_renders==3U);
+        CHECK(s_committed==1U && s_sleeps==1U);
+        CHECK(s_frame_hashes[0]!=s_frame_hashes[1] && s_frame_hashes[1]!=s_frame_hashes[2]);
+        CHECK(s_render_models[1].faults.revision==3U);
+        if(scenario("failed-fault-coalesce")) {
+            CHECK(s_render_models[0].faults.revision==0U);
+            CHECK(s_committed_models[0].faults.revision==6U);
+            CHECK(s_committed_models[0].format_revision==6U);
+            CHECK(s_committed_models[0].faults.active_categories==2U);
+        } else {
+            CHECK(s_render_models[0].faults.revision==1U);
+            CHECK(s_committed_models[0].faults.revision==5U);
+            CHECK(s_committed_models[0].format_revision==5U);
+            CHECK(s_committed_models[0].faults.active_categories==0U);
+            CHECK(s_committed_models[0].format==CLOCK_FORMAT_12);
+        }
+        for(i=0U;i<3U;i++) { CHECK(s_render_models[i].memory_mode==CLOCK_MEMORY_SRAM); }
+        CHECK(s_frame_ticks[0]==0U && s_frame_ticks[1]==1000U && s_frame_ticks[2]==2000U);
+        check_retry_intervals(2U);
+    } else if(scenario("init-retry")) {
+        CHECK(stopped==STOP_COMPLETE);CHECK(s_init_calls==3U && s_refreshes==1U);
+        CHECK(s_renders==3U && s_committed==1U);CHECK(s_frame_ticks[0]==2000U);
+        check_retry_intervals(2U);
+    } else if(scenario("retry-budget")) {
+        CHECK(stopped==STOP_SUSPENDED);CHECK(s_refreshes==6U && s_renders==6U);
+        CHECK(s_committed==1U && s_sleeps==1U);
+        for(i=1U;i<3U;i++) { CHECK(s_frame_hashes[0]==s_frame_hashes[i]); }
+        for(i=4U;i<6U;i++) { CHECK(s_frame_hashes[3]==s_frame_hashes[i]); }
+        for(i=0U;i<3U;i++) { CHECK(s_render_models[i].memory_mode==CLOCK_MEMORY_SRAM); }
+        for(i=3U;i<6U;i++) { CHECK(s_render_models[i].memory_mode==CLOCK_MEMORY_IFLASH); }
+        CHECK(s_frame_ticks[0]==0U && s_frame_ticks[1]==1000U && s_frame_ticks[2]==2000U);
+        CHECK(s_frame_ticks[3]==2200U && s_frame_ticks[4]==3200U && s_frame_ticks[5]==4200U);
+        check_retry_intervals(4U);
+    } else if(scenario("sleep-failure")) {
+        CHECK(stopped==STOP_COMPLETE);CHECK(s_refreshes==2U && s_committed==2U);
+        CHECK(s_sleep_error_observed==1U);CHECK(s_init_calls==2U && s_bind_calls==1U);
+        CHECK(s_render_models[1].memory_mode==CLOCK_MEMORY_IFLASH);
+        CHECK(s_frame_ticks[0]==0U && s_frame_ticks[1]==200U);check_retry_intervals(0U);
+    } else if(scenario("coalesce")) {
+        CHECK(stopped==STOP_COMPLETE);CHECK(s_refreshes==3U && s_renders==3U);
+        CHECK(s_committed==3U && s_sleeps==3U);
+        CHECK(s_render_models[0].faults.revision==0U);
+        CHECK(s_render_models[1].faults.revision==2U && s_render_models[1].format_revision==2U);
+        CHECK(s_render_models[2].faults.revision==3U && s_render_models[2].format_revision==3U);
+        CHECK(s_render_models[1].faults.active_categories==2U);
+        CHECK(s_render_models[2].faults.active_categories==0U);
+        CHECK(s_render_models[0].memory_mode==CLOCK_MEMORY_SRAM);
+        CHECK(s_render_models[1].memory_mode==CLOCK_MEMORY_IFLASH);
+        CHECK(s_render_models[2].memory_mode==CLOCK_MEMORY_IFLASH);
+        CHECK(s_frame_ticks[0]==0U && s_frame_ticks[1]==2200U && s_frame_ticks[2]==3400U);
+        check_retry_intervals(0U);
+    } else {
+        CHECK(0);
+    }
+}
+
+int main(int argc,char **argv)
+{
+    int stopped;
+    if(argc!=2) { fprintf(stderr,"A scenario argument is required\n");return 2; }
+    s_scenario=argv[1];
+    init_model();
+    CHECK(display_start());CHECK(display_start());
+    CHECK(s_thread_function!=NULL);
+    stopped=setjmp(s_stop);
+    if(stopped==0) {
+        s_thread_function(s_thread_argument);
+        CHECK(0);
+    }
+    verify(stopped);
+    printf("PASS: production display scenario %s (%lu checks), %lu renders, %lu commits\n",
+        s_scenario,s_checks,(unsigned long)s_renders,(unsigned long)s_committed);
+    return 0;
+}

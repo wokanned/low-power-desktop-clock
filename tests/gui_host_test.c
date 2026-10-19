@@ -560,7 +560,8 @@ static int in_seconds_window(size_t byte)
     return y >= 12U && y < 80U && x_byte >= 4U && x_byte < 11U;
 }
 
-static void test_clock_view(void)
+/* The seconds window is a legacy BW diagnostic contract, not production UI. */
+static void test_legacy_clock_view(void)
 {
     static const uint8_t transitions[][2] = {
         {3U, 4U}, {4U, 5U}, {4U, 2U}, {9U, 10U}, {59U, 0U}
@@ -837,7 +838,7 @@ int main(int argc, char **argv)
     test_fonts();
     test_strings_and_numbers();
     test_bitmap_and_selection();
-    test_clock_view();
+    test_legacy_clock_view();
     if (argc > 1) {
         export_previews(argv[1]);
     }
@@ -845,8 +846,8 @@ int main(int argc, char **argv)
         fprintf(stderr, "%u failures across %lu checks\n", failures, checks);
         return 1;
     }
-    printf("PASS: GUI and clock host tests (%lu checks)\n", checks);
+    printf("PASS: vendor GUI and legacy BW diagnostic tests (%lu checks)\n", checks);
     printf("Coverage: guards, transforms, primitives, 475 ASCII glyphs, "
-           "scaling, strings, signed numbers, time and 476-byte seconds window\n");
+           "scaling, strings, signed numbers, legacy time/seconds window\n");
     return 0;
 }

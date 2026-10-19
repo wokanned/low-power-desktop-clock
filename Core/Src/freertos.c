@@ -28,6 +28,9 @@
 #include "debug.h"
 #include "display.h"
 #include "accel.h"
+#include "storage.h"
+#include "clock_service.h"
+#include "clock_faults.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -73,7 +76,7 @@ void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
   */
 void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN Init */
-
+  clock_service_init();
   /* USER CODE END Init */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -98,6 +101,10 @@ void MX_FREERTOS_Init(void) {
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
+  if (defaultTaskHandle == NULL) {
+    clock_service_mark_unavailable();
+    clock_fault_report(CLOCK_FAULT_TASK, CLOCK_FAULT_START);
+  }
   /* creation of debugTask */
   const osThreadAttr_t debugTask_attributes = {
     .name = "debugTask",
@@ -106,10 +113,16 @@ void MX_FREERTOS_Init(void) {
   };
   debugTaskHandle = osThreadNew(StartDebugTask, NULL, &debugTask_attributes);
   if (debugTaskHandle != NULL) {
-    (void)accel_start();
+    if (!accel_start()) { clock_fault_report(CLOCK_FAULT_TASK, CLOCK_FAULT_START); }
+  } else {
+    clock_fault_report(CLOCK_FAULT_TASK, CLOCK_FAULT_START);
   }
   if (!display_start()) {
     Debug_Log("display: task creation failed\r\n");
+  }
+  if (storage_start() != 0) {
+    clock_fault_report(CLOCK_FAULT_TASK, CLOCK_FAULT_START);
+    Debug_Log("storage: task creation failed\r\n");
   }
   /* USER CODE END RTOS_THREADS */
 
@@ -129,10 +142,12 @@ void MX_FREERTOS_Init(void) {
 void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN StartDefaultTask */
-  /* Infinite loop */
+  TickType_t next_wake = xTaskGetTickCount();
+  (void)argument;
   for(;;)
   {
-    osDelay(1);
+    clock_service_poll();
+    vTaskDelayUntil(&next_wake, pdMS_TO_TICKS(1000U));
   }
   /* USER CODE END StartDefaultTask */
 }

@@ -1,5 +1,6 @@
 #include "accel.h"
 #include "debug.h"
+#include "clock_faults.h"
 #include "stm32_adxl345.h"
 #include "task.h"
 #include "cmsis_os.h"
@@ -24,14 +25,67 @@ static uint32_t s_polls;
 static uint32_t s_count;
 static scenario_t s_scenario;
 static float s_frames[TEST_FRAME_LIMIT][VOFA_MAX_CHANNELS];
+static accel_snapshot_t s_snapshots[TEST_FRAME_LIMIT];
+static uint32_t s_critical_depth;
+static uint32_t s_critical_entries;
+static uint32_t s_fault_mask;
+static uint32_t s_episode_start;
+static uint32_t s_episode_count;
+static uint32_t s_recovery_count;
+static uint32_t s_start_generation;
 static osThreadFunc_t s_entry;
 static jmp_buf s_finished;
 
 TickType_t xTaskGetTickCount(void) { return s_ticks; }
 
+void test_accel_critical_enter(void)
+{
+    /* A snapshot copy must not retain a lock across another callback. */
+    assert(s_critical_depth == 0U);
+    s_critical_depth++;
+    s_critical_entries++;
+}
+
+void test_accel_critical_exit(void)
+{
+    assert(s_critical_depth == 1U);
+    s_critical_depth--;
+}
+
+void clock_fault_report(clock_fault_source_t source, uint32_t mask)
+{
+    accel_snapshot_t snapshot;
+    assert(s_critical_depth == 0U);
+    /* Unsupported ADXL345 temperature must never become a TEMP fault. */
+    assert(source == CLOCK_FAULT_IMU);
+    accel_get_snapshot(&snapshot);
+    if (mask != 0U) {
+        assert(snapshot.state == CLOCK_DATA_ERROR);
+        if (s_fault_mask == 0U) {
+            s_episode_start = s_ticks;
+            s_episode_count++;
+        }
+        assert(snapshot.first_fault_tick == s_episode_start);
+        if ((snapshot.flags & ACCEL_STATUS_IO_ERROR) != 0U) {
+            assert(mask == CLOCK_FAULT_IO);
+        } else if ((snapshot.flags & ACCEL_STATUS_NOT_READY) != 0U) {
+            assert(mask == CLOCK_FAULT_TIMEOUT);
+        } else {
+            assert((snapshot.flags & ACCEL_STATUS_CONFIG_ERROR) != 0U);
+            assert(mask == CLOCK_FAULT_ID && snapshot.result == ADXL345_ERROR_ID);
+        }
+    } else {
+        /* Only a usable sample ends the episode; warmup cannot clear it. */
+        assert(snapshot.state == CLOCK_DATA_READY);
+        assert((snapshot.flags & ACCEL_STATUS_VALID) != 0U);
+        if (s_fault_mask != 0U) { s_recovery_count++; }
+    }
+    s_fault_mask = mask;
+}
+
 void vTaskDelay(TickType_t ticks)
 {
-    assert(ticks > 0U && ticks <= 20U);
+    assert(s_critical_depth == 0U && ticks > 0U && ticks <= 20U);
     s_ticks += ticks;
     if ((TickType_t)(s_ticks - s_start) >= TEST_DURATION_MS) { longjmp(s_finished, 1); }
 }
@@ -54,6 +108,7 @@ int32_t stm32_adxl345_bind(adxl345_ctx_t *p_ctx)
 adxl345_status_t adxl345_init(const adxl345_ctx_t *p_ctx)
 {
     (void)p_ctx;
+    assert(s_critical_depth == 0U);
     s_init_calls++;
     s_measure_start = s_ticks;
     s_last_sample = 0U;
@@ -66,6 +121,7 @@ adxl345_status_t adxl345_sample(const adxl345_ctx_t *p_ctx, adxl345_sample_t *p_
     uint32_t sample;
     uint32_t elapsed = s_ticks - s_start;
     (void)p_ctx;
+    assert(s_critical_depth == 0U);
     s_polls++;
     if (s_scenario == IO_FAILURE && elapsed >= 200U && elapsed < 250U) {
         return ADXL345_ERROR_IO;
@@ -91,27 +147,56 @@ bool Debug_SendFloats(const float *p_data, uint8_t ch_cnt)
 {
     uint32_t flags;
     uint32_t i;
+    accel_snapshot_t snapshot;
+    assert(s_critical_depth == 0U);
     assert(ch_cnt == VOFA_MAX_CHANNELS && s_count < TEST_FRAME_LIMIT);
     flags = (uint32_t)p_data[15];
+    accel_get_snapshot(&snapshot);
+    assert(snapshot.flags == flags && snapshot.generation == s_start_generation + s_count + 1U);
+    if ((flags & ACCEL_STATUS_VALID) != 0U) {
+        assert(snapshot.state == CLOCK_DATA_READY && snapshot.last_sample_tick == s_ticks);
+        assert(s_fault_mask == 0U);
+    } else if ((flags & (ACCEL_STATUS_IO_ERROR | ACCEL_STATUS_NOT_READY |
+                         ACCEL_STATUS_CONFIG_ERROR)) != 0U) {
+        assert(snapshot.state == CLOCK_DATA_ERROR && s_fault_mask != 0U);
+        assert(snapshot.first_fault_tick == s_episode_start);
+    } else if (s_fault_mask != 0U) {
+        assert(snapshot.state == CLOCK_DATA_ERROR);
+        assert(snapshot.first_fault_tick == s_episode_start);
+    } else {
+        assert(snapshot.state == CLOCK_DATA_INITIALIZING);
+    }
     assert((uint32_t)p_data[1] == s_count);
     assert(isnan(p_data[11]) && (flags & ACCEL_STATUS_TEMPERATURE_INVALID) != 0U);
     for (i = 2U; i < 11U; i++) {
         assert((flags & ACCEL_STATUS_VALID) != 0U ? isfinite(p_data[i]) : isnan(p_data[i]));
     }
+    s_snapshots[s_count] = snapshot;
     memcpy(s_frames[s_count++], p_data, ch_cnt * sizeof(float));
     return true;
 }
 
 static void s_run(scenario_t scenario, TickType_t start)
 {
+    accel_snapshot_t snapshot;
     s_scenario = scenario;
     s_start = start;
     s_ticks = start;
     s_init_calls = 0U;
     s_polls = 0U;
     s_count = 0U;
+    s_fault_mask = 0U;
+    s_episode_start = 0U;
+    s_episode_count = 0U;
+    s_recovery_count = 0U;
+    accel_get_snapshot(&snapshot);
+    s_start_generation = snapshot.generation;
     if (setjmp(s_finished) == 0) { s_entry(NULL); }
     assert(s_count > 0U);
+    assert(s_critical_depth == 0U && s_critical_entries > s_count * 2U);
+    assert(s_fault_mask == 0U);
+    assert(s_episode_count == (scenario == NORMAL ? 0U : 1U));
+    assert(s_recovery_count == s_episode_count);
 }
 
 static void s_normal_tests(TickType_t start)
@@ -171,6 +256,13 @@ static void s_recovery_tests(void)
         }
     }
     assert(fault_frames == 100U && recovered);
+    assert(s_episode_start == 120U);
+    /* A repeated heartbeat keeps the onset, including after retry warmup. */
+    for (i = 0U; i < s_count; i++) {
+        if (s_snapshots[i].state == CLOCK_DATA_ERROR) {
+            assert(s_snapshots[i].first_fault_tick == 120U);
+        }
+    }
 
     s_run(IO_FAILURE, 0U);
     assert(s_init_calls == 2U && s_frames[s_count - 1U][12] == 3.0f);
@@ -187,12 +279,14 @@ static void s_recovery_tests(void)
         }
     }
     assert(fault_frames >= 100U && recovered);
+    assert(s_episode_start == 200U);
 
     s_run(INIT_FAILURE, 0U);
     assert(s_init_calls == 3U && s_frames[s_count - 1U][12] == 2.0f);
     assert(((uint32_t)s_frames[0][15] & ACCEL_STATUS_CONFIG_ERROR) != 0U);
     assert(((uint32_t)s_frames[s_count - 1U][15] & ACCEL_STATUS_VALID) != 0U);
     assert(s_frames[s_count - 1U][0] >= 2060.0f);
+    assert(s_episode_start == 20U);
 }
 
 int main(void)
@@ -201,6 +295,6 @@ int main(void)
     s_normal_tests(0U);
     s_normal_tests(UINT32_MAX - 100U);
     s_recovery_tests();
-    puts("PASS: ready-driven task, independent ODR, filter continuity, tick wrap, stall/IO/init recovery");
+    puts("PASS: ready-driven telemetry, coherent snapshots, first fault ticks, warmup recovery and no TEMP fault");
     return 0;
 }

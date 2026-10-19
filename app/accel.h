@@ -2,6 +2,7 @@
 #define ACCEL_H
 #include <stdbool.h>
 #include <stdint.h>
+#include "clock_model.h"
 
 #define ACCEL_SCHEMA_VERSION 1U
 #define ACCEL_SAMPLE_MS 10U /* Nominal sensor period and fault-frame interval. */
@@ -20,5 +21,15 @@ enum {
     ACCEL_STATUS_SATURATED = 1U << 9
 };
 
+typedef struct {
+    clock_data_state_t state;
+    int32_t result;
+    uint32_t flags;
+    uint32_t last_sample_tick;
+    uint32_t first_fault_tick;
+    uint32_t generation;
+} accel_snapshot_t;
+
 bool accel_start(void);
+void accel_get_snapshot(accel_snapshot_t *p_snapshot);
 #endif

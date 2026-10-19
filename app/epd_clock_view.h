@@ -2,8 +2,20 @@
 #define EPD_CLOCK_VIEW_H
 
 #include <stdint.h>
+#include <stddef.h>
+#include "clock_model.h"
 
-/* Landscape layout; Font24 contains the complete 17 x 24 ASCII cells. */
+#define EPD_CLOCK_VIEW_GRAY4_BYTES 9472U
+#define EPD_CLOCK_VIEW_WIDTH       296U
+#define EPD_CLOCK_VIEW_HEIGHT      128U
+
+/* Pure renderer; native 128x296, MSB-first 2bpp, 0=white and 3=black.
+ * Returns 1 on success, 0 for invalid buffers/models or layout overflow.
+ * Does not access the controller, the RTOS, or the global vendor Paint. */
+uint8_t epd_clock_view_draw_gray4(uint8_t *frame, size_t length,
+                                const clock_view_model_t *p_model);
+
+/* Legacy BW diagnostics only; retained for imported vendor compatibility. */
 #define EPD_CLOCK_VIEW_X                    12U
 #define EPD_CLOCK_VIEW_Y                    45U
 #define EPD_CLOCK_VIEW_SCALE                2U

@@ -50,7 +50,7 @@ accelTask 使用静态控制块和 1024 字节栈，AboveNormal 优先级。通�
 | 11 | temperature_c | 固定 quiet NaN，温度无效 |
 | 12 | sample_error_count | 初始化失败、采样读取失败、持续无新数据超时的累计次数；普通未就绪不计数 |
 | 13 | queue_drop_count | 发送队列满、拒绝新帧的累计次数 |
-| 14 | uart_error_count | 完整帧发送失败的累计次数（含可能的部分发送） |
+| 14 | uart_error_count | 调试发送/接收错误累计次数，含部分发送、RX 溢出及损坏或超长控制台命令 |
 | 15 | status_flags | 下表位标志 |
 
 采样间隔由主机根据 timestamp/sequence 计算，避免额外通道挤掉三个独立错误计数。计数和标志仍以 float32 发送，但均为整数；三个错误计数到 2^24−1 饱和而不溢出。时间和序号使用 24 位模运算，保持 float32 整数精确：时间约 4 小时 39 分 37 秒回绕，序号约 46.6 小时回绕。报告会区分回绕、回退和有启动证据的复位。超长捕获中断超过半个时间模周期不支持可靠自动判别。
@@ -70,7 +70,7 @@ accelTask 使用静态控制块和 1024 字节栈，AboveNormal 优先级。通�
 | 8 | LATE | 本次任务处理超过一个标称周期 |
 | 9 | SATURATED | 某轴达到/超出 ±2 g 的原始边界（−512/+511） |
 
-典型正常状态为 7（INITIALIZED+VALID+TEMPERATURE_INVALID）。USART2 不再输出启动横幅、文本日志、单通道心跳、命令 ACK；启动/错误情况通过固定帧状态表示。`Debug_Log` 保留为空操作以兼容显示模块，显示故障仍可通过其现有保留状态接口查看。VOFA 库只发送 JustFloat；旧格式枚举名仅用于调用兼容，文本命令示例已移除。
+典型正常状态为 7（INITIALIZED+VALID+TEMPERATURE_INVALID）。USART2 默认只输出固定 JustFloat 帧，无启动横幅和文本日志。显式发送 `CONSOLE ON` 后，debugTask 在完整帧发送结束后暂停遥测并进入文本控制台；`CONSOLE OFF` 成功应答后恢复遥测。控制台期间采样继续，主动暂停不增加 queue_drop_count；序号继续推进，因此不应跨控制台会话连续采集并将该缺口判为通信丢帧。`Debug_GetSuppressedCount()` 单独保留主动暂停计数。`Debug_Log` 仍为空操作。协议和配置命令见 [debug_console.md](debug_console.md)。
 
 ## 带宽与观测成本
 
