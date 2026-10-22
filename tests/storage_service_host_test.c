@@ -3,6 +3,7 @@
 #include "clock_faults.h"
 #include "cmsis_os.h"
 #include "queue.h"
+#include "task.h"
 #include <assert.h>
 #include <setjmp.h>
 #include <stdio.h>
@@ -24,6 +25,7 @@ static jmp_buf s_finished;
 static uint8_t s_is(const char *p_name) { return strcmp(s_scenario, p_name) == 0; }
 void storage_test_enter(void) { s_critical++; }
 void storage_test_exit(void) { assert(s_critical != 0U); s_critical--; }
+TickType_t xTaskGetTickCount(void) { return 0U; }
 
 QueueHandle_t xQueueCreateStatic(uint32_t length, uint32_t item_size,
                                 uint8_t *p_bytes, StaticQueue_t *p_control)
@@ -46,7 +48,7 @@ int xQueueReceive(QueueHandle_t queue, void *p_item, uint32_t wait)
 {
     storage_config_snapshot_t snapshot;
     storage_diagnostics_t diagnostics;
-    assert(queue != NULL && wait == portMAX_DELAY && s_critical == 0U);
+    assert(queue != NULL && wait != portMAX_DELAY && s_critical == 0U);
     storage_get_config_snapshot(&snapshot);
     assert(snapshot.ready == 1U && snapshot.busy == 0U);
     if (s_phase == 0U) {
@@ -84,7 +86,8 @@ int xQueueReceive(QueueHandle_t queue, void *p_item, uint32_t wait)
     } else {
         assert(snapshot.completed_token == 2U && snapshot.completed_result == W25Q128_OK);
         assert(snapshot.format == (s_is("save-failure") ? CLOCK_FORMAT_24 : CLOCK_FORMAT_12));
-        assert(s_faults[CLOCK_FAULT_CONFIG] == 0U && s_faults[CLOCK_FAULT_W25Q] == 0U);
+        assert(s_faults[CLOCK_FAULT_CONFIG] == 0U);
+        assert(s_faults[CLOCK_FAULT_W25Q] == (s_is("init-failure") ? CLOCK_FAULT_IO : 0U));
         assert(s_init_calls == ((s_is("init-failure") || s_is("save-failure") ||
                                   s_is("load-failure")) ? 2U : 1U));
         assert(s_save_calls == 2U);
@@ -132,6 +135,14 @@ w25q128_status_t w25q128_read_registers(const w25q128_ctx_t *p_context,
     (void)p_context; assert(s_critical == 0U);
     (void)memset(p_registers, 0, sizeof(*p_registers)); return W25Q128_OK;
 }
+w25q128_status_t w25q128_read(const w25q128_ctx_t *p_context, uint32_t address,
+                              uint8_t *p_bytes, uint32_t length)
+{
+    (void)p_context;
+    assert(s_critical == 0U && address <= W25Q128_TOTAL_SIZE - length);
+    (void)memset(p_bytes, 0xFF, length);
+    return W25Q128_OK;
+}
 int32_t clock_config_load(const w25q128_ctx_t *p_context, clock_config_state_t *p_state)
 {
     (void)p_context;
@@ -170,6 +181,7 @@ void clock_fault_report(clock_fault_source_t source, uint32_t mask)
 int main(int argc, char **argv)
 {
     storage_config_snapshot_t snapshot;
+    storage_usage_snapshot_t usage;
     assert(argc == 2);
     s_scenario = argv[1];
     if (s_is("bind-failure") || s_is("task-failure") || s_is("queue-failure")) {
@@ -178,6 +190,9 @@ int main(int argc, char **argv)
         assert(snapshot.ready == 1U && snapshot.format == CLOCK_FORMAT_24);
         assert(storage_request_format(CLOCK_FORMAT_12, 1U) == STORAGE_REQUEST_UNAVAILABLE);
         assert(s_faults[CLOCK_FAULT_W25Q] == CLOCK_FAULT_START);
+        storage_get_usage_snapshot(&usage);
+        assert(usage.state == CLOCK_DATA_ERROR && usage.used_bytes == 0U);
+        assert(usage.total_bytes == W25Q128_TOTAL_SIZE && usage.result == W25Q128_ERROR_IO);
     } else {
         assert(storage_start() == 0);
         assert(storage_request_format(CLOCK_FORMAT_12, 1U) == STORAGE_REQUEST_BUSY);

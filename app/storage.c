@@ -16,6 +16,14 @@
 #define STORAGE_TEST_PATTERN_BASE 0x20U
 #define STORAGE_TEST_PATCH_BASE   0xA0U
 #define STORAGE_ERASED_BYTE       0xFFU
+#define STORAGE_SCAN_YIELD_TICKS  ((TickType_t)1U)
+
+typedef struct {
+    uint32_t address;
+    uint32_t used_bytes;
+    TickType_t completed_tick;
+    uint8_t running;
+} storage_scan_t;
 
 static w25q128_ctx_t s_context;
 static StackType_t s_storage_task_stack[STORAGE_TASK_STACK_BYTES / sizeof(StackType_t)];
@@ -23,6 +31,9 @@ static StaticTask_t s_storage_task_control;
 static osThreadId_t s_storage_task_handle;
 static volatile storage_diagnostics_t s_diagnostics;
 static storage_config_snapshot_t s_config = { CLOCK_FORMAT_24, 0U, 0U, 0U, 0U, 0 };
+static storage_usage_snapshot_t s_usage = {
+    CLOCK_DATA_UNAVAILABLE, 0U, W25Q128_TOTAL_SIZE, W25Q128_OK
+};
 typedef struct { clock_format_t format; uint32_t token; } storage_request_t;
 static StaticQueue_t s_request_queue_control;
 static uint8_t s_request_queue_bytes[sizeof(storage_request_t)];
@@ -112,6 +123,54 @@ static uint32_t s_fault_mask(int32_t result)
     }
 }
 
+static void s_publish_usage(clock_data_state_t state, uint32_t used_bytes,
+                            w25q128_status_t result)
+{
+    taskENTER_CRITICAL();
+    s_usage.state = state;
+    s_usage.used_bytes = used_bytes;
+    s_usage.result = result;
+    taskEXIT_CRITICAL();
+}
+
+static w25q128_status_t s_scan_sector(uint32_t address, uint8_t *p_used)
+{
+    uint8_t bytes[W25Q128_PAGE_SIZE];
+    uint32_t offset;
+    uint32_t i;
+    w25q128_status_t result;
+
+    *p_used = 0U;
+    for (offset = 0U; offset < W25Q128_SECTOR_SIZE; offset += sizeof(bytes)) {
+        result = w25q128_read(&s_context, address + offset, bytes, sizeof(bytes));
+        if (result != W25Q128_OK) { return result; }
+        for (i = 0U; i < sizeof(bytes); i++) {
+            if (bytes[i] != STORAGE_ERASED_BYTE) {
+                *p_used = 1U;
+                return W25Q128_OK;
+            }
+        }
+    }
+    return W25Q128_OK;
+}
+
+static w25q128_status_t s_scan_step(storage_scan_t *p_scan)
+{
+    uint8_t used;
+    w25q128_status_t result;
+
+    do {
+        result = s_scan_sector(p_scan->address, &used);
+        if (result != W25Q128_OK) { return result; }
+        if (used != 0U) { p_scan->used_bytes += W25Q128_SECTOR_SIZE; }
+        p_scan->address += W25Q128_SECTOR_SIZE;
+        /* Only the final two sectors can change at runtime. Check both and
+         * publish before dequeuing another configuration transaction. */
+    } while (p_scan->address > CLOCK_CONFIG_SECTOR_A &&
+             p_scan->address < W25Q128_TOTAL_SIZE);
+    return W25Q128_OK;
+}
+
 static int32_t s_initialize(storage_diagnostics_t *p_diagnostics)
 {
     int32_t result;
@@ -154,7 +213,14 @@ static void s_storage_task(void *p_argument)
     clock_config_state_t state = { CLOCK_FORMAT_24, 0U, CLOCK_CONFIG_NO_SLOT, 0U, 0U };
     clock_config_state_t recovered;
     storage_request_t request;
+    storage_scan_t scan = { 0U, 0U, 0U, 0U };
+    TickType_t now;
+    TickType_t wait;
+    TickType_t elapsed;
     uint32_t boot_fault;
+    uint32_t config_fault;
+    uint32_t scan_fault;
+    w25q128_status_t scan_result;
     uint8_t online;
     uint8_t test_ran = 0U;
     int32_t result;
@@ -163,6 +229,7 @@ static void s_storage_task(void *p_argument)
     diagnostics.test_status = STORAGE_TEST_RUNNING;
     s_publish(&diagnostics);
     diagnostics.result = (w25q128_status_t)s_initialize(&diagnostics);
+    scan_result = diagnostics.result;
     online = diagnostics.result == W25Q128_OK ? 1U : 0U;
     diagnostics.config_result = online != 0U ? clock_config_load(&s_context, &state) :
         diagnostics.result;
@@ -186,41 +253,89 @@ static void s_storage_task(void *p_argument)
     /* A failed destructive test remains visible until the next boot's test.
      * Successful config traffic cannot prove that test range recovered. */
     boot_fault = test_ran != 0U ? s_fault_mask(diagnostics.result) : 0U;
+    config_fault = diagnostics.config_result == CLOCK_CONFIG_ERROR_CORRUPT ?
+        0U : s_fault_mask(diagnostics.config_result);
+    scan_fault = s_fault_mask(scan_result);
+    scan.running = scan_result == W25Q128_OK ? 1U : 0U;
+    scan.completed_tick = xTaskGetTickCount();
     taskENTER_CRITICAL();
-    clock_fault_report(CLOCK_FAULT_W25Q, s_fault_mask(diagnostics.result));
+    clock_fault_report(CLOCK_FAULT_W25Q, boot_fault | config_fault | scan_fault);
+    s_publish_usage(scan.running != 0U ? CLOCK_DATA_INITIALIZING : CLOCK_DATA_ERROR,
+                    0U, scan_result);
     s_publish(&diagnostics);
     s_publish_config(&state, 1U, 0U, 0U, 0);
     taskEXIT_CRITICAL();
-    /* Explicit requests may retry initialization, never the destructive test. */
+    /* Configuration recovery and scan recovery are independent: a successful
+     * scan must not bypass reload after an ambiguous configuration commit. */
     for (;;) {
-        if (xQueueReceive(s_request_queue, &request, portMAX_DELAY) != pdPASS) { continue; }
-        result = W25Q128_OK;
-        if (online == 0U) {
-            result = s_initialize(&diagnostics);
-            if (result == W25Q128_OK) {
-                diagnostics.config_result = clock_config_load(&s_context, &recovered);
-                /* Corrupt configuration may be repaired by this explicit write. */
-                if (diagnostics.config_result != W25Q128_OK &&
-                    diagnostics.config_result != CLOCK_CONFIG_ERROR_CORRUPT) {
-                    result = diagnostics.config_result;
-                } else {
-                    state = recovered;
-                }
+        now = xTaskGetTickCount();
+        if (scan.running == 0U && (TickType_t)(now - scan.completed_tick) >=
+            pdMS_TO_TICKS(STORAGE_USAGE_INTERVAL_MS)) {
+            s_publish_usage(CLOCK_DATA_INITIALIZING, 0U, W25Q128_OK);
+            scan_result = w25q128_init(&s_context);
+            if (scan_result == W25Q128_OK) {
+                scan.address = 0U;
+                scan.used_bytes = 0U;
+                scan.running = 1U;
+            } else {
+                online = 0U;
+                scan.completed_tick = xTaskGetTickCount();
+                scan_fault = s_fault_mask(scan_result);
+                taskENTER_CRITICAL();
+                s_publish_usage(CLOCK_DATA_ERROR, 0U, scan_result);
+                clock_fault_report(CLOCK_FAULT_W25Q, boot_fault | config_fault | scan_fault);
+                taskEXIT_CRITICAL();
             }
         }
-        if (result == W25Q128_OK) {
-            result = clock_config_save(&s_context, &state, request.format);
+        now = xTaskGetTickCount();
+        elapsed = (TickType_t)(now - scan.completed_tick);
+        wait = scan.running != 0U ? STORAGE_SCAN_YIELD_TICKS :
+            (elapsed >= pdMS_TO_TICKS(STORAGE_USAGE_INTERVAL_MS) ? 0U :
+             pdMS_TO_TICKS(STORAGE_USAGE_INTERVAL_MS) - elapsed);
+        if (xQueueReceive(s_request_queue, &request, wait) == pdPASS) {
+            result = W25Q128_OK;
+            if (online == 0U) {
+                result = s_initialize(&diagnostics);
+                if (result == W25Q128_OK) {
+                    diagnostics.config_result = clock_config_load(&s_context, &recovered);
+                    /* Corrupt configuration may be repaired by this explicit write. */
+                    if (diagnostics.config_result != W25Q128_OK &&
+                        diagnostics.config_result != CLOCK_CONFIG_ERROR_CORRUPT) {
+                        result = diagnostics.config_result;
+                    } else {
+                        state = recovered;
+                    }
+                }
+            }
+            if (result == W25Q128_OK) {
+                result = clock_config_save(&s_context, &state, request.format);
+            }
+            online = result == W25Q128_OK ? 1U : 0U;
+            config_fault = s_fault_mask(result);
+            diagnostics.config_result = result;
+            diagnostics.config_degraded = state.degraded;
+            diagnostics.result = (w25q128_status_t)result;
+            taskENTER_CRITICAL();
+            clock_fault_report(CLOCK_FAULT_CONFIG, config_fault);
+            clock_fault_report(CLOCK_FAULT_W25Q, boot_fault | config_fault | scan_fault);
+            s_publish(&diagnostics);
+            s_publish_config(&state, 1U, 1U, request.token, result);
+            taskEXIT_CRITICAL();
         }
-        online = result == W25Q128_OK ? 1U : 0U;
-        diagnostics.config_result = result;
-        diagnostics.config_degraded = state.degraded;
-        diagnostics.result = (w25q128_status_t)result;
-        taskENTER_CRITICAL();
-        clock_fault_report(CLOCK_FAULT_CONFIG, s_fault_mask(result));
-        clock_fault_report(CLOCK_FAULT_W25Q, boot_fault | s_fault_mask(result));
-        s_publish(&diagnostics);
-        s_publish_config(&state, 1U, 1U, request.token, result);
-        taskEXIT_CRITICAL();
+        if (scan.running != 0U) {
+            scan_result = s_scan_step(&scan);
+            if (scan_result != W25Q128_OK || scan.address == W25Q128_TOTAL_SIZE) {
+                scan.running = 0U;
+                scan.completed_tick = xTaskGetTickCount();
+                scan_fault = s_fault_mask(scan_result);
+                if (scan_result != W25Q128_OK) { online = 0U; }
+                taskENTER_CRITICAL();
+                s_publish_usage(scan_result == W25Q128_OK ? CLOCK_DATA_READY : CLOCK_DATA_ERROR,
+                                scan_result == W25Q128_OK ? scan.used_bytes : 0U, scan_result);
+                clock_fault_report(CLOCK_FAULT_W25Q, boot_fault | config_fault | scan_fault);
+                taskEXIT_CRITICAL();
+            }
+        }
     }
 }
 
@@ -248,6 +363,7 @@ int32_t storage_start(void)
     s_diagnostics.test_status = STORAGE_TEST_FAILED;
     s_diagnostics.config_result = W25Q128_ERROR_IO;
     s_config.ready = 1U;
+    s_publish_usage(CLOCK_DATA_ERROR, 0U, W25Q128_ERROR_IO);
     clock_fault_report(CLOCK_FAULT_W25Q, CLOCK_FAULT_START);
     return -1;
 }
@@ -271,6 +387,15 @@ void storage_get_config_snapshot(storage_config_snapshot_t *p_snapshot)
     if (p_snapshot != NULL) {
         taskENTER_CRITICAL();
         *p_snapshot = s_config;
+        taskEXIT_CRITICAL();
+    }
+}
+
+void storage_get_usage_snapshot(storage_usage_snapshot_t *p_snapshot)
+{
+    if (p_snapshot != NULL) {
+        taskENTER_CRITICAL();
+        *p_snapshot = s_usage;
         taskEXIT_CRITICAL();
     }
 }

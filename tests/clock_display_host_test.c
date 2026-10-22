@@ -16,6 +16,17 @@
 #define MAX_EVENTS 32U
 #define STOP_COMPLETE 1
 #define STOP_SUSPENDED 2
+#if EPD_CLOCK_USE_GRAY4
+#define TEST_FRAME_BYTES EPD_CLOCK_VIEW_GRAY4_BYTES
+#define TEST_PROFILE EPD_PROFILE_GRAY4
+#define TEST_DRAW epd_clock_view_draw_gray4
+#define TEST_REFRESH epd_gdey029t94_gray4_refresh
+#else
+#define TEST_FRAME_BYTES EPD_CLOCK_VIEW_BW_BYTES
+#define TEST_PROFILE EPD_PROFILE_BW_296
+#define TEST_DRAW epd_clock_view_draw_bw
+#define TEST_REFRESH epd_gdey029t94_full_refresh
+#endif
 #define CHECK(condition) do { \
     s_checks++; \
     if (!(condition)) { \
@@ -77,11 +88,11 @@ void clock_service_get_model(clock_view_model_t *p_model)
     *p_model=s_live;
 }
 
-uint8_t epd_clock_view_draw_gray4(uint8_t *p_frame,size_t length,
-                                const clock_view_model_t *p_model)
+uint8_t TEST_DRAW(uint8_t *p_frame,size_t length,
+                  const clock_view_model_t *p_model)
 {
     CHECK(s_renders<MAX_EVENTS);
-    CHECK(length==EPD_CLOCK_VIEW_GRAY4_BYTES);
+    CHECK(length==TEST_FRAME_BYTES);
     CHECK(p_model->startup_ready==1U);
     s_render_models[s_renders++]=*p_model;
     memset(p_frame,0x5A,length);
@@ -116,7 +127,7 @@ epd_gdey029t94_status_t epd_gdey029t94_init_profile(
     epd_gdey029t94_profile_t profile)
 {
     CHECK(p_device!=NULL && p_io!=NULL);
-    CHECK(profile==EPD_PROFILE_GRAY4);
+    CHECK(profile==TEST_PROFILE);
     CHECK(s_live.startup_ready==1U);
     s_init_calls++;
     if(scenario("init-retry") && s_init_calls<3U) { return EPD_GDEY029T94_ERROR_IO; }
@@ -126,15 +137,15 @@ epd_gdey029t94_status_t epd_gdey029t94_init_profile(
     return EPD_GDEY029T94_OK;
 }
 
-epd_gdey029t94_status_t epd_gdey029t94_gray4_refresh(
+epd_gdey029t94_status_t TEST_REFRESH(
     epd_gdey029t94_t *p_device,const uint8_t *p_frame,uint32_t length)
 {
     uint8_t fail=0U;
     uint32_t before=epd_bringup_get_completed_frames();
     CHECK(s_refreshes<MAX_EVENTS);
     CHECK(p_device->initialized==1U && p_device->sleeping==0U);
-    CHECK(p_device->profile==EPD_PROFILE_GRAY4);
-    CHECK(length==EPD_CLOCK_VIEW_GRAY4_BYTES);
+    CHECK(p_device->profile==TEST_PROFILE);
+    CHECK(length==TEST_FRAME_BYTES);
     CHECK(before==s_committed);
     s_frame_hashes[s_refreshes]=frame_hash(p_frame,length);
     s_frame_ticks[s_refreshes]=s_tick;
@@ -406,7 +417,8 @@ int main(int argc,char **argv)
         CHECK(0);
     }
     verify(stopped);
-    printf("PASS: production display scenario %s (%lu checks), %lu renders, %lu commits\n",
-        s_scenario,s_checks,(unsigned long)s_renders,(unsigned long)s_committed);
+    printf("PASS: production display gray4=%u scenario %s (%lu checks), %lu renders, %lu commits\n",
+        (unsigned int)EPD_CLOCK_USE_GRAY4,s_scenario,s_checks,
+        (unsigned long)s_renders,(unsigned long)s_committed);
     return 0;
 }

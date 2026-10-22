@@ -18,14 +18,17 @@ $testSources = @(
     (Join-Path $projectRoot 'app\clock_model.c')
 )
 $stubDirectory = Join-Path $PSScriptRoot 'stubs\display'
-& $Compiler '-std=c99' '-Wall' '-Wextra' '-Werror' '-pedantic' '-O2' `
-    '-DEPD_VENDOR_DEMO_MODE=0' '-I' $stubDirectory @testSources '-o' $testExecutable
-if ($LASTEXITCODE -ne 0) { throw 'Production clock display host compilation failed.' }
 $scenarios = @('startup', 'minute', 'rtc-error', 'retry-limit', 'retry-success',
     'init-retry', 'retry-budget', 'sleep-failure', 'coalesce',
     'failed-fault-coalesce', 'failed-recovery-coalesce')
-foreach ($scenario in $scenarios) {
-    & $testExecutable $scenario
-    if ($LASTEXITCODE -ne 0) { throw "Production clock display scenario failed: $scenario" }
+foreach ($gray4 in @(0, 1)) {
+    & $Compiler '-std=c99' '-Wall' '-Wextra' '-Werror' '-pedantic' '-O2' `
+        '-DEPD_VENDOR_DEMO_MODE=0' "-DEPD_CLOCK_USE_GRAY4=$gray4" `
+        '-I' $stubDirectory @testSources '-o' $testExecutable
+    if ($LASTEXITCODE -ne 0) { throw "Production clock display compilation failed: gray4=$gray4" }
+    foreach ($scenario in $scenarios) {
+        & $testExecutable $scenario
+        if ($LASTEXITCODE -ne 0) { throw "Production clock display failed: gray4=$gray4 scenario=$scenario" }
+    }
 }
-Write-Host 'PASS: production bringup/display/schedule integration (11 independent scenarios).'
+Write-Host 'PASS: production bringup/display/schedule integration (11 scenarios for both BW and gray4).'

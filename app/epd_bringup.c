@@ -15,20 +15,27 @@ static epd_gdey029t94_t s_device;
 static stm32_gdey029t94_context_t s_platform;
 static epd_gdey029t94_io_t s_io;
 static uint8_t s_frame[EPD_GDEY029T94_GRAY4_SIZE];
+#if EPD_VENDOR_DEMO_MODE != EPD_VENDOR_DEMO_GRAY4_HOLD
 static clock_view_model_t s_model;
 static clock_schedule_t s_schedule;
 static uint8_t s_pending;
+#endif
 static uint32_t s_completed_frames;
+#if EPD_VENDOR_DEMO_MODE != EPD_VENDOR_DEMO_GRAY4_HOLD
 static volatile epd_gdey029t94_refresh_stats_t s_refresh_stats;
+#endif
 static volatile epd_gdey029t94_status_t s_last_status = EPD_GDEY029T94_ERROR_STATE;
-#if EPD_VENDOR_DEMO_MODE != EPD_VENDOR_DEMO_OFF
+#if (EPD_VENDOR_DEMO_MODE != EPD_VENDOR_DEMO_OFF) && \
+    (EPD_VENDOR_DEMO_MODE != EPD_VENDOR_DEMO_GRAY4_HOLD)
 static uint8_t s_demo_started;
 #endif
 
+#if EPD_VENDOR_DEMO_MODE != EPD_VENDOR_DEMO_GRAY4_HOLD
 static uint32_t s_now_ms(void)
 {
     return (uint32_t)(xTaskGetTickCount() * (1000U / configTICK_RATE_HZ));
 }
+#endif
 
 static epd_gdey029t94_status_t s_bind(void)
 {
@@ -39,13 +46,43 @@ static epd_gdey029t94_status_t s_bind(void)
     return status;
 }
 
-static epd_gdey029t94_status_t s_submit_gray_frame(void)
+#if EPD_VENDOR_DEMO_MODE == EPD_VENDOR_DEMO_GRAY4_HOLD
+static epd_gdey029t94_status_t s_run_gray4_diagnostic(void)
 {
     epd_gdey029t94_status_t status;
+    status = s_bind();
+    if (status == EPD_GDEY029T94_OK) {
+        status = epd_vendor_demo_run(&s_device, &s_io, s_frame);
+    }
+    s_last_status = status;
+    return status;
+}
+#else
+static uint8_t s_draw_clock(void)
+{
+#if EPD_CLOCK_USE_GRAY4
+    return epd_clock_view_draw_gray4(s_frame, EPD_CLOCK_VIEW_GRAY4_BYTES, &s_model);
+#else
+    return epd_clock_view_draw_bw(s_frame, EPD_CLOCK_VIEW_BW_BYTES, &s_model);
+#endif
+}
+
+static epd_gdey029t94_status_t s_submit_frame(void)
+{
+    epd_gdey029t94_status_t status;
+#if EPD_CLOCK_USE_GRAY4
     status = epd_gdey029t94_init_profile(&s_device, &s_io, EPD_PROFILE_GRAY4);
     if (status == EPD_GDEY029T94_OK) {
-        status = epd_gdey029t94_gray4_refresh(&s_device, s_frame, sizeof(s_frame));
+        status = epd_gdey029t94_gray4_refresh(&s_device, s_frame,
+            EPD_CLOCK_VIEW_GRAY4_BYTES);
     }
+#else
+    status = epd_gdey029t94_init_profile(&s_device, &s_io, EPD_PROFILE_BW_296);
+    if (status == EPD_GDEY029T94_OK) {
+        status = epd_gdey029t94_full_refresh(&s_device, s_frame,
+            EPD_CLOCK_VIEW_BW_BYTES);
+    }
+#endif
     if (status != EPD_GDEY029T94_OK) { s_last_status = status; return status; }
     /* BUSY has completed: commit once, even when the following sleep fails. */
     clock_schedule_commit(&s_schedule, &s_model, s_now_ms());
@@ -63,23 +100,31 @@ static epd_gdey029t94_status_t s_submit_gray_frame(void)
     s_last_status = epd_gdey029t94_sleep(&s_device);
     return EPD_GDEY029T94_OK;
 }
+#endif
 
 epd_gdey029t94_status_t epd_bringup_run_once(void)
 {
+#if EPD_VENDOR_DEMO_MODE == EPD_VENDOR_DEMO_GRAY4_HOLD
+    return s_run_gray4_diagnostic();
+#else
     epd_gdey029t94_status_t status;
     clock_service_get_model(&s_model);
     if (s_model.startup_ready == 0U) { return EPD_GDEY029T94_ERROR_STATE; }
     s_model.memory_mode = s_schedule.next_memory;
-    if (!epd_clock_view_draw_gray4(s_frame, sizeof(s_frame), &s_model)) {
+    if (!s_draw_clock()) {
         return EPD_GDEY029T94_ERROR_ARGUMENT;
     }
     status = s_bind();
-    if (status == EPD_GDEY029T94_OK) { status = s_submit_gray_frame(); }
+    if (status == EPD_GDEY029T94_OK) { status = s_submit_frame(); }
     return status;
+#endif
 }
 
 epd_gdey029t94_status_t epd_bringup_run_clock(void)
 {
+#if EPD_VENDOR_DEMO_MODE == EPD_VENDOR_DEMO_GRAY4_HOLD
+    return s_run_gray4_diagnostic();
+#else
     epd_gdey029t94_status_t status;
     status = s_bind();
     if (status != EPD_GDEY029T94_OK) { s_last_status = status; return status; }
@@ -120,7 +165,7 @@ epd_gdey029t94_status_t epd_bringup_run_clock(void)
            retaining the same memory phase and bounded transport budget. */
         clock_service_get_model(&s_model);
         s_model.memory_mode = s_schedule.next_memory;
-        if (!epd_clock_view_draw_gray4(s_frame, sizeof(s_frame), &s_model)) {
+        if (!s_draw_clock()) {
             s_last_status = EPD_GDEY029T94_ERROR_ARGUMENT;
             return s_last_status;
         }
@@ -130,7 +175,7 @@ epd_gdey029t94_status_t epd_bringup_run_clock(void)
             clock_service_get_model(&s_model);
             if (clock_schedule_due(&s_schedule, &s_model, s_now_ms()) != 0U) {
                 s_model.memory_mode = s_schedule.next_memory;
-                if (!epd_clock_view_draw_gray4(s_frame, sizeof(s_frame), &s_model)) {
+                if (!s_draw_clock()) {
                     s_last_status = EPD_GDEY029T94_ERROR_ARGUMENT;
                     return s_last_status;
                 }
@@ -138,11 +183,12 @@ epd_gdey029t94_status_t epd_bringup_run_clock(void)
             }
         }
         if (s_pending != 0U) {
-            status = s_submit_gray_frame();
+            status = s_submit_frame();
             if (status != EPD_GDEY029T94_OK) { return status; }
         }
         (void)osDelay(pdMS_TO_TICKS(EPD_CLOCK_POLL_MS));
     }
+#endif
 #endif
 }
 

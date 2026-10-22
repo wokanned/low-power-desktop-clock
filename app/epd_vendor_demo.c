@@ -1,4 +1,7 @@
 #include "epd_vendor_demo.h"
+#if EPD_VENDOR_DEMO_MODE == EPD_VENDOR_DEMO_GRAY4_HOLD
+#include "epd_clock_view.h"
+#endif
 #include "../gui/GUI_Paint.h"
 #include "../resources/epd_vendor_assets.h"
 #include <stddef.h>
@@ -9,7 +12,8 @@ volatile epd_vendor_demo_state_t epd_vendor_demo_state;
     (EPD_VENDOR_DEMO_MODE == EPD_VENDOR_DEMO_GRAY4)
 static uint8_t gray_work[EPD_VENDOR_GRAY_SIZE];
 #endif
-#if EPD_VENDOR_DEMO_MODE != EPD_VENDOR_DEMO_OFF
+#if (EPD_VENDOR_DEMO_MODE != EPD_VENDOR_DEMO_OFF) && \
+    (EPD_VENDOR_DEMO_MODE != EPD_VENDOR_DEMO_GRAY4_HOLD)
 static uint8_t patches[5][EPD_VENDOR_PATCH_SIZE];
 #endif
 
@@ -78,7 +82,8 @@ void epd_vendor_gui_page(uint8_t *frame, uint8_t page)
     }
 }
 
-#if EPD_VENDOR_DEMO_MODE != EPD_VENDOR_DEMO_OFF
+#if (EPD_VENDOR_DEMO_MODE != EPD_VENDOR_DEMO_OFF) && \
+    (EPD_VENDOR_DEMO_MODE != EPD_VENDOR_DEMO_GRAY4_HOLD)
 static epd_gdey029t94_status_t demo_pause(epd_gdey029t94_t *device)
 {
     epd_gdey029t94_status_t status = epd_gdey029t94_sleep(device);
@@ -167,7 +172,37 @@ static epd_gdey029t94_status_t demo_full_partial(epd_gdey029t94_t *device,
 epd_gdey029t94_status_t epd_vendor_demo_run(epd_gdey029t94_t *device,
     const epd_gdey029t94_io_t *io, uint8_t *frame)
 {
-#if EPD_VENDOR_DEMO_MODE != EPD_VENDOR_DEMO_OFF
+#if EPD_VENDOR_DEMO_MODE == EPD_VENDOR_DEMO_GRAY4_HOLD
+    epd_gdey029t94_status_t status;
+    memset((void *)&epd_vendor_demo_state, 0, sizeof(epd_vendor_demo_state));
+    epd_vendor_demo_state.stage = EPD_VENDOR_STAGE_GRAY4_DRAW;
+    if ((device == NULL) || (io == NULL) || (frame == NULL)) {
+        status = EPD_GDEY029T94_ERROR_ARGUMENT;
+        goto failure;
+    }
+    if (epd_clock_view_draw_gray4_diagnostic(frame,
+            EPD_GDEY029T94_GRAY4_SIZE) == 0U) {
+        status = EPD_GDEY029T94_ERROR_ARGUMENT;
+        goto failure;
+    }
+    epd_vendor_demo_state.stage = EPD_VENDOR_STAGE_GRAY4_INIT;
+    status = epd_gdey029t94_init_profile(device, io, EPD_PROFILE_GRAY4);
+    if (status != EPD_GDEY029T94_OK) { goto failure; }
+    epd_vendor_demo_state.stage = EPD_VENDOR_STAGE_GRAY4_REFRESH;
+    status = epd_gdey029t94_gray4_refresh(device, frame,
+        EPD_GDEY029T94_GRAY4_SIZE);
+    if (status != EPD_GDEY029T94_OK) { goto failure; }
+    epd_vendor_demo_state.completed_pages = 1U;
+    epd_vendor_demo_state.stage = EPD_VENDOR_STAGE_GRAY4_SLEEP;
+    status = epd_gdey029t94_sleep(device);
+    if (status != EPD_GDEY029T94_OK) { goto failure; }
+    epd_vendor_demo_state.stage = EPD_VENDOR_STAGE_GRAY4_HELD;
+    epd_vendor_demo_state.completed = 1U;
+    return EPD_GDEY029T94_OK;
+failure:
+    epd_vendor_demo_state.status = status;
+    return status;
+#elif EPD_VENDOR_DEMO_MODE != EPD_VENDOR_DEMO_OFF
     epd_gdey029t94_status_t status;
     uint8_t page;
     uint32_t offset;

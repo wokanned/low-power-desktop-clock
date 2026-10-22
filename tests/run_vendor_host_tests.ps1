@@ -14,13 +14,14 @@ $sources=@('tests/vendor_host_test.c','device/epd_gdey029t94.c','app/epd_vendor_
     'fonts/font8.c','fonts/font12.c','fonts/font16.c','fonts/font20.c','fonts/font24.c') |
     ForEach-Object {Join-Path $root $_}
 $exe=Join-Path $OutputDirectory 'vendor_host_test.exe'
-& $Compiler '-std=c99' '-Wall' '-Wextra' '-Werror' '-pedantic' '-O2' @sources '-o' $exe
+& $Compiler '-std=c99' '-Wall' '-Wextra' '-Werror' '-pedantic' '-O2' `
+    '-DEPD_VENDOR_DEMO_MODE=1' @sources '-o' $exe
 if($LASTEXITCODE) {throw 'Vendor host compilation failed'}
 & $exe $OutputDirectory
 if($LASTEXITCODE) {throw 'Vendor host tests failed'}
-for($vendor=-1;$vendor -le 7;$vendor++) {
+for($vendor=-1;$vendor -le 8;$vendor++) {
     for($legacy=0;$legacy -lt 8;$legacy++) {
-        $expected=($vendor -ge 0 -and $vendor -le 6) -and
+        $expected=($vendor -ge 0 -and $vendor -le 7) -and
             (($vendor -eq 0 -and $legacy -in 0,1,2,4) -or ($vendor -gt 0 -and $legacy -eq 0))
         & $Compiler '-fsyntax-only' "-DEPD_VENDOR_DEMO_MODE=$vendor" `
             "-DEPD_GUI_DEMO=$($legacy -band 1)" "-DEPD_CLOCK_DIAGNOSTIC_PATTERN=$(($legacy -shr 1) -band 1)" `
@@ -29,4 +30,4 @@ for($vendor=-1;$vendor -le 7;$vendor++) {
         if(($LASTEXITCODE -eq 0) -ne $expected) {throw "Mode validation failed $vendor/$legacy"}
     }
 }
-Write-Host 'PASS: 72 mode combinations (including invalid selectors).'
+Write-Host 'PASS: 80 mode combinations (including invalid selectors).'

@@ -338,7 +338,7 @@
             <v6Rtti>0</v6Rtti>
             <VariousControls>
               <MiscControls></MiscControls>
-              <Define>USE_HAL_DRIVER,STM32L471xx,EPD_VENDOR_DEMO_MODE=0</Define>
+              <Define>USE_HAL_DRIVER,STM32L471xx,EPD_VENDOR_DEMO_MODE=0,EPD_CLOCK_USE_GRAY4=0</Define>
               <Undefine></Undefine>
               <IncludePath>../app;../device;../platform;../gui;../fonts;../resources;../Core/Inc;../Drivers/STM32L4xx_HAL_Driver/Inc;../Drivers/STM32L4xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32L4xx/Include;../Drivers/CMSIS/Include;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F</IncludePath>
             </VariousControls>

@@ -22,6 +22,8 @@ static uint32_t s_linked_sram;
 static uint32_t s_image_flash;
 static size_t s_free_heap;
 static storage_config_snapshot_t s_config;
+static storage_usage_snapshot_t s_usage;
+static uint32_t s_usage_reads;
 
 TickType_t xTaskGetTickCount(void) { return s_ticks; }
 size_t xPortGetFreeHeapSize(void) { return s_free_heap; }
@@ -61,6 +63,14 @@ int32_t stm32_clock_image_sizes(uint32_t *p_sram, uint32_t *p_flash)
 void storage_get_config_snapshot(storage_config_snapshot_t *p_config)
 {
     taskENTER_CRITICAL(); *p_config = s_config; taskEXIT_CRITICAL();
+}
+void storage_get_usage_snapshot(storage_usage_snapshot_t *p_usage)
+{
+    assert(s_critical != 0U);
+    taskENTER_CRITICAL();
+    s_usage_reads++;
+    *p_usage = s_usage;
+    taskEXIT_CRITICAL();
 }
 
 static void s_test_calendar(void)
@@ -210,6 +220,11 @@ static void s_test_schedule(void)
     assert(schedule.next_memory == CLOCK_MEMORY_IFLASH);
     model.calendar.second = 59U;
     assert(clock_schedule_due(&schedule, &model, 2000U) == 0U);
+    model.memory[CLOCK_MEMORY_W25Q].state = CLOCK_DATA_INITIALIZING;
+    assert(clock_schedule_due(&schedule, &model, 2000U) == 0U);
+    model.memory[CLOCK_MEMORY_W25Q].state = CLOCK_DATA_READY;
+    model.memory[CLOCK_MEMORY_W25Q].value = 1;
+    assert(clock_schedule_due(&schedule, &model, 2000U) == 0U);
     model.calendar.minute++;
     assert(clock_schedule_due(&schedule, &model, 2001U) != 0U);
     model.memory_mode = schedule.next_memory;
@@ -273,8 +288,11 @@ static void s_test_service(void)
     assert(model.faults.active_categories == 0U);
     s_config.ready = 1U;
     s_config.format = CLOCK_FORMAT_12; s_config.revision = 2U;
+    s_usage.state = CLOCK_DATA_INITIALIZING;
     clock_service_get_model(&model);
     assert(model.startup_ready == 1U && model.format == CLOCK_FORMAT_12 && model.format_revision == 2U);
+    assert(model.memory[CLOCK_MEMORY_W25Q].state == CLOCK_DATA_INITIALIZING);
+    s_usage.state = CLOCK_DATA_UNAVAILABLE;
     s_free_heap = 0U; s_image_flash = 262144U;
     for (second = 1U; second < 10U; second++) {
         s_ticks = second * 1000U;
@@ -331,13 +349,76 @@ static void s_test_service(void)
     assert(model.faults.source[CLOCK_FAULT_TASK].time_valid == 0U);
 }
 
+static void s_test_usage_snapshot(void)
+{
+    static const struct {
+        uint32_t used_bytes;
+        int32_t percent;
+    } cases[] = {
+        {0U, 0}, {1U, 1}, {W25Q128_SECTOR_SIZE, 1},
+        {40U * W25Q128_SECTOR_SIZE, 1},
+        {41U * W25Q128_SECTOR_SIZE, 2},
+        {W25Q128_TOTAL_SIZE / 2U, 50},
+        {W25Q128_TOTAL_SIZE / 2U + W25Q128_SECTOR_SIZE, 51},
+        {W25Q128_TOTAL_SIZE - W25Q128_SECTOR_SIZE, 100},
+        {W25Q128_TOTAL_SIZE, 100}
+    };
+    static const clock_data_state_t states[] = {
+        CLOCK_DATA_UNAVAILABLE, CLOCK_DATA_INITIALIZING, CLOCK_DATA_ERROR
+    };
+    static const uint32_t invalid_totals[] = {
+        0U, W25Q128_TOTAL_SIZE - 1U, W25Q128_TOTAL_SIZE + 1U, UINT32_MAX
+    };
+    clock_view_model_t model;
+    uint32_t image_reads = s_image_reads;
+    uint32_t rtc_reads = s_rtc_reads;
+    uint32_t usage_reads = s_usage_reads;
+    size_t i;
+    clock_service_init();
+    clock_service_get_model(NULL);
+    assert(s_usage_reads == usage_reads);
+    s_usage.total_bytes = W25Q128_TOTAL_SIZE;
+    s_usage.result = W25Q128_OK;
+    s_usage.used_bytes = W25Q128_TOTAL_SIZE;
+    for (i = 0U; i < sizeof(states) / sizeof(states[0]); i++) {
+        s_usage.state = states[i];
+        clock_service_get_model(&model);
+        assert(model.memory[CLOCK_MEMORY_W25Q].state == states[i]);
+        assert(model.memory[CLOCK_MEMORY_W25Q].value == 0);
+    }
+    s_usage.state = CLOCK_DATA_READY;
+    for (i = 0U; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        s_usage.used_bytes = cases[i].used_bytes;
+        clock_service_get_model(&model);
+        assert(model.memory[CLOCK_MEMORY_W25Q].state == CLOCK_DATA_READY);
+        assert(model.memory[CLOCK_MEMORY_W25Q].value == cases[i].percent);
+    }
+    for (i = 0U; i < sizeof(invalid_totals) / sizeof(invalid_totals[0]); i++) {
+        s_usage.total_bytes = invalid_totals[i];
+        s_usage.used_bytes = 0U;
+        clock_service_get_model(&model);
+        assert(model.memory[CLOCK_MEMORY_W25Q].state == CLOCK_DATA_ERROR);
+        assert(model.memory[CLOCK_MEMORY_W25Q].value == 0);
+    }
+    s_usage.total_bytes = W25Q128_TOTAL_SIZE;
+    s_usage.used_bytes = W25Q128_TOTAL_SIZE + 1U;
+    clock_service_get_model(&model);
+    assert(model.memory[CLOCK_MEMORY_W25Q].state == CLOCK_DATA_ERROR);
+    s_usage.used_bytes = UINT32_MAX;
+    clock_service_get_model(&model);
+    assert(model.memory[CLOCK_MEMORY_W25Q].state == CLOCK_DATA_ERROR);
+    assert(s_image_reads == image_reads && s_rtc_reads == rtc_reads);
+    assert(model.faults.active_categories == 0U);
+}
+
 int main(void)
 {
     s_test_calendar();
     s_test_registry();
     s_test_schedule();
     s_test_service();
+    s_test_usage_snapshot();
     assert(s_critical == 0U);
-    (void)puts("clock runtime: 36525 dates, fault episodes/aggregation/wrap, schedule and cached service passed");
+    (void)puts("clock runtime: 36525 dates, fault episodes/aggregation/wrap, schedule, cached service and W25Q usage snapshots passed");
     return 0;
 }

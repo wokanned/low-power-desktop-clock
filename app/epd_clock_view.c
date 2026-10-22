@@ -7,6 +7,8 @@
 #include <string.h>
 
 #define CLOCK_GRAY_NATIVE_ROW_BYTES 32U
+#define CLOCK_BW_NATIVE_ROW_BYTES   16U
+#define CLOCK_BW_COVERAGE_THRESHOLD  2U
 #define CLOCK_GRAY_BLACK             3U
 #define CLOCK_GRAY_DIVIDER           1U
 #define CLOCK_GRAY_MAIN_DIVIDER      2U
@@ -20,6 +22,7 @@
 typedef struct {
     uint8_t *p_frame;
     uint8_t valid;
+    uint8_t monochrome;
 } clock_gray_canvas_t;
 
 static void clock_gray_pixel(clock_gray_canvas_t *p_canvas,
@@ -36,6 +39,16 @@ static void clock_gray_pixel(clock_gray_canvas_t *p_canvas,
     }
     native_x = (uint16_t)(127 - y);
     native_y = (uint16_t)(295 - x);
+    if (p_canvas->monochrome != 0U) {
+        offset = (size_t)native_y * CLOCK_BW_NATIVE_ROW_BYTES + native_x / 8U;
+        shift = (uint8_t)(7U - native_x % 8U);
+        if (color != 0U) {
+            p_canvas->p_frame[offset] &= (uint8_t)~(1U << shift);
+        } else {
+            p_canvas->p_frame[offset] |= (uint8_t)(1U << shift);
+        }
+        return;
+    }
     offset = (size_t)native_y * CLOCK_GRAY_NATIVE_ROW_BYTES + native_x / 4U;
     shift = (uint8_t)(6U - 2U * (native_x % 4U));
     p_canvas->p_frame[offset] = (uint8_t)((p_canvas->p_frame[offset] &
@@ -97,6 +110,10 @@ static void clock_gray_bitmap(clock_gray_canvas_t *p_canvas,
         for (j = 0U; j < width; j++) {
             color = (uint8_t)((p_data[(uint16_t)i * row_bytes + j / 4U] >>
                               (6U - 2U * (j % 4U))) & 3U);
+            if ((p_canvas->monochrome != 0U) &&
+                (color < CLOCK_BW_COVERAGE_THRESHOLD)) {
+                color = 0U;
+            }
             if (color != 0U) {
                 clock_gray_pixel(p_canvas, (int16_t)(x + j), (int16_t)(y + i), color);
             }
@@ -297,8 +314,13 @@ static void clock_gray_normal(clock_gray_canvas_t *p_canvas,
     clock_gray_wifi(text, &p_model->wifi);
     clock_gray_text(p_canvas, strcmp(text, "N/A") == 0 ? CLOCK_FONT_VALUE : CLOCK_FONT_WIFI,
                      168U, 98U, 228U, text);
-    clock_gray_percent(text, &p_model->memory[p_model->memory_mode]);
-    clock_gray_text(p_canvas, CLOCK_FONT_VALUE, 236U, 98U, 288U, text);
+    if (p_model->memory_mode == CLOCK_MEMORY_W25Q &&
+        p_model->memory[CLOCK_MEMORY_W25Q].state == CLOCK_DATA_INITIALIZING) {
+        clock_gray_text(p_canvas, CLOCK_FONT_LABEL, 236U, 102U, 288U, "SCAN");
+    } else {
+        clock_gray_percent(text, &p_model->memory[p_model->memory_mode]);
+        clock_gray_text(p_canvas, CLOCK_FONT_VALUE, 236U, 98U, 288U, text);
+    }
 }
 
 static void clock_gray_fault_detail(char text[64],
@@ -389,23 +411,140 @@ static void clock_gray_errors(clock_gray_canvas_t *p_canvas,
     }
 }
 
-uint8_t epd_clock_view_draw_gray4(uint8_t *frame, size_t length,
-                                const clock_view_model_t *p_model)
+static uint8_t clock_view_draw(uint8_t *frame, size_t length,
+                               const clock_view_model_t *p_model,
+                               uint8_t monochrome)
 {
     clock_gray_canvas_t canvas;
-    if ((frame == 0) || (length < EPD_CLOCK_VIEW_GRAY4_BYTES) || (p_model == 0) ||
+    size_t frame_bytes = (monochrome != 0U) ? EPD_CLOCK_VIEW_BW_BYTES :
+                                            EPD_CLOCK_VIEW_GRAY4_BYTES;
+    if ((frame == 0) || (length < frame_bytes) || (p_model == 0) ||
         ((uint32_t)p_model->memory_mode >= CLOCK_MEMORY_COUNT) ||
         ((p_model->format != CLOCK_FORMAT_12) && (p_model->format != CLOCK_FORMAT_24))) {
         return 0U;
     }
     canvas.p_frame = frame;
     canvas.valid = 1U;
-    memset(frame, 0, EPD_CLOCK_VIEW_GRAY4_BYTES);
+    canvas.monochrome = monochrome;
+    memset(frame, (monochrome != 0U) ? 0xFF : 0, frame_bytes);
     if (p_model->faults.active_categories != 0U) {
         clock_gray_errors(&canvas, p_model);
     } else {
         clock_gray_normal(&canvas, p_model);
     }
+    return canvas.valid;
+}
+
+uint8_t epd_clock_view_draw_gray4(uint8_t *frame, size_t length,
+                                const clock_view_model_t *p_model)
+{
+    return clock_view_draw(frame, length, p_model, 0U);
+}
+
+uint8_t epd_clock_view_draw_bw(uint8_t *frame, size_t length,
+                             const clock_view_model_t *p_model)
+{
+    return clock_view_draw(frame, length, p_model, 1U);
+}
+
+static void clock_gray_diagnostic_binary(clock_gray_canvas_t *p_canvas,
+                                          uint16_t x, uint16_t y)
+{
+    static const char s_digits[] = "0689";
+    const clock_gray_font_t *p_font = &g_clock_gray_fonts[CLOCK_FONT_MAIN];
+    const clock_gray_glyph_t *p_glyph;
+    uint8_t i;
+    uint8_t j;
+    uint8_t digit;
+    uint8_t row_bytes;
+    uint8_t color;
+    for (digit = 0U; digit < sizeof(s_digits) - 1U; digit++) {
+        p_glyph = clock_gray_glyph(p_font, s_digits[digit]);
+        if (p_glyph == 0) {
+            p_canvas->valid = 0U;
+            return;
+        }
+        row_bytes = (uint8_t)((p_glyph->width + 3U) / 4U);
+        for (i = 0U; i < p_glyph->height; i++) {
+            for (j = 0U; j < p_glyph->width; j++) {
+                color = (uint8_t)((p_font->p_data[p_glyph->offset +
+                                   (uint16_t)i * row_bytes + j / 4U] >>
+                                   (6U - 2U * (j % 4U))) & 3U);
+                /* Same outline and size, thresholded at half coverage. */
+                if (color >= 2U) {
+                    clock_gray_pixel(p_canvas, (int16_t)(x + j),
+                        (int16_t)(y + p_glyph->y_offset + i), CLOCK_GRAY_BLACK);
+                }
+            }
+        }
+        x = (uint16_t)(x + p_glyph->advance);
+    }
+}
+
+static void clock_gray_diagnostic_pattern(clock_gray_canvas_t *p_canvas,
+                                           uint16_t x, uint8_t color)
+{
+    const clock_gray_icon_t *p_circle = &g_clock_gray_icons[CLOCK_ICON_CIRCLE];
+    uint8_t row_bytes = (uint8_t)((p_circle->width + 3U) / 4U);
+    uint8_t i;
+    uint8_t j;
+    uint8_t ink;
+    if (color == 0U) {
+        clock_gray_rectangle(p_canvas, x, 110U, 64U, 17U, CLOCK_GRAY_BLACK);
+    }
+    clock_gray_rectangle(p_canvas, x, 112U, 16U, 1U, color);
+    clock_gray_rectangle(p_canvas, (uint16_t)(x + 18U), 111U, 1U, 14U, color);
+    for (i = 0U; i < 14U; i++) {
+        clock_gray_pixel(p_canvas, (int16_t)(x + 24U + i),
+                          (int16_t)(111U + i), color);
+    }
+    for (i = 0U; i < p_circle->height; i++) {
+        for (j = 0U; j < p_circle->width; j++) {
+            ink = (uint8_t)((p_circle->p_data[(uint16_t)i * row_bytes + j / 4U] >>
+                             (6U - 2U * (j % 4U))) & 3U);
+            if (ink != 0U) {
+                clock_gray_pixel(p_canvas, (int16_t)(x + 45U + j),
+                                  (int16_t)(111U + i), color);
+            }
+        }
+    }
+}
+
+uint8_t epd_clock_view_draw_gray4_diagnostic(uint8_t *frame, size_t length)
+{
+    clock_gray_canvas_t canvas;
+    char label[2] = {'0', '\0'};
+    uint16_t x;
+    uint8_t color;
+    if ((frame == 0) || (length < EPD_CLOCK_VIEW_GRAY4_BYTES)) {
+        return 0U;
+    }
+    canvas.p_frame = frame;
+    canvas.valid = 1U;
+    canvas.monochrome = 0U;
+    memset(frame, 0, EPD_CLOCK_VIEW_GRAY4_BYTES);
+    for (color = 0U; color < 4U; color++) {
+        x = (uint16_t)(8U + 72U * color);
+        clock_gray_rectangle(&canvas, x, 4U, 64U, 18U, CLOCK_GRAY_BLACK);
+        clock_gray_rectangle(&canvas, (uint16_t)(x + 1U), 5U, 62U, 16U, color);
+        label[0] = (char)('0' + color);
+        clock_gray_text(&canvas, CLOCK_FONT_LABEL, (uint16_t)(x + 28U), 24U,
+                         (uint16_t)(x + 64U), label);
+        clock_gray_diagnostic_pattern(&canvas, x, color);
+    }
+    clock_gray_text(&canvas, CLOCK_FONT_LABEL, 8U, 36U, 144U, "BW");
+    clock_gray_text(&canvas, CLOCK_FONT_LABEL, 152U, 36U, 288U, "GRAY4");
+    clock_gray_diagnostic_binary(&canvas, 8U, 49U);
+    clock_gray_text(&canvas, CLOCK_FONT_MAIN, 152U, 49U, 288U, "0689");
+    clock_gray_rectangle(&canvas, 148U, 36U, 1U, 69U, CLOCK_GRAY_BLACK);
+    /* Asymmetric marks expose rotation or a one-pixel plane displacement. */
+    clock_gray_rectangle(&canvas, 0U, 0U, 3U, 3U, CLOCK_GRAY_BLACK);
+    clock_gray_rectangle(&canvas, 293U, 0U, 3U, 1U, CLOCK_GRAY_BLACK);
+    clock_gray_rectangle(&canvas, 295U, 0U, 1U, 3U, CLOCK_GRAY_BLACK);
+    clock_gray_pixel(&canvas, 0, 127, CLOCK_GRAY_BLACK);
+    clock_gray_pixel(&canvas, 1, 126, CLOCK_GRAY_BLACK);
+    clock_gray_rectangle(&canvas, 293U, 125U, 3U, 3U, CLOCK_GRAY_BLACK);
+    clock_gray_pixel(&canvas, 294, 126, 0U);
     return canvas.valid;
 }
 

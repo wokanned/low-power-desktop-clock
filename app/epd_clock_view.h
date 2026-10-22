@@ -6,6 +6,7 @@
 #include "clock_model.h"
 
 #define EPD_CLOCK_VIEW_GRAY4_BYTES 9472U
+#define EPD_CLOCK_VIEW_BW_BYTES    4736U
 #define EPD_CLOCK_VIEW_WIDTH       296U
 #define EPD_CLOCK_VIEW_HEIGHT      128U
 
@@ -14,6 +15,16 @@
  * Does not access the controller, the RTOS, or the global vendor Paint. */
 uint8_t epd_clock_view_draw_gray4(uint8_t *frame, size_t length,
                                 const clock_view_model_t *p_model);
+
+/* Same layout at native resolution, 1bpp, 1=white and 0=black.
+ * Glyph/icon coverage >= 2 becomes black; structural lines stay solid black.
+ * Requires EPD_CLOCK_VIEW_BW_BYTES, with no intermediate gray framebuffer. */
+uint8_t epd_clock_view_draw_bw(uint8_t *frame, size_t length,
+                             const clock_view_model_t *p_model);
+
+/* Fixed gray-level and native-size glyph comparison; same packing as above.
+ * Pure drawing only, independent of RTC, clock configuration and device IO. */
+uint8_t epd_clock_view_draw_gray4_diagnostic(uint8_t *frame, size_t length);
 
 /* Legacy BW diagnostics only; retained for imported vendor compatibility. */
 #define EPD_CLOCK_VIEW_X                    12U

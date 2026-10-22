@@ -1,5 +1,6 @@
 param(
-    [int[]]$Modes = @(0,1,2,3,4,5,6),
+    [int[]]$Modes = @(0,1,2,3,4,5,6,7),
+    [ValidateSet(0,1)][int]$ClockUseGray4 = 0,
     [string]$Keil = 'D:/realThirdKeil/UV4/UV4.exe',
     [string]$OutputDirectory
 )
@@ -10,7 +11,7 @@ if(-not $OutputDirectory) {throw 'Specify an evidence output directory'}
 $output=[IO.Path]::GetFullPath($OutputDirectory)
 New-Item -ItemType Directory -Path $output -Force | Out-Null
 foreach($mode in $Modes) {
-    if($mode -lt 0 -or $mode -gt 6) {throw 'Invalid build mode'}
+    if($mode -lt 0 -or $mode -gt 7) {throw 'Invalid build mode'}
     $directory=Join-Path $output "mode-$mode"
     New-Item -ItemType Directory -Path $directory -Force | Out-Null
     $project=New-Object Xml.XmlDocument
@@ -22,8 +23,10 @@ foreach($mode in $Modes) {
     $common.ListingPath=$relativeOutput
     $controls=$project.Project.Targets.Target.TargetOption.TargetArmAds.Cads.VariousControls
     $definitions=@($controls.Define -split ',' | ForEach-Object {$_.Trim()} |
-        Where-Object {$_ -and $_ -notmatch '^EPD_VENDOR_DEMO_MODE(?:\s*=|$)'})
-    $controls.Define=($definitions+"EPD_VENDOR_DEMO_MODE=$mode") -join ','
+        Where-Object {$_ -and $_ -notmatch '^EPD_VENDOR_DEMO_MODE(?:\s*=|$)' -and
+            $_ -notmatch '^EPD_CLOCK_USE_GRAY4(?:\s*=|$)'})
+    $controls.Define=($definitions+"EPD_VENDOR_DEMO_MODE=$mode"+
+        "EPD_CLOCK_USE_GRAY4=$ClockUseGray4") -join ','
     $temporary=Join-Path $mdk ('v'+$mode+'-'+[Guid]::NewGuid().ToString('N').Substring(0,8)+'.uvprojx')
     $settings=New-Object Xml.XmlWriterSettings
     $settings.Encoding=New-Object Text.UTF8Encoding $false
@@ -45,7 +48,7 @@ foreach($mode in $Modes) {
         $rom=[int]$size.Groups[1].Value+[int]$size.Groups[2].Value+[int]$size.Groups[3].Value
         $ram=[int]$size.Groups[3].Value+[int]$size.Groups[4].Value
         if($rom -gt 524288 -or $ram -gt 98304) {throw 'Memory budget exceeded'}
-        Write-Host "PASS: mode=$mode ROM=$rom RAM=$ram, 0 errors/warnings"
+        Write-Host "PASS: mode=$mode gray4=$ClockUseGray4 ROM=$rom RAM=$ram, 0 errors/warnings"
         Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $directory 'DeskClock.hex') | Format-List
     } finally {
         # Only remove the exact disposable project created by this run.

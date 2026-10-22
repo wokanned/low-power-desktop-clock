@@ -4,6 +4,15 @@
 #include "../device/epd_gdey029t94.h"
 #include "epd_vendor_demo.h"
 
+/* Production clock output. Vendor demos (including mode 7) keep their own
+ * profiles. Override project-wide with 1 to restore the gray4 clock. */
+#ifndef EPD_CLOCK_USE_GRAY4
+#define EPD_CLOCK_USE_GRAY4 0
+#endif
+#if (EPD_CLOCK_USE_GRAY4 != 0) && (EPD_CLOCK_USE_GRAY4 != 1)
+#error EPD_CLOCK_USE_GRAY4 must be 0 or 1
+#endif
+
 /* Select one mode here or override it with a compiler definition. */
 #ifndef EPD_GUI_DEMO
 #define EPD_GUI_DEMO 0U

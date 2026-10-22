@@ -49,17 +49,36 @@ static void s_display_log_error(epd_gdey029t94_status_t status)
 static void s_display_run(void *p_argument)
 {
     uint32_t attempt;
+#if EPD_VENDOR_DEMO_MODE != EPD_VENDOR_DEMO_GRAY4_HOLD
     uint32_t completed;
+#endif
     epd_gdey029t94_status_t status;
 
     (void)p_argument;
+#if EPD_VENDOR_DEMO_MODE == EPD_VENDOR_DEMO_GRAY4_HOLD
+    Debug_Log("display: starting gray4 diagnostic\r\n");
+#else
     Debug_Log("display: starting clock\r\n");
+#endif
     attempt = 0U;
     while (attempt < DISPLAY_START_ATTEMPTS) {
+#if EPD_VENDOR_DEMO_MODE != EPD_VENDOR_DEMO_GRAY4_HOLD
         completed = epd_bringup_get_completed_frames();
         /* The clock stays here on success and returns a concrete failure. */
+#endif
         status = epd_bringup_run_clock();
+#if EPD_VENDOR_DEMO_MODE == EPD_VENDOR_DEMO_GRAY4_HOLD
+        s_display_last_status = status;
+        if (status == EPD_GDEY029T94_OK) {
+            s_display_stopped = true;
+            Debug_Log("display: gray4 diagnostic asleep; page retained\r\n");
+            for (;;) {
+                (void)osThreadSuspend(osThreadGetId());
+            }
+        }
+#else
         if (epd_bringup_get_completed_frames() != completed) { attempt = 0U; }
+#endif
         attempt++;
         s_display_last_status = status;
         s_display_log_error(status);
