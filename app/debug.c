@@ -2,6 +2,7 @@
 #include "debug_console.h"
 #include "weather.h"
 #include "clock_faults.h"
+#include "clock_service.h"
 #include "display.h"
 #include "storage.h"
 #include "stm32_debug_uart.h"
@@ -34,6 +35,8 @@ static uint32_t s_debug_fault_mask;
 static uint32_t s_next_token;
 static uint32_t s_pending_token;
 static clock_format_t s_pending_format;
+static uint32_t s_pending_time_token;
+static uint8_t s_pending_time_reply;
 
 static void debug_fault_update(uint32_t set_mask, uint32_t clear_mask)
 {
@@ -116,7 +119,33 @@ static void debug_command(debug_command_t command)
 {
     clock_format_t format;
     weather_data_t weather;
+    clock_calendar_t calendar;
+    int32_t result;
     if (command == DEBUG_COMMAND_NONE) { return; }
+    if (command == DEBUG_COMMAND_TIME) {
+        if (!debug_console_parse_time(s_parser.line, &calendar)) {
+            if (s_console_active != 0U) { (void)debug_send_text("ERR TIME\r\n"); }
+            return;
+        }
+        if (s_pending_time_token != 0U) {
+            if (s_console_active != 0U) { (void)debug_send_text("ERR BUSY\r\n"); }
+            return;
+        }
+        s_next_token++;
+        if (s_next_token == 0U) { s_next_token++; }
+        result = clock_service_request_time(&calendar, s_next_token);
+        if (result != 0) {
+            if (s_console_active != 0U) {
+                (void)debug_send_text(result == -1 ? "ERR BUSY\r\n" :
+                    (result == -3 ? "ERR TIME\r\n" : "ERR RTC\r\n"));
+            }
+            return;
+        }
+        s_pending_time_token = s_next_token;
+        s_pending_time_reply = s_console_active;
+        debug_fault_update(0U, CLOCK_FAULT_RX | CLOCK_FAULT_OVERFLOW);
+        return;
+    }
     if (command == DEBUG_COMMAND_WEATHER) {
         if (!weather_parse_line(s_parser.line, &weather)) {
             if (s_console_active != 0U) { (void)debug_send_text("ERR WEATHER\r\n"); }
@@ -175,6 +204,10 @@ static void debug_command(debug_command_t command)
         return;
     }
     if (command == DEBUG_COMMAND_OFF) {
+        if (s_pending_time_token != 0U) {
+            (void)debug_send_text("ERR BUSY\r\n");
+            return;
+        }
         if (debug_send_text("OK CONSOLE OFF\r\n")) {
             taskENTER_CRITICAL();
             (void)xQueueReset(s_debug_queue);
@@ -192,6 +225,22 @@ static void debug_command(debug_command_t command)
     }
     s_pending_token = s_next_token;
     s_pending_format = format;
+}
+
+static void debug_poll_time(void)
+{
+    int32_t result;
+    uint8_t reply;
+    if (s_pending_time_token == 0U ||
+        clock_service_take_time_result(s_pending_time_token, &result) == 0U) {
+        return;
+    }
+    reply = s_pending_time_reply;
+    s_pending_time_token = 0U;
+    s_pending_time_reply = 0U;
+    if (reply != 0U) {
+        (void)debug_send_text(result == 0 ? "OK TIME\r\n" : "ERR RTC\r\n");
+    }
 }
 
 static void debug_poll_config(void)
@@ -221,6 +270,8 @@ void Debug_Init(void)
     s_debug_fault_mask = 0U;
     s_next_token = 0U;
     s_pending_token = 0U;
+    s_pending_time_token = 0U;
+    s_pending_time_reply = 0U;
     debug_console_parser_reset(&s_parser);
     weather_init();
     s_debug_queue = xQueueCreateStatic(DEBUG_QUEUE_DEPTH,
@@ -317,6 +368,7 @@ void StartDebugTask(void *p_argument)
         }
         (void)weather_poll_expiry((uint32_t)xTaskGetTickCount());
         debug_poll_config();
+        debug_poll_time();
         if (s_console_active == 0U &&
             xQueueReceive(s_debug_queue, frame, 0U) == pdPASS) {
             /* Capture current transmit counters, not their old queued values. */

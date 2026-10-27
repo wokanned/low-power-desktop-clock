@@ -21,7 +21,7 @@ $testSources = @(
     (Join-Path $projectRoot 'resources\weather_glyphs.c')
 )
 $stubDirectory = Join-Path $PSScriptRoot 'stubs\display'
-$scenarios = @('startup', 'minute', 'rtc-error', 'retry-limit', 'retry-success',
+$scenarios = @('startup', 'minute', 'time-jump', 'weather-time-jump', 'rtc-error', 'retry-limit', 'retry-success',
     'init-retry', 'retry-budget', 'sleep-failure', 'coalesce',
     'failed-fault-coalesce', 'failed-recovery-coalesce', 'page-switch',
     'weather-hidden', 'fault-weather', 'weather-duplicate', 'weather-minute',
@@ -37,4 +37,4 @@ foreach ($gray4 in @(0, 1)) {
         if ($LASTEXITCODE -ne 0) { throw "Production clock display failed: gray4=$gray4 scenario=$scenario" }
     }
 }
-Write-Host 'PASS: production bringup/display/schedule integration (23 scenarios for both BW and gray4).'
+Write-Host 'PASS: production bringup/display/schedule integration (25 scenarios for both BW and gray4).'

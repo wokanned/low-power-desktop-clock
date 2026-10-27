@@ -1,5 +1,6 @@
 #include "debug.h"
 #include "clock_faults.h"
+#include "clock_service.h"
 #include "display.h"
 #include "storage.h"
 #include "stm32_debug_uart.h"
@@ -25,6 +26,161 @@ static uint32_t s_fault_mask;
 static uint32_t s_send_failure;
 static display_page_t s_selected_page = DISPLAY_PAGE_CLOCK;
 static char s_boundary_input[256];
+static uint32_t s_time_token;
+static uint32_t s_time_requests;
+static uint32_t s_time_request_calls;
+static uint32_t s_time_takes;
+static int32_t s_time_accept_result;
+static int32_t s_time_result;
+static uint8_t s_time_done;
+static clock_calendar_t s_requested_time;
+
+static void clear_output(void)
+{
+    s_output_length = 0U;
+    s_output[0] = '\0';
+}
+
+static void test_time_step(uint32_t step)
+{
+    switch (step) {
+    case 1U:
+        assert(s_binary_frames == 2U && Debug_GetQueueDropCount() == 0U);
+        clear_output();
+        s_input = "TIME 2026-02-29T14:30:00\nTIME 2026-10-27T14:30:00\r\n"
+            "TIME 2026-10-27T14:30:01\n";
+        break;
+    case 2U:
+        assert(s_time_requests == 1U && s_time_request_calls == 1U);
+        assert(s_time_token != 0U && s_output_length == 0U);
+        assert(s_requested_time.year == 2026U && s_requested_time.weekday == 2U);
+        assert(s_requested_time.hour == 14U && s_requested_time.second == 0U);
+        s_time_done = 1U;
+        s_time_result = 0;
+        break;
+    case 3U:
+        assert(s_time_takes == 1U && s_time_token == 0U && s_output_length == 0U);
+        s_input = "TIME 2000-02-29T00:00:00\nCONSOLE ON\n";
+        break;
+    case 4U:
+        assert(s_time_requests == 2U && Debug_IsConsoleActive());
+        assert(strcmp(s_output, "OK CONSOLE ON\r\n") == 0);
+        assert(s_requested_time.year == 2000U && s_requested_time.weekday == 2U);
+        s_time_done = 1U;
+        s_time_result = -1;
+        break;
+    case 5U:
+        assert(s_time_takes == 2U && s_time_token == 0U);
+        /* A request submitted in binary mode stays silent after CONSOLE ON. */
+        assert(strcmp(s_output, "OK CONSOLE ON\r\n") == 0);
+        clear_output();
+        s_input = "TIME\nTIME 2026-02-29T14:30:00\nTIME 2026-10-27T14:30:00Z\n"
+            "TIME 2026-10-27T14:30:00\nTIME 2026-10-27T14:30:01\nCONSOLE OFF\n";
+        break;
+    case 6U:
+        assert(s_time_requests == 3U && s_time_token != 0U && Debug_IsConsoleActive());
+        assert(strcmp(s_output, "ERR TIME\r\nERR TIME\r\nERR TIME\r\n"
+                      "ERR BUSY\r\nERR BUSY\r\n") == 0);
+        s_input = "FORMAT 24\n";
+        break;
+    case 7U:
+        assert(s_storage_requests == 3U && s_time_token != 0U);
+        assert(strstr(s_output, "OK TIME") == NULL);
+        s_time_done = 1U;
+        s_time_result = 0;
+        s_input = "PAGE WEATHER\nWEATHER "
+            "\xE6\xB7\xB1\xE5\x9C\xB3,2,237,180,270,65,2,35,2026-10-26T10:32\n";
+        break;
+    case 8U:
+        assert(s_time_takes == 3U && s_time_token == 0U);
+        assert(strstr(s_output, "OK PAGE WEATHER\r\nOK WEATHER\r\nOK TIME\r\n") != NULL);
+        assert(strstr(s_output, "OK FORMAT 24") == NULL);
+        s_config.completed_token = s_requested_token;
+        s_config.completed_result = 0;
+        break;
+    case 9U:
+        assert(strstr(s_output, "OK FORMAT 24\r\n") != NULL);
+        clear_output();
+        s_input = "FORMAT 24\nTIME 2026-10-27T14:30:00\nCONSOLE OFF\n";
+        break;
+    case 10U:
+        assert(s_time_requests == 4U && s_storage_requests == 4U);
+        assert(s_time_token != 0U && strcmp(s_output, "ERR BUSY\r\n") == 0);
+        s_time_done = 1U;
+        s_time_result = -1;
+        s_config.completed_token = s_requested_token;
+        s_config.completed_result = 0;
+        break;
+    case 11U:
+        assert(s_time_takes == 4U && s_time_token == 0U);
+        assert(strcmp(s_output, "ERR BUSY\r\nOK FORMAT 24\r\nERR RTC\r\n") == 0);
+        clear_output();
+        s_time_accept_result = -2;
+        s_input = "TIME 2026-10-27T14:30:00\n";
+        break;
+    case 12U:
+        assert(strcmp(s_output, "ERR RTC\r\n") == 0 && s_time_requests == 4U);
+        clear_output();
+        s_time_accept_result = -1;
+        s_input = "TIME 2026-10-27T14:30:00\n";
+        break;
+    case 13U:
+        assert(strcmp(s_output, "ERR BUSY\r\n") == 0 && s_time_requests == 4U);
+        clear_output();
+        s_time_accept_result = -3;
+        s_input = "TIME 2026-10-27T14:30:00\n";
+        break;
+    case 14U:
+        assert(strcmp(s_output, "ERR TIME\r\n") == 0 && s_time_requests == 4U);
+        clear_output();
+        s_time_accept_result = 0;
+        s_input = "TIME 2026-10-27T14:30:00\nCONSOLE OFF\n";
+        break;
+    case 15U:
+        assert(s_time_requests == 5U && strcmp(s_output, "ERR BUSY\r\n") == 0);
+        s_time_done = 1U;
+        s_time_result = 0;
+        s_send_failure = 1U;
+        break;
+    case 16U:
+        assert(s_time_takes == 5U && s_time_token == 0U);
+        assert(strcmp(s_output, "ERR BUSY\r\n") == 0 && Debug_GetUartErrorCount() == 3U);
+        clear_output();
+        s_input = "TIME 2026-10-27T14:30:00\nCONSOLE OFF\n";
+        break;
+    case 17U:
+        assert(s_time_requests == 6U && strcmp(s_output, "ERR BUSY\r\n") == 0);
+        s_time_done = 1U;
+        s_time_result = 0;
+        break;
+    case 18U:
+        assert(s_time_takes == 6U && s_time_token == 0U);
+        assert(strcmp(s_output, "ERR BUSY\r\nOK TIME\r\n") == 0);
+        s_input = "CONSOLE OFF\n";
+        break;
+    case 19U:
+        assert(!Debug_IsConsoleActive());
+        assert(strcmp(s_output, "ERR BUSY\r\nOK TIME\r\nOK CONSOLE OFF\r\n") == 0);
+        clear_output();
+        s_time_accept_result = -2;
+        s_input = "TIME invalid\nTIME 2026-10-27T14:30:00\n";
+        break;
+    case 20U:
+        assert(s_output_length == 0U && s_time_requests == 6U);
+        s_time_accept_result = 0;
+        s_input = "TIME 2026-10-27T14:30:00\n";
+        break;
+    case 21U:
+        assert(s_output_length == 0U && s_time_requests == 7U && s_time_token != 0U);
+        s_time_done = 1U;
+        s_time_result = -1;
+        break;
+    default:
+        assert(s_time_takes == 7U && s_time_token == 0U && s_output_length == 0U);
+        assert(s_time_request_calls == 11U && s_storage_requests == 4U);
+        longjmp(s_finished, 1);
+    }
+}
 
 static void make_boundary_input(void)
 {
@@ -157,9 +313,8 @@ uint32_t ulTaskNotifyTake(BaseType_t clear, TickType_t wait)
         assert(Debug_SendFloats(s_frame, VOFA_MAX_CHANNELS));
         break;
     default:
-        assert(s_binary_frames == 2U);
-        assert(Debug_GetQueueDropCount() == 0U);
-        longjmp(s_finished, 1);
+        test_time_step(s_step - 11U);
+        break;
     }
     return 1U;
 }
@@ -218,8 +373,29 @@ void clock_faults_get_snapshot(clock_fault_snapshot_t *p_snapshot)
     p_snapshot->source[CLOCK_FAULT_RTC].first_time.minute = 34U;
     p_snapshot->source[CLOCK_FAULT_RTC].first_time.second = 56U;
 }
-const char *clock_fault_source_label(clock_fault_source_t source)
-{ assert(source == CLOCK_FAULT_RTC); return "RTC"; }
+int32_t clock_service_request_time(const clock_calendar_t *p_calendar, uint32_t token)
+{
+    assert(p_calendar != NULL && token != 0U && clock_calendar_valid(p_calendar));
+    assert(p_calendar->weekday == clock_calendar_weekday(p_calendar->year,
+        p_calendar->month, p_calendar->day));
+    s_time_request_calls++;
+    if (s_time_accept_result != 0) { return s_time_accept_result; }
+    assert(s_time_token == 0U);
+    s_time_token = token;
+    s_requested_time = *p_calendar;
+    s_time_requests++;
+    return 0;
+}
+uint8_t clock_service_take_time_result(uint32_t token, int32_t *p_result)
+{
+    assert(token != 0U && token == s_time_token && p_result != NULL);
+    if (s_time_done == 0U) { return 0U; }
+    *p_result = s_time_result;
+    s_time_token = 0U;
+    s_time_done = 0U;
+    s_time_takes++;
+    return 1U;
+}
 epd_gdey029t94_status_t display_get_last_status(void)
 { return (epd_gdey029t94_status_t)-2; }
 bool display_select_page(display_page_t page)
@@ -238,6 +414,6 @@ int main(void)
     assert(Debug_IsReady() && !Debug_IsConsoleActive());
     assert(Debug_SendFloats(s_frame, VOFA_MAX_CHANNELS));
     if (setjmp(s_finished) == 0) { StartDebugTask(NULL); }
-    puts("PASS: binary/text ownership, valid 127-byte weather, WEATHER/PAGE during FORMAT, persistence and recovery");
+    puts("PASS: TIME async result ownership, silent default, console errors, FORMAT coexistence and UART recovery");
     return 0;
 }

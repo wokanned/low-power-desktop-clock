@@ -142,13 +142,8 @@ void MX_FREERTOS_Init(void) {
 void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN StartDefaultTask */
-  TickType_t next_wake = xTaskGetTickCount();
   (void)argument;
-  for(;;)
-  {
-    clock_service_poll();
-    vTaskDelayUntil(&next_wake, pdMS_TO_TICKS(1000U));
-  }
+  clock_service_run();
   /* USER CODE END StartDefaultTask */
 }
 

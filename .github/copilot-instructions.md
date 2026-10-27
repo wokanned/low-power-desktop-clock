@@ -9,8 +9,8 @@
 - DeskClock is an STM32L471RET6 + FreeRTOS desktop clock with a GDEY029T94-FL03 e-paper display, built on CubeMX HAL.
 - Primary development flow: maintain peripheral configuration in CubeMX, edit and review in VS Code, then build, download, and debug through Keil MDK-ARM (ARMCC).
 - Use `docs/totalPLAN.md`, section `当前开发状态（2026-10-27）`, as the shared project-status entry. Module documents retain detailed contracts and dated verification records.
-- The current software prototype integrates RTC/clock display, ADXL345 telemetry, W25Q128 configuration storage, and weather injected over USART2. ESP32 networking/NTP, environmental and battery sampling, button/alarm behavior, and whole-device low-power operation remain pending.
-- The latest weather integration has host-test records but no corresponding complete Keil build or board acceptance record. Do not transfer historical build or board results to the current working tree.
+- The current software prototype integrates RTC/clock display, ADXL345 telemetry, W25Q128 configuration storage, weather injection, and TIME synchronization over USART2. The onboard ESP32 remains connected to USART1 without an application protocol. ESP32 networking/NTP, environmental and battery sampling, button/alarm behavior, and whole-device low-power operation remain pending.
+- The 2026-10-27 weather and TIME integration passed the recorded host checks and a complete default BW Keil build (zero errors/warnings). The image is in `build/time-sync-keil/mode-0/` and has not been flashed. See `docs/测试数据.md` for image identity and verification scope. Do not transfer historical build or board results to the current working tree.
 
 ## Source Layout (High Level)
 - `Core/`: CubeMX-generated startup/system/peripheral init and main entry.
@@ -63,6 +63,7 @@
 - Treat repository instructions as context reducers, not as a substitute for build results, datasheets, or validated project docs.
 
 ## AI Response Style Rules
+- Write user-facing documentation in Chinese; preserve protocol commands, APIs, paths, code, and original logs. Use `docs/README.md` as the document navigation entry and include usable examples in protocol guides.
 - When writing Chinese user-facing prose, prefer short sentences and common words.
 - Avoid quote-plus-A-B-C phrasing when a plain sentence or a simple list is enough.
 - Use fewer colons, dashes, and semicolons unless structure truly needs them.
@@ -82,6 +83,8 @@
 - Dated historical logs and images apply only to their identified version and configuration.
 
 ## References
+- Human-facing documentation index: `docs/README.md`.
+- Build identity, host-test records, and historical data index: `docs/测试数据.md`.
 - Repository guidance: `AGENTS.md`.
 - Current project status and plan: `docs/totalPLAN.md`.
 - Project-level human spec: `docs/嵌软开发规范.md`.

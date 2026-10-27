@@ -289,6 +289,20 @@ int32_t osDelay(uint32_t ticks)
         if(s_tick==10000U) { s_live.temperature.value=100; }
         if(s_tick>=60000U) { s_live.calendar.minute=31U; }
         if(s_committed==2U) { longjmp(s_stop,STOP_COMPLETE); }
+    } else if(scenario("time-jump") || scenario("weather-time-jump")) {
+        if(s_poll_delays==1U) { s_live.calendar.second=59U; }
+        if(s_poll_delays==2U) {
+            CHECK(s_refreshes==1U);
+            s_live.calendar=(clock_calendar_t){2027U,1U,1U,5U,21U,30U,0U};
+        }
+        if(s_poll_delays==3U) {
+            CHECK(s_committed==2U);
+            s_live.calendar=(clock_calendar_t){2000U,1U,1U,6U,21U,30U,20U};
+        }
+        if(s_poll_delays==4U) {
+            CHECK(s_committed==3U);
+            longjmp(s_stop,STOP_COMPLETE);
+        }
     } else if(scenario("rtc-error")) {
         if(s_tick>=2000U) { longjmp(s_stop,STOP_COMPLETE); }
     } else if(scenario("retry-success")) {
@@ -397,7 +411,8 @@ static void init_model(void)
         s_live.faults.active_categories=1U;
     }
     if(scenario("weather-revert") || scenario("weather-coalesce") ||
-       scenario("weather-retry") || scenario("weather-expiry")) {
+       scenario("weather-retry") || scenario("weather-expiry") ||
+       scenario("weather-time-jump")) {
         CHECK(display_select_page(DISPLAY_PAGE_WEATHER));
         publish_weather(s_tick, 2U);
     }
@@ -443,6 +458,22 @@ static void verify(int stopped)
         CHECK(s_render_models[0].calendar.second==0U);
         CHECK(s_render_models[1].calendar.minute==31U);
         CHECK(s_render_models[1].memory_mode==CLOCK_MEMORY_IFLASH);
+        check_retry_intervals(0U);
+    } else if(scenario("time-jump") || scenario("weather-time-jump")) {
+        CHECK(stopped==STOP_COMPLETE && s_refreshes==3U && s_committed==3U);
+        CHECK(s_frame_ticks[0]==0U && s_frame_ticks[1]==400U && s_frame_ticks[2]==600U);
+        if(scenario("time-jump")) {
+            CHECK(s_renders==3U);
+            CHECK(s_render_models[1].calendar.year==2027U);
+            CHECK(s_render_models[2].calendar.year==2000U);
+            CHECK(s_render_models[2].calendar.second==20U);
+        } else {
+            weather_snapshot_t weather;
+            CHECK(s_weather_published==1U && s_renders==0U);
+            weather_get_snapshot(s_tick, &weather);
+            CHECK(weather.available==1U && weather.expired==0U);
+            CHECK(weather.data.condition==2U);
+        }
         check_retry_intervals(0U);
     } else if(scenario("rtc-error")) {
         CHECK(stopped==STOP_COMPLETE);CHECK(s_refreshes==1U && s_renders==1U);

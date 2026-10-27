@@ -1,102 +1,180 @@
-# USART2 Weather Protocol
+# USART2 天气输入与页面切换
 
-Status updated 2026-10-27. The project status entry is
-[totalPLAN.md — 当前开发状态（2026-10-27）](totalPLAN.md#当前开发状态2026-10-27).
-Weather parsing, RAM caching, rendering, and page selection are integrated in
-source and selected by the Keil project. Recorded host tests have passed; the
-current complete Keil link, target image, and board acceptance remain pending.
-Input currently comes from USART2 commands; ESP32 networking, automatic weather
-fetching, and NTP time synchronization are not implemented in this firmware.
+更新日期：2026-10-27。文档入口见 [文档导航](README.md)，工程状态见 [totalPLAN.md 的当前开发状态](totalPLAN.md#当前开发状态2026-10-27)。
 
-USART2 uses the existing 115200 baud, 8 data bits, no parity, 1 stop bit
-configuration. Commands are UTF-8 single lines terminated by CR, LF, or CRLF.
-The WEATHER line limit is 127 bytes, excluding the line ending and terminating
-NUL. Other input retains the existing 31-byte limit. Only the exact WEATHER
-command family (followed by a space or comma) receives the extended limit;
-unknown prefixes such as WEATHERX do not.
+当前固件通过 USART2 接收深圳或湛江的完整天气数据，在 RAM 中保留最新一份记录，并通过串口命令切换天气页和时钟页。天气来源更新时间只用于显示；设置 RTC 使用独立的 [TIME 校时命令](time_protocol.md)。ESP32 联网、自动获取天气和 NTP 校时尚未接入。
 
-## Commands
+## 连接、编码与长度
+
+使用 H10 的 USART2 调试串口，TX 为 PA2，RX 为 PA3，电平为 3.3V TTL。串口助手设置为 115200 波特率、8 数据位、无校验、1 停止位，发送编码选择 UTF-8。
+
+发送端 TX 接 STM32 PA3，发送端 RX 接 PA2，双方共地。板载 ESP32-C3 原连接 USART1，当前业务尚未接入；外部 ESP32 使用本协议测试时需连接 H10。
+
+命令区分大小写，每条命令占一行，以实际 CR、LF 或 CRLF 结束。串口助手可设置自动添加 CRLF，即字节 `0D 0A`；不要把字符 `\r\n` 当作行结束符发送。
+
+- `WEATHER` 整行最多 127 字节，包含命令、空格、城市和全部字段，不包含行结束符和终止 NUL。长度按 UTF-8 字节计算；“深圳”和“湛江”均占 6 字节。
+- 其他命令保留原来的 31 字节上限。
+- 只有精确的 `WEATHER` 后接空格或逗号的命令族允许使用长行。`WEATHERX` 等前缀不享受例外；有效天气包仍必须使用下文的 `WEATHER ` 加九字段格式。
+- 损坏的 UTF-8、禁止的控制字节、超长行或硬件接收错误会丢弃当前整行，遇到行结束符后恢复收行。
+
+## 串口助手发送示例
+
+逐行发送以下命令。进入控制台后，每行等待对应应答再发送下一行。
 
 ```text
-WEATHER 深圳,2,235,180,270,65,2,35,2026-10-26T10:30
+CONSOLE ON
+WEATHER 深圳,2,235,180,270,65,2,35,2026-10-27T14:30
 PAGE WEATHER
-PAGE CLOCK
 ```
 
-`WEATHER` contains exactly nine comma-separated fields in this order:
+预期应答依次为：
 
-| Field | Format |
+```text
+OK CONSOLE ON
+OK WEATHER
+OK PAGE WEATHER
+```
+
+示例表示深圳、多云、当前 23.5°C、最低 18.0°C、最高 27.0°C、湿度 65%、东北风 3.5m/s，来源更新时间为北京时间 2026-10-27 14:30。`PAGE WEATHER` 请求显示天气页，应答只确认接收或页面请求成功，屏幕刷新可能仍在进行。
+
+确认天气页刷新完成后，如需返回时钟页并恢复二进制遥测，再逐行发送下面两条命令，分别等待 `OK PAGE CLOCK` 和 `OK CONSOLE OFF`。不要把进入与退出示例整块连续发送，否则显示任务可能合并中间的切页请求。
+
+```text
+PAGE CLOCK
+CONSOLE OFF
+```
+
+湛江静风示例：
+
+```text
+WEATHER 湛江,1,286,220,310,72,0,0,2026-10-27T14:35
+PAGE WEATHER
+```
+
+这会用湛江记录替换此前深圳记录。默认 JustFloat 模式也接收 `WEATHER` 和 `PAGE`，但不输出文本应答。`CONSOLE ON` 暂停遥测并开启应答；`CONSOLE OFF` 成功后恢复遥测。控制台完整约定见 [debug_console.md](debug_console.md)。
+
+## WEATHER 九字段格式
+
+```text
+WEATHER 城市,天气码,当前温度,最低温度,最高温度,湿度,风向码,风速,来源更新时间
+```
+
+字段顺序固定，必须一次发送全部九个字段，不接受字段前后空白、引号、转义、部分更新或额外字段。首版协议不含 CRC。
+
+| 序号 | 字段 | 格式与约束 |
+| --- | --- | --- |
+| 1 | 城市 | 精确匹配 `深圳` 或 `湛江` |
+| 2 | 天气码 | 整数 0～13，含义见天气码表 |
+| 3 | 当前温度 | 整数 −999～999，单位为 0.1°C |
+| 4 | 最低温度 | 整数 −999～999，单位为 0.1°C |
+| 5 | 最高温度 | 整数 −999～999，单位为 0.1°C，必须不低于最低温度 |
+| 6 | 湿度 | 整数 0～100，单位为 % |
+| 7 | 风向码 | 整数 0～8，含义见风向码表 |
+| 8 | 风速 | 整数 0～999，单位为 0.1m/s；静风码 0 必须配合风速 0 |
+| 9 | 来源更新时间 | 北京时间 UTC+8，严格使用 `YYYY-MM-DDTHH:MM`，年份 2000～2099，日期必须真实有效 |
+
+温度和风速传整数十分之一单位，不直接发送小数。例如 `235` 表示 23.5°C，`-35` 表示 −3.5°C，风速 `35` 表示 3.5m/s。数值不接受 `+` 正号；只有温度允许负号。时间字段月份、日期、小时和分钟必须补足两位，小时为 00～23，分钟为 00～59，并检查闰年。
+
+全部字段校验通过后才一次性替换完整天气记录。任何字段无效，都保留此前数据及其过期计时。
+
+## 天气码表
+
+每个天气码对应固定中文描述和图标。
+
+| 天气码 | 中文描述 |
 | --- | --- |
-| City | Exactly `深圳` or `湛江` |
-| Condition | Integer 0 through 13 |
-| Current temperature | Tenths of a degree Celsius, -999 through 999 |
-| Minimum temperature | Same range |
-| Maximum temperature | Same range and not below the minimum |
-| Humidity | Integer percent, 0 through 100 |
-| Wind direction | 0 calm; 1 N; 2 NE; 3 E; 4 SE; 5 S; 6 SW; 7 W; 8 NW |
-| Wind speed | Tenths of m/s, 0 through 999; must be zero for calm direction |
-| Source update time | Beijing time, exactly `YYYY-MM-DDTHH:MM`, years 2000 through 2099 |
+| 0 | 未知 |
+| 1 | 晴 |
+| 2 | 多云 |
+| 3 | 阴 |
+| 4 | 小雨 |
+| 5 | 中雨 |
+| 6 | 大雨 |
+| 7 | 雷阵雨 |
+| 8 | 小雪 |
+| 9 | 中雪 |
+| 10 | 大雪 |
+| 11 | 雨夹雪 |
+| 12 | 雾 |
+| 13 | 霾 |
 
-Condition codes map to fixed labels and icons: 0 unknown, 1 sunny, 2 cloudy,
-3 overcast, 4 light rain, 5 moderate rain, 6 heavy rain, 7 thunderstorm,
-8 light snow, 9 moderate snow, 10 heavy snow, 11 sleet, 12 fog, and 13 haze.
+## 风向码表
 
-Fields have no leading or trailing whitespace. Quotes, escapes, partial updates,
-and extra fields are unsupported. The source timestamp is displayed only; it
-does not set the RTC. A message replaces the entire cached city and weather
-record only after every field and date have passed validation. Invalid input
-leaves the prior record and its expiry timer unchanged.
+风向码包含八个方向及静风。风速单位仍为 0.1m/s，不能将风向码作为风力等级使用。
 
-## Runtime behavior
+| 风向码 | 中文描述 |
+| --- | --- |
+| 0 | 静风，风速必须为 0 |
+| 1 | 北 |
+| 2 | 东北 |
+| 3 | 东 |
+| 4 | 东南 |
+| 5 | 南 |
+| 6 | 西南 |
+| 7 | 西 |
+| 8 | 西北 |
 
-One weather record is held in RAM. Every valid complete record refreshes its
-three-hour lifetime, including a duplicate. After three hours without a valid
-record, the previous values remain available and the weather page displays
-`已过期`. Expiry uses the monotonic FreeRTOS tick and remains set until another
-valid record arrives. Reset clears the cache and selects the clock page.
-Selecting the weather page with an empty cache displays `等待天气数据` and
-placeholders. Page selection is also RAM-only and does not survive reset.
+## 模式与应答
 
-`WEATHER` updates the cache but does not select a page. `PAGE` selects the view;
-updates to a hidden weather page remain cached and do not trigger an EPD refresh.
-While a fault page covers the screen, PAGE changes only the page to restore
-when the fault clears. The latest visible weather fields are compared with the
-last completed frame; an A-to-B-to-A update during BUSY does not refresh A again.
-The weather page uses the RTC time in the configured 12/24-hour format and
-shows the source update time as month, day, and time.
-The production default is black and white (`EPD_VENDOR_DEMO_MODE=0`,
-`EPD_CLOCK_USE_GRAY4=0`). It performs a full refresh for page changes, visible
-weather changes, and RTC minute changes, with no seconds displayed. The EPD
-controller sleeps after a completed frame; this does not put the MCU into STOP2.
+默认 JustFloat 模式下，`WEATHER` 和 `PAGE` 的成功、内容错误及接收错误均不输出文本。控制台模式下使用以下应答：
 
-In default JustFloat mode, accepted WEATHER and PAGE commands produce no text
-response. WEATHER and PAGE remain available while a FORMAT persistence request
-is pending. In console mode they reply `OK WEATHER`, `OK PAGE WEATHER`, or
-`OK PAGE CLOCK`. Invalid WEATHER content replies `ERR WEATHER`; damaged or
-overlong lines use the existing `ERR RX` response. These acknowledgements mean
-the request was accepted, not that the EPD refresh completed.
+| 应答 | 含义 |
+| --- | --- |
+| `OK WEATHER` | 完整天气数据校验成功并已更新 RAM 缓存 |
+| `OK PAGE WEATHER` | 天气页选择请求已接受 |
+| `OK PAGE CLOCK` | 时钟页选择请求已接受 |
+| `ERR WEATHER` | 天气命令内容无效，旧缓存及其计时保持不变 |
+| `ERR RX` | 当前行存在接收错误、损坏 UTF-8、禁止控制字节或长度超限，整行丢弃 |
+| `ERR COMMAND` | 未识别的命令文本 |
 
-Fixed Chinese glyphs are generated offline from the local Microsoft YaHei font
-with `tools/generate_weather_glyphs.py`; only the resulting bitmap arrays are
-used by firmware. Verify generated resources with:
+`WEATHER` 和 `PAGE` 不受在途 `FORMAT` 持久化事务或 `TIME` 校时事务阻塞。`OK PAGE WEATHER`、`OK PAGE CLOCK` 和 `OK WEATHER` 均不表示墨水屏已经刷新完成。系统故障页覆盖画面时，`PAGE` 只更新故障清除后应返回的目标页面。
+
+## 缓存、过期与显示刷新
+
+天气和选中页面都只存在 RAM 中。重启会清空天气并选择时钟页；无天气数据时切入天气页，显示“等待天气数据”和数值占位符。`WEATHER` 只更新缓存，不会自动切页。
+
+每个完整有效包都会重新开始三小时有效期，重复有效包也一样。连续三小时未收到有效包后，保留旧数据并显示“已过期”。过期计时使用单调 FreeRTOS tick，处理当前 32 位 tick 回绕；过期状态保持到下一份有效包到达。来源时间和 `TIME` 对 RTC 的调整均不影响这个计时。
+
+天气页分辨率为 296×128，显示城市、过期标志、RTC 小时钟、天气图标和中文描述、大号当前温度、最高最低温度、湿度、风向、风速，以及来源更新的月日时分。小时钟沿用 12/24 小时配置，12 小时制显示 AM/PM，不显示秒。
+
+切页、可见天气内容变化和 RTC 分钟变化会请求全刷。来源更新时间变化属于可见变化。相同数据不重复刷新；隐藏天气页只更新缓存。刷新期间只保留最新快照，并与上一个已完成画面比较；若 BUSY 期间数据由 A 变为 B 又恢复 A，且 A 与上一个已完成画面相同，就不再重复刷新 A。
+
+故障沿用整屏故障页，故障恢复后返回最终选中的页面。显示任务独占绘图和刷新，BUSY 完成后才提交已显示版本；天气帧不推进时钟页的内存格轮换。墨水屏控制器完成刷新后休眠，不代表 MCU 已进入 STOP2。
+
+生产默认配置为 `EPD_VENDOR_DEMO_MODE=0`、`EPD_CLOCK_USE_GRAY4=0`，采用黑白全刷。代码保留四灰阶构建兼容性；主机灰阶测试通过不代表四灰阶实屏验收通过。
+
+## 来源时间与 RTC 校时
+
+`WEATHER` 最后一个字段是发送端天气记录的来源更新时间，只用于天气页页脚显示。即使它早于或晚于当前 RTC，也不会校时或改变三小时有效期。
+
+需要设置时钟时，另发北京时间整秒，例如：
+
+```text
+TIME 2026-10-27T14:30:00
+```
+
+实际发送时应换成发送当时的真实北京时间，不能直接把天气来源时间作为当前时刻。TIME 的异步应答、失败恢复及验证范围见 [time_protocol.md](time_protocol.md)。
+
+## 字形资源与验证范围
+
+固定中文字形由 `tools/generate_weather_glyphs.py` 从本机 Microsoft YaHei 离线生成，固件只包含生成的位图数组，不引入运行时完整中文字库。资源一致性检查入口：
 
 ```powershell
 python tools/generate_weather_glyphs.py --check
 ```
 
-Host validation entry points are `tests/run_weather_host_tests.ps1`,
-`tests/run_debug_host_tests.ps1`, and `tests/run_clock_display_host.ps1`.
-Host-rendered frames do not establish panel timing, stack margin, or hardware
-acceptance.
+### 当前布局与视觉改造目标
 
-The 2026-10-27 validation record reports that the weather protocol/state and
-renderer tests, all three debug host suites, and all 23 display scenarios in both BW and gray4 configurations
-passed with host GCC C99. Added regressions cover legacy 31/32-byte input,
-WEATHER 127/128-byte input, commands during pending FORMAT, Celsius unit pixels
-at seven temperatures in both formats, fault-covered page changes, A-to-B-to-A
-updates, latest-state retries, and expiry appearing on screen. Keil linking,
-target image inclusion, task stack margins, and panel acceptance remain pending.
-The documentation cleanup did not rerun these tests. Existing target artifacts
-in the main output directory date from 2026-10-20; the separate default BW build
-dates from 2026-10-21. Both precede this weather integration and cannot establish
-that the current workspace was linked or deployed.
+当前天气渲染仍使用16×30七段大数字、16×16中文和多行完整字段标签。主温度有℃，高低温尚未显示°，风速尚未显示m/s，阅读时需结合本协议单位。数字、小数点及℃的位置随位数和负号变化。主机测试通过只证明这些现有行为，不代表已实现此前选定的视觉稿。
+
+下一轮按已选的图标分栏和28×40圆弧字形改造，统一原生小字、固定动态位置、补足单位，精简为“待更新”“过期”等短标签，并区分未知/无数据图标。当前实现与目标图、坐标及验收方法见[墨水屏显示效果优化](epd_display_quality.md)。这些是待实施项，本轮不改变WEATHER、PAGE、过期或应答协议。
+
+主机验证入口：
+
+- `tests/run_weather_host_tests.ps1`：字段、日期、范围、缓存原子替换、重复包计时、过期、tick 回绕与实际 C 渲染。
+- `tests/run_debug_host_tests.ps1`：分片收行、连续命令、UTF-8、天气 127/128 字节边界、旧命令 31/32 字节边界、错误恢复、静默/控制台模式及在途事务兼容。
+- `tests/run_clock_display_host.ps1`：切页、分钟更新、刷新中合并、隐藏页、故障覆盖恢复、失败重试与过期上屏。
+
+2026-10-27 保留的验证记录表明，天气协议、状态、渲染和调试主机测试通过，显示集成 25 个场景在黑白与四灰阶两种配置下均通过；默认黑白 Keil 完整重建为 0 错误、0 警告。镜像、构建日志和工作树身份记录详见 [TIME 验证记录](time_protocol.md#2026-10-27-验证记录)。该记录包含未提交工作树变更，不能仅凭 HEAD 号认定镜像覆盖之后的源码。
+
+以上证据不代替实屏中文、UART 电气与连续收发、分钟刷新、长期运行和任务栈高水位的板测。最新镜像尚未烧录。本轮显示效果复核重跑了天气、时钟绘制及资源检查，记录见[测试数据](测试数据.md#显示效果复核2026-10-27)；未重新运行整机构建、显示调度集成或操作硬件。

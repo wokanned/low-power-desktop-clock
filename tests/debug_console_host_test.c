@@ -31,6 +31,44 @@ static void make_weather_line(char *p_line, uint32_t length)
     assert(strlen(p_line) == length);
 }
 
+static void test_time_parser(void)
+{
+    static const char *const s_invalid[] = {
+        "", "TIME", "TIME ", "TIME 2026-10-27T14:30",
+        "TIME 1999-12-31T23:59:59", "TIME 2100-01-01T00:00:00",
+        "TIME 2026-00-27T14:30:00", "TIME 2026-13-27T14:30:00",
+        "TIME 2026-10-00T14:30:00", "TIME 2026-04-31T14:30:00",
+        "TIME 2001-02-29T14:30:00", "TIME 2026-10-27T24:30:00",
+        "TIME 2026-10-27T14:60:00", "TIME 2026-10-27T14:30:60",
+        "TIME 2026/10/27T14:30:00", "TIME 2026-10-27 14:30:00",
+        "TIME 2026-10-27T14-30:00", "TIME 2026-10-27T14:30-00",
+        "TIME 2026-10-27T14:30:0x", "TIME 2026-10-27T14:30:00Z",
+        "TIME 2026-10-27T14:30:00 ", " TIME 2026-10-27T14:30:00",
+        "TIME  2026-10-27T14:30:00", "time 2026-10-27T14:30:00",
+        "TIME 2026-10-27T14:30:\xEF\xBC\x90\xEF\xBC\x90"
+    };
+    clock_calendar_t calendar;
+    clock_calendar_t before;
+    uint32_t i;
+    assert(debug_console_parse_time("TIME 2026-10-27T14:30:00", &calendar));
+    assert(calendar.year == 2026U && calendar.month == 10U && calendar.day == 27U);
+    assert(calendar.hour == 14U && calendar.minute == 30U && calendar.second == 0U);
+    assert(calendar.weekday == 2U);
+    assert(debug_console_parse_time("TIME 2000-01-01T00:00:00", &calendar));
+    assert(calendar.weekday == 6U && calendar.second == 0U);
+    assert(debug_console_parse_time("TIME 2000-02-29T23:59:59", &calendar));
+    assert(calendar.weekday == 2U && calendar.second == 59U);
+    assert(debug_console_parse_time("TIME 2099-12-31T23:59:59", &calendar));
+    assert(calendar.weekday == 4U);
+    before = calendar;
+    for (i = 0U; i < sizeof(s_invalid) / sizeof(s_invalid[0]); i++) {
+        assert(!debug_console_parse_time(s_invalid[i], &calendar));
+        assert(memcmp(&before, &calendar, sizeof(calendar)) == 0);
+    }
+    assert(!debug_console_parse_time(NULL, &calendar));
+    assert(!debug_console_parse_time("TIME 2026-10-27T14:30:00", NULL));
+}
+
 int main(void)
 {
     struct { uint32_t before; debug_console_parser_t parser; uint32_t after; } guarded;
@@ -44,6 +82,14 @@ int main(void)
     assert(feed(&guarded.parser, "FORMAT 12\n") == DEBUG_COMMAND_FORMAT_12);
     assert(feed(&guarded.parser, "FORMAT 24\n") == DEBUG_COMMAND_FORMAT_24);
     assert(feed(&guarded.parser, "ERRORS\n") == DEBUG_COMMAND_ERRORS);
+    assert(feed(&guarded.parser, "TIME 2026-10-") == DEBUG_COMMAND_NONE);
+    assert(feed(&guarded.parser, "27T14:30:00") == DEBUG_COMMAND_NONE);
+    assert(feed(&guarded.parser, "\r\n") == DEBUG_COMMAND_TIME);
+    assert(strcmp(guarded.parser.line, "TIME 2026-10-27T14:30:00") == 0);
+    assert(feed(&guarded.parser, "TIME 2000-02-29T23:59:59\n") == DEBUG_COMMAND_TIME);
+    assert(feed(&guarded.parser, "TIME 2099-12-31T23:59:59\r") == DEBUG_COMMAND_TIME);
+    assert(feed(&guarded.parser, "TIME\n") == DEBUG_COMMAND_TIME);
+    assert(feed(&guarded.parser, "TIMEX 2026-10-27T14:30:00\n") == DEBUG_COMMAND_UNKNOWN);
     assert(feed(&guarded.parser, "\r\n\n") == DEBUG_COMMAND_NONE);
     assert(feed(&guarded.parser, "console on\n") == DEBUG_COMMAND_UNKNOWN);
     assert(feed(&guarded.parser, "CONSOLE ON extra\n") == DEBUG_COMMAND_UNKNOWN);
@@ -94,6 +140,7 @@ int main(void)
     debug_console_parser_reset(&guarded.parser);
     assert(feed(&guarded.parser, "12\n") == DEBUG_COMMAND_UNKNOWN);
     assert(guarded.before == 0x12345678U && guarded.after == 0xABCDEF12U);
-    puts("PASS: legacy 31/32 and WEATHER 127/128 byte limits, UTF-8, CR/LF and recovery");
+    test_time_parser();
+    puts("PASS: strict TIME calendar, legacy 31/32 and WEATHER 127/128 limits, UTF-8 and recovery");
     return 0;
 }

@@ -1,6 +1,6 @@
 # USART2 显式文本控制台
 
-状态更新：2026-10-27。工程总进度见 [totalPLAN.md 的“当前开发状态（2026-10-27）”](totalPLAN.md#当前开发状态2026-10-27)。当前控制台、天气注入和切页已接入源码，有主机测试通过记录；包含最新集成的 Keil 镜像及板上验收仍待完成。
+更新日期：2026-10-27。文档入口见 [文档导航](README.md)，工程总进度见 [totalPLAN.md 的“当前开发状态（2026-10-27）”](totalPLAN.md#当前开发状态2026-10-27)。控制台、天气注入、切页和 TIME 校时已接入，相关主机测试及默认黑白整机 Keil 构建通过；最新镜像尚未烧录，板上验收仍待完成。
 
 USART2 使用 H10，PA2 TX / PA3 RX，115200、8N1、3.3V TTL。默认发送现有
 16 通道、68 字节 JustFloat 帧，`debugTask` 始终是唯一发送者。
@@ -12,7 +12,7 @@ USART2 使用 H10，PA2 TX / PA3 RX，115200、8N1、3.3V TTL。默认发送现�
 命令区分大小写，不带前后空格，以 CR、LF 或 CRLF 结束。`WEATHER` 行内容最多
 127 字节；其他输入仍保留原有 31 字节限制。长度不包含换行和终止 NUL。
 只有精确 `WEATHER` 命令族（后接空格或逗号）使用长行缓冲上限，`WEATHERX` 等未知命令仍受 31 字节限制。
-二进制模式下 `WEATHER` 和 `PAGE` 命令静默执行，其他文本仅
+二进制模式下 `WEATHER`、`PAGE` 和 `TIME` 命令静默执行，其他文本仅
 `CONSOLE ON` 会产生切换应答。
 
 | 命令 | 结果 |
@@ -23,15 +23,16 @@ USART2 使用 H10，PA2 TX / PA3 RX，115200、8N1、3.3V TTL。默认发送现�
 | `CONSOLE OFF` | 回复 `OK CONSOLE OFF` 成功后清空旧队列，恢复二进制输出 |
 | `WEATHER <record>` | 控制台回复 `OK WEATHER`；完整记录通过校验后原子替换 RAM 天气缓存 |
 | `PAGE WEATHER` / `PAGE CLOCK` | 控制台分别回复 `OK PAGE WEATHER` / `OK PAGE CLOCK`；选择的页面仅保存在 RAM |
+| `TIME YYYY-MM-DDTHH:MM:SS` | 北京时间直接校时；RTC 写入并读回验证成功后，控制台回复 `OK TIME` |
 
 存储请求尚未完成时，新的 FORMAT 或 CONSOLE OFF 返回 `ERR BUSY`；ERRORS
-仍可使用。WEATHER 和 PAGE 命令不受存储事务阻塞。天气内容错误返回
+仍可使用。WEATHER、PAGE 和 TIME 命令不受存储事务阻塞。校时在途时再次 TIME 或 CONSOLE OFF 返回 `ERR BUSY`，FORMAT 仍可提交。TIME 格式错误返回 `ERR TIME`，时钟任务不可用或 RTC 操作失败返回 `ERR RTC`。天气内容错误返回
 `ERR WEATHER`，损坏或超长命令整行丢弃并返回 `ERR RX`。存储未就绪、拒绝请求
-或提交失败返回 `ERR STORAGE`。未知文本命令返回 `ERR COMMAND`。此版本不实现
-校时、NTP 或任意 Flash 读写命令。天气字段和有效范围见 [weather_protocol.md](weather_protocol.md)。
+或提交失败返回 `ERR STORAGE`。未知文本命令返回 `ERR COMMAND`。NTP 和任意 Flash 读写命令尚未实现。校时格式及运行行为见 [time_protocol.md](time_protocol.md)，天气字段和有效范围见 [weather_protocol.md](weather_protocol.md)。
 `WEATHER` 只更新 RAM 缓存，不自动切页；`PAGE WEATHER` 后才显示天气。天气与页面
-选择不跨复位保存，格式配置则由 storageTask 持久化。命令应答表示请求已接受或配置已
-按对应契约保存，不表示屏幕刷新已经完成。
+选择不跨复位保存，格式配置则由 storageTask 持久化。`OK WEATHER` 和 `OK PAGE ...`
+表示缓存或页面选择已接受；`OK FORMAT ...` 表示格式已验证保存；`OK TIME` 表示 RTC
+写入、同步及读回验证已完成。这些应答均不表示屏幕刷新已经完成。
 
 `ERRORS` 的 active/first 是十六进制位掩码，依次为 IO=001、CONFIG=002、
 TIMEOUT=004、ID=008、VERIFY=010、START=020、TX=040、RX=080、OVERFLOW=100。
@@ -52,7 +53,7 @@ USART2 IRQ 优先级为 5。`.ioc` 启用 IRQ，由 CubeMX 在
 `Core/Src/stm32l4xx_it.c` 生成唯一中断入口并调用 `HAL_UART_IRQHandler(&huart2)`。
 平台仅持有 HAL RX 和错误回调。重新生成后应检查中断入口唯一及 Keil 源文件分组。
 ISR 只收单字节、写 256 字节静态环形缓冲并通知 debugTask。任务解析命令，
-20 ms 内轮询异步完成。环形缓冲溢出时清空待处理字节，丢弃当前行到下一个
+按 20 ms 等待参数轮询异步完成，该参数不是实机往返延迟上限。环形缓冲溢出时清空待处理字节，丢弃当前行到下一个
 换行；不会将损坏行的后半段当作新命令执行。
 
 HAL 错误在重新接收前保留，任务只调用接收端恢复，不中止 TX。当前 TX/RX/溢出
@@ -61,12 +62,12 @@ HAL 错误在重新接收前保留，任务只调用接收端恢复，不中止 
 
 ## 验证
 
-2026-10-27已有三套 debug 主机测试通过记录，详见 [weather_protocol.md](weather_protocol.md)。
-本次文档整理未重新运行测试，也未进行当前镜像的 Keil 构建或串口板测。
+2026-10-27 校时集成后已重跑三套 debug 主机测试并通过，默认黑白整机 Keil 构建为0错误、0警告；显示集成25场景分别通过 BW 和 gray4 配置。日志、资源占用、镜像哈希及源码快照记录见 [校时协议的验证记录](time_protocol.md#2026-10-27-验证记录)。本次文档整理未重跑测试或构建，未烧录，也未进行串口板测。
 
 运行 `./tests/run_debug_host_tests.ps1`，覆盖旧输入 31/32 字节与 WEATHER 127/128 字节边界、UTF-8、CR/LF、整行丢弃、
 二进制与文本互斥、异步持久化应答、忙拒绝、全部故障时间输出、主动暂停、
 FORMAT 事务未完成时接收天气和切页、失败的退出应答、环形缓冲溢出、HAL 错误保存和 RX 单独恢复。
+TIME 用例覆盖完整日期和星期、默认静默且消费结果、提交模式保持、异步成功／失败、重复请求和退出忙拒绝，以及与 FORMAT 双向并行。
 原遥测回归入口为 `./tests/run_adxl345_host_tests.ps1`。
 
 上述测试使用主机桩，不证明实机 IRQ、RTOS 调度、栈余量或串口电气性能。

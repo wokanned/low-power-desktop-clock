@@ -8,6 +8,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <setjmp.h>
 
 static TickType_t s_ticks;
 static uint32_t s_critical;
@@ -24,8 +25,49 @@ static size_t s_free_heap;
 static storage_config_snapshot_t s_config;
 static storage_usage_snapshot_t s_usage;
 static uint32_t s_usage_reads;
+static uint8_t s_task_marker;
+static jmp_buf s_run_exit;
+static void (*s_wait_hook)(TickType_t timeout);
+static uint32_t s_wait_count;
+static uint32_t s_notifications;
+static uint32_t s_notify_calls;
+static uint32_t s_rtc_writes;
+static int32_t s_write_result;
+static uint8_t s_bad_verified;
+static uint8_t s_preempt_notify;
+static uint8_t s_probe_write;
+static uint8_t s_inject_on_read;
+static uint8_t s_inject_on_exit;
+static TickType_t s_write_delay;
+static clock_calendar_t s_requested;
+static clock_calendar_t s_injected_calendar;
+static TickType_t s_loop_origin;
 
 TickType_t xTaskGetTickCount(void) { return s_ticks; }
+TaskHandle_t xTaskGetCurrentTaskHandle(void) { return &s_task_marker; }
+BaseType_t xTaskNotifyGive(TaskHandle_t task)
+{
+    assert(s_critical == 0U && task == &s_task_marker);
+    s_notifications++;
+    s_notify_calls++;
+    if (s_preempt_notify != 0U) {
+        s_preempt_notify = 0U;
+        clock_service_poll();
+    }
+    return 1;
+}
+uint32_t ulTaskNotifyTake(BaseType_t clear, TickType_t timeout)
+{
+    uint32_t count;
+    assert(s_critical == 0U && clear == pdTRUE && timeout > 0U && timeout <= 1000U);
+    s_wait_count++;
+    if (s_wait_hook == NULL) { longjmp(s_run_exit, 1); }
+    s_wait_hook(timeout);
+    count = s_notifications;
+    s_notifications = 0U;
+    if (count == 0U) { s_ticks += timeout; }
+    return count;
+}
 size_t xPortGetFreeHeapSize(void) { return s_free_heap; }
 void clock_test_enter(void)
 {
@@ -37,14 +79,52 @@ void clock_test_enter(void)
         clock_faults_set_clock(&s_calendar, 1U);
     }
 }
-void clock_test_exit(void) { assert(s_critical != 0U); s_critical--; }
+void clock_test_exit(void)
+{
+    assert(s_critical != 0U);
+    s_critical--;
+    if (s_critical == 0U && s_inject_on_exit != 0U) {
+        s_inject_on_exit = 0U;
+        assert(clock_service_request_time(&s_injected_calendar, 900U) == 0);
+    }
+}
 
 int32_t stm32_clock_read_calendar(clock_calendar_t *p_calendar)
 {
     assert(s_critical == 0U);
     s_rtc_reads++;
     if (s_rtc_result == 0) { *p_calendar = s_calendar; }
+    if (s_inject_on_read != 0U) {
+        s_inject_on_read = 0U;
+        s_inject_on_exit = 1U;
+    }
     return s_rtc_result;
+}
+int32_t stm32_clock_write_calendar(const clock_calendar_t *p_calendar,
+                                   clock_calendar_t *p_verified)
+{
+    int32_t result = 99;
+    clock_view_model_t model;
+    assert(s_critical == 0U);
+    assert(clock_calendar_valid(p_calendar));
+    assert(p_calendar->weekday == clock_calendar_weekday(p_calendar->year,
+        p_calendar->month, p_calendar->day));
+    s_rtc_writes++;
+    s_requested = *p_calendar;
+    if (s_probe_write != 0U) {
+        s_probe_write = 0U;
+        assert(clock_service_take_time_result(101U, &result) == 0U && result == 99);
+        assert(clock_service_request_time(p_calendar, 102U) == -1);
+        clock_service_get_model(&model);
+        assert(model.calendar_state == CLOCK_DATA_READY);
+        assert(model.calendar.year != p_calendar->year);
+    }
+    /* Even failed writes can leave a plausible changed hardware calendar. */
+    s_calendar = *p_calendar;
+    *p_verified = s_calendar;
+    if (s_bad_verified != 0U) { p_verified->day = 0U; }
+    s_ticks += s_write_delay;
+    return s_write_result;
 }
 int32_t stm32_clock_image_sizes(uint32_t *p_sram, uint32_t *p_flash)
 {
@@ -411,6 +491,260 @@ static void s_test_usage_snapshot(void)
     assert(model.faults.active_categories == 0U);
 }
 
+static void s_assert_calendar(const clock_calendar_t *p_actual,
+                              const clock_calendar_t *p_expected)
+{
+    assert(p_actual->year == p_expected->year &&
+        p_actual->month == p_expected->month && p_actual->day == p_expected->day &&
+        p_actual->hour == p_expected->hour && p_actual->minute == p_expected->minute &&
+        p_actual->second == p_expected->second &&
+        p_actual->weekday == clock_calendar_weekday(p_expected->year,
+            p_expected->month, p_expected->day));
+}
+
+static void s_time_reset(TickType_t ticks)
+{
+    s_ticks = ticks;
+    s_rtc_result = 0;
+    s_write_result = 0;
+    s_write_delay = 0U;
+    s_image_result = 0;
+    s_bad_verified = 0U;
+    s_preempt_notify = 0U;
+    s_probe_write = 0U;
+    s_inject_on_read = 0U;
+    s_inject_on_exit = 0U;
+    s_rtc_reads = 0U;
+    s_rtc_writes = 0U;
+    s_image_reads = 0U;
+    s_notifications = 0U;
+    s_notify_calls = 0U;
+    s_wait_count = 0U;
+    s_wait_hook = NULL;
+    s_calendar = (clock_calendar_t){2026U, 10U, 27U, 2U, 9U, 0U, 0U};
+    s_config.ready = 1U;
+    s_config.format = CLOCK_FORMAT_24;
+    clock_service_init();
+}
+
+static void s_run_until_stop(void)
+{
+    if (setjmp(s_run_exit) == 0) { clock_service_run(); }
+}
+
+static void s_bind_time_owner(void)
+{
+    s_run_until_stop();
+    assert(s_critical == 0U && s_wait_count == 1U);
+}
+
+static void s_test_time_requests(void)
+{
+    static const clock_calendar_t s_jumps[] = {
+        {2000U, 1U, 1U, 0U, 0U, 0U, 0U},
+        {2028U, 2U, 29U, 0U, 23U, 59U, 59U},
+        {2027U, 12U, 31U, 0U, 23U, 59U, 59U},
+        {2028U, 1U, 1U, 0U, 0U, 0U, 0U}
+    };
+    clock_calendar_t requested = {2099U, 12U, 31U, 0U, 23U, 59U, 58U};
+    clock_calendar_t expected = requested;
+    clock_calendar_t invalid;
+    clock_calendar_t historical;
+    clock_view_model_t model;
+    int32_t result = 123;
+    uint32_t writes;
+    uint32_t reads;
+    uint32_t first_fault_tick;
+    size_t i;
+
+    s_time_reset(0U);
+    assert(clock_service_request_time(&requested, 101U) == -2);
+    assert(clock_service_request_time(NULL, 101U) == -3);
+    assert(clock_service_request_time(&requested, 0U) == -3);
+    assert(clock_service_take_time_result(0U, &result) == 0U && result == 123);
+    invalid = requested; invalid.year = 2100U;
+    assert(clock_service_request_time(&invalid, 101U) == -3);
+    invalid = requested; invalid.month = 2U; invalid.day = 29U;
+    assert(clock_service_request_time(&invalid, 101U) == -3);
+    invalid = requested; invalid.second = 60U;
+    assert(clock_service_request_time(&invalid, 101U) == -3);
+    assert(s_notify_calls == 0U && s_rtc_writes == 0U);
+    s_bind_time_owner();
+    clock_fault_report(CLOCK_FAULT_IMU, CLOCK_FAULT_IO);
+    clock_service_get_model(&model);
+    historical = model.faults.source[CLOCK_FAULT_IMU].first_time;
+    assert(clock_service_request_time(&requested, 101U) == 0);
+    requested.year = 2000U;
+    assert(clock_service_request_time(&requested, 102U) == -1);
+    assert(clock_service_take_time_result(101U, &result) == 0U && result == 123);
+    assert(s_notify_calls == 1U && s_rtc_writes == 0U);
+    reads = s_rtc_reads;
+    s_probe_write = 1U;
+    clock_service_poll();
+    assert(s_rtc_reads == reads && s_rtc_writes == 1U);
+    s_assert_calendar(&s_requested, &expected);
+    clock_service_get_model(&model);
+    assert(model.calendar_state == CLOCK_DATA_READY);
+    s_assert_calendar(&model.calendar, &expected);
+    s_assert_calendar(&model.faults.source[CLOCK_FAULT_IMU].first_time, &historical);
+    assert(clock_service_request_time(&requested, 102U) == -1);
+    assert(clock_service_take_time_result(999U, &result) == 0U && result == 123);
+    assert(clock_service_take_time_result(101U, NULL) == 0U);
+    assert(clock_service_take_time_result(101U, &result) == 1U && result == 0);
+    assert(clock_service_take_time_result(101U, &result) == 0U);
+    clock_fault_report(CLOCK_FAULT_IMU, 0U);
+    for (i = 0U; i < sizeof(s_jumps) / sizeof(s_jumps[0]); i++) {
+        assert(clock_service_request_time(&s_jumps[i], (uint32_t)i + 201U) == 0);
+        clock_service_poll();
+        clock_service_get_model(&model);
+        assert(model.calendar_state == CLOCK_DATA_READY);
+        s_assert_calendar(&model.calendar, &s_jumps[i]);
+        assert(clock_service_take_time_result((uint32_t)i + 201U, &result) == 1U && result == 0);
+    }
+    clock_fault_report(CLOCK_FAULT_TEMP, CLOCK_FAULT_IO);
+    clock_service_get_model(&model);
+    s_assert_calendar(&model.faults.source[CLOCK_FAULT_TEMP].first_time,
+                       &s_jumps[3]);
+    clock_fault_report(CLOCK_FAULT_TEMP, 0U);
+
+    s_write_result = -7;
+    assert(clock_service_request_time(&expected, 301U) == 0);
+    clock_service_poll();
+    assert(clock_service_take_time_result(301U, &result) == 1U && result == -7);
+    clock_service_get_model(&model);
+    assert(model.calendar_state == CLOCK_DATA_ERROR);
+    assert(model.faults.source[CLOCK_FAULT_RTC].active_mask == CLOCK_FAULT_IO);
+    first_fault_tick = model.faults.source[CLOCK_FAULT_RTC].first_tick;
+    s_assert_calendar(&model.calendar, &s_jumps[3]);
+    s_ticks += 1000U;
+    clock_service_poll();
+    clock_service_get_model(&model);
+    assert(model.calendar_state == CLOCK_DATA_ERROR);
+    assert(model.faults.source[CLOCK_FAULT_RTC].active_mask == CLOCK_FAULT_IO);
+    assert(model.faults.source[CLOCK_FAULT_RTC].first_tick == first_fault_tick);
+    s_assert_calendar(&model.calendar, &s_jumps[3]);
+    writes = s_rtc_writes;
+    assert(clock_service_request_time(&invalid, 302U) == -3);
+    clock_service_poll();
+    assert(s_rtc_writes == writes);
+    clock_service_get_model(&model);
+    assert(model.calendar_state == CLOCK_DATA_ERROR);
+
+    s_write_result = 0;
+    assert(clock_service_request_time(&s_jumps[0], 302U) == 0);
+    clock_service_poll();
+    assert(clock_service_take_time_result(302U, &result) == 1U && result == 0);
+    clock_service_get_model(&model);
+    assert(model.calendar_state == CLOCK_DATA_READY);
+    assert(model.faults.source[CLOCK_FAULT_RTC].active_mask == 0U);
+    s_assert_calendar(&model.calendar, &s_jumps[0]);
+    s_bad_verified = 1U;
+    assert(clock_service_request_time(&expected, 303U) == 0);
+    clock_service_poll();
+    assert(clock_service_take_time_result(303U, &result) == 1U && result == -2);
+    s_bad_verified = 0U;
+    clock_service_poll();
+    clock_service_get_model(&model);
+    assert(model.calendar_state == CLOCK_DATA_ERROR);
+    s_preempt_notify = 1U;
+    assert(clock_service_request_time(&expected, 304U) == 0);
+    /* Model/fault publication precedes completion even if the owner preempts. */
+    assert(clock_service_take_time_result(304U, &result) == 1U && result == 0);
+    clock_service_get_model(&model);
+    assert(model.calendar_state == CLOCK_DATA_READY);
+    s_assert_calendar(&model.calendar, &expected);
+    s_rtc_result = -1;
+    clock_service_poll();
+    s_rtc_result = 0;
+    clock_service_poll();
+    clock_service_get_model(&model);
+    assert(model.calendar_state == CLOCK_DATA_READY);
+    writes = s_rtc_writes;
+    clock_service_mark_unavailable();
+    assert(clock_service_request_time(&expected, 305U) == -2);
+    assert(s_rtc_writes == writes);
+}
+
+static void s_time_loop_wait(TickType_t timeout)
+{
+    clock_view_model_t model;
+    int32_t result = 99;
+    switch (s_wait_count) {
+    case 1U:
+        /* The request arrived after poll publication but before notify-wait. */
+        assert(s_ticks == s_loop_origin && timeout == 1000U);
+        assert(s_notify_calls == 1U && s_rtc_writes == 0U);
+        break;
+    case 2U:
+        assert(s_ticks == s_loop_origin && timeout == 1000U);
+        assert(clock_service_take_time_result(900U, &result) == 1U && result == 0);
+        s_ticks += 200U;
+        s_injected_calendar.year = 2030U;
+        assert(clock_service_request_time(&s_injected_calendar, 901U) == 0);
+        break;
+    case 3U:
+        assert(s_ticks == (TickType_t)(s_loop_origin + 200U) && timeout == 800U);
+        assert(clock_service_take_time_result(901U, &result) == 1U && result == 0);
+        clock_service_get_model(&model);
+        s_assert_calendar(&model.calendar, &s_injected_calendar);
+        s_ticks += 450U;
+        s_injected_calendar.year = 2001U;
+        assert(clock_service_request_time(&s_injected_calendar, 902U) == 0);
+        break;
+    case 4U:
+        assert(s_ticks == (TickType_t)(s_loop_origin + 650U) && timeout == 350U);
+        assert(clock_service_take_time_result(902U, &result) == 1U && result == 0);
+        break;
+    case 5U:
+        assert(s_ticks == (TickType_t)(s_loop_origin + 1000U) && timeout == 1000U);
+        assert(s_rtc_reads == 2U && s_rtc_writes == 3U && s_notify_calls == 3U);
+        longjmp(s_run_exit, 1);
+        break;
+    default:
+        assert(0);
+        break;
+    }
+}
+
+static void s_time_overrun_wait(TickType_t timeout)
+{
+    int32_t result;
+    if (s_wait_count == 1U) {
+        assert(timeout == 1000U && s_ticks == 0U);
+        s_ticks = 100U;
+        s_write_delay = 2500U;
+        assert(clock_service_request_time(&s_injected_calendar, 950U) == 0);
+    } else if (s_wait_count == 2U) {
+        assert(s_ticks == 2600U && timeout == 400U);
+        assert(clock_service_take_time_result(950U, &result) == 1U && result == 0);
+    } else {
+        assert(s_wait_count == 3U && s_ticks == 3000U && timeout == 1000U);
+        assert(s_rtc_reads == 2U && s_rtc_writes == 1U);
+        longjmp(s_run_exit, 1);
+    }
+}
+
+static void s_test_time_loop(void)
+{
+    static const TickType_t s_origins[] = {0U, 0xFFFFFF00UL};
+    size_t i;
+    for (i = 0U; i < sizeof(s_origins) / sizeof(s_origins[0]); i++) {
+        s_time_reset(s_origins[i]);
+        s_loop_origin = s_origins[i];
+        s_injected_calendar = (clock_calendar_t){2027U, 1U, 1U, 0U, 10U, 0U, 0U};
+        s_inject_on_read = 1U;
+        s_wait_hook = s_time_loop_wait;
+        s_run_until_stop();
+        assert(s_wait_count == 5U && s_critical == 0U);
+    }
+    s_time_reset(0U);
+    s_injected_calendar = (clock_calendar_t){2028U, 2U, 29U, 0U, 23U, 59U, 59U};
+    s_wait_hook = s_time_overrun_wait;
+    s_run_until_stop();
+    assert(s_wait_count == 3U && s_critical == 0U);
+    s_wait_hook = NULL;
+}
+
 int main(void)
 {
     s_test_calendar();
@@ -418,7 +752,9 @@ int main(void)
     s_test_schedule();
     s_test_service();
     s_test_usage_snapshot();
+    s_test_time_requests();
+    s_test_time_loop();
     assert(s_critical == 0U);
-    (void)puts("clock runtime: 36525 dates, fault episodes/aggregation/wrap, schedule, cached service and W25Q usage snapshots passed");
+    (void)puts("clock runtime: dates, faults, schedule, cached service, W25Q snapshots, TIME mailbox/ownership, fault latch/recovery and notify/deadline/wrap passed");
     return 0;
 }

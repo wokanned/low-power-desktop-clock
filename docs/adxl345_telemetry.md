@@ -1,8 +1,10 @@
 # ADXL345 三轴采集与 JustFloat 遥测
 
+更新日期：2026-10-27。文档入口见 [文档导航](README.md)，整机进度见 [totalPLAN.md](totalPLAN.md#当前开发状态2026-10-27)。
+
 ## 版本与范围
 
-状态核对：2026-10-27。三轴采样及 JustFloat 遥测已接入当前工程；下文保留 2026-10-14/15 的构建、主机测试和真实采集记录。历史流没有固件身份字段，不能据此认定当前全模块集成镜像已通过板测。Activity 中断、动作唤醒和 STOP2 尚未实现，整机进度统一见 [totalPLAN.md](totalPLAN.md) 的“当前开发状态（2026-10-27）”。
+三轴采样及 JustFloat 遥测已接入当前工程，包含天气与 TIME 校时的默认黑白完整 Keil 构建已通过，最新镜像尚未烧录。下文保留 2026-10-14/15 的构建、主机测试和真实采集记录。历史流没有固件身份字段，不能据此认定当前全模块集成镜像已通过板测。Activity 中断、动作唤醒和 STOP2 尚未实现。
 
 器件为 ADXL345BCCZ-RL7 三轴加速度计。第一版验证通信、量程、数据符号和安装轴向，暂不实现角速度、姿态融合、FFT、零偏校准或噪声密度分析。温度字段保留，固定为 quiet NaN；温度无效标志始终置位。raw_x/y/z 是 ADXL345 数字输出原始码，不是 MCU PA0 电池 ADC。
 
@@ -59,6 +61,8 @@ accelTask 使用静态控制块和 1024 字节栈，AboveNormal 优先级。通�
 
 队列/UART 计数由 debugTask 在实际发送前刷新，因此它们是发送时的累计快照；sample_error_count/状态/数据来自同次采样。没有保证传感器内部未读取样本的精确数量，OVERRUN 仅表示发生过覆盖。0.0039 g/LSB 为手册标称系数，不等于已完成实物比例校准。
 
+`TIME` 调整的是 RTC 日历，不改变本流的单调时间戳、sequence 或采样周期；天气来源时间也不是遥测时间基准。校时与天气命令的接口分别见 [校时协议](time_protocol.md) 和 [天气协议](weather_protocol.md)。
+
 | 位 | 标志 | 含义 |
 | --- | --- | --- |
 | 0 | INITIALIZED | 本次读取前初始化及配置回读已成功 |
@@ -72,7 +76,7 @@ accelTask 使用静态控制块和 1024 字节栈，AboveNormal 优先级。通�
 | 8 | LATE | 本次任务处理超过一个标称周期 |
 | 9 | SATURATED | 某轴达到/超出 ±2 g 的原始边界（−512/+511） |
 
-典型正常状态为 7（INITIALIZED+VALID+TEMPERATURE_INVALID）。USART2 默认只输出固定 JustFloat 帧，无启动横幅和文本日志。显式发送 `CONSOLE ON` 后，debugTask 在完整帧发送结束后暂停遥测并进入文本控制台；`CONSOLE OFF` 成功应答后恢复遥测。控制台期间采样继续，主动暂停不增加 queue_drop_count；序号继续推进，因此不应跨控制台会话连续采集并将该缺口判为通信丢帧。`Debug_GetSuppressedCount()` 单独保留主动暂停计数。`Debug_Log` 仍为空操作。协议和配置命令见 [debug_console.md](debug_console.md)。
+典型正常状态为 7（INITIALIZED+VALID+TEMPERATURE_INVALID）。USART2 默认只输出固定 JustFloat 帧，无启动横幅和文本日志；此模式仍接收 WEATHER、PAGE 和 TIME，处理结果保持静默。显式发送 `CONSOLE ON` 后，debugTask 在完整帧发送结束后暂停遥测并进入文本控制台；`CONSOLE OFF` 成功应答后恢复遥测。控制台期间采样继续，主动暂停不增加 queue_drop_count；序号继续推进，因此不应跨控制台会话连续采集并将该缺口判为通信丢帧。`Debug_GetSuppressedCount()` 单独保留主动暂停计数。`Debug_Log` 仍为空操作。协议和配置命令见 [debug_console.md](debug_console.md)。
 
 ## 带宽与观测成本
 
@@ -103,7 +107,13 @@ JustFloat 没有 CRC，字段合法的位损坏仍可能逃过检查；帧同步
 
 ## 验证记录
 
-以下记录按日期保留，本轮文档核对未复现采集或测试。构建与主机测试证明相应版本的实现范围，历史真实采集证明当时观察到的三轴响应；均不代表最新天气集成版本的完整验收。
+以下记录按日期保留，本次文档核对未重新执行采集、测试或构建。完整链接证明相应源码进入该构建，历史真实采集证明当时观察到的三轴响应；两者均不代替最新镜像的板上验收。
+
+### 最新整机集成记录（2026-10-27）
+
+包含天气、TIME 和现有加速度遥测的默认黑白工程已通过 Keil ARMCC 5.06 update 7 完整重建，0错误、0警告。日志、Program Size、镜像 SHA-256 和逐文件源码哈希见 [校时验证记录](time_protocol.md#2026-10-27-验证记录)。显示集成25场景分别通过 BW 和 gray4 配置；该结果不代表加速度总线或实机采样时序验证。本轮校时记录未新增 ADXL345 板上采集，最新镜像未烧录。
+
+### 历史构建、主机测试与实采（2026-10-14/15）
 
 2026-10-14：源码已实现，Keil ARMCC V5.06 update 7 默认模式 0 构建通过，0 errors、0 warnings。ROM=40,496 字节，RAM=23,080 字节；日志/镜像在 `build/adxl345-keil/mode-0`。该结果不证明板上通信、实时性或安装轴向。
 

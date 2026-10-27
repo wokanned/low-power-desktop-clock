@@ -1,8 +1,10 @@
 # ADXL345 动作中断与 STM32L471 STOP2 配置指南
 
-设计日期：2026-10-17；状态核对：2026-10-27。适用工程：STM32L471RET6、FreeRTOS V10.3.1 / CMSIS-RTOS V2、Keil ARMCC。
+设计日期：2026-10-17；更新时间：2026-10-27。返回[文档导航](README.md)。适用工程：STM32L471RET6、FreeRTOS V10.3.1 / CMSIS-RTOS V2、Keil ARMCC。
 
-本文件是配置教程与代码设计，动作唤醒及 STOP2 状态仍为 Planned，本文示例尚未加入当前构建。当前工程已有 LPTIM1 的 LSE、DIV1 和优先级 5 中断配置，但没有自定义 Tickless 或 STOP2 入口，ADXL345 仍关闭中断输出并轮询采样。部分外设配置已存在，不代表低功耗功能已经完成。整机进度统一见 [totalPLAN.md](totalPLAN.md) 的“当前开发状态（2026-10-27）”。
+本文件是配置教程与代码设计，动作唤醒及 STOP2 仍处于规划阶段，本文示例尚未加入当前构建。当前工程已有 LPTIM1 的 LSE、DIV1 和优先级 5 中断配置，但没有自定义 Tickless 或 STOP2 入口，ADXL345 仍关闭中断输出并轮询采样。部分外设配置已存在，不代表低功耗功能已经完成。整机进度统一见 [totalPLAN.md](totalPLAN.md) 的“当前开发状态（2026-10-27）”。
+
+10月27日默认黑白时钟、天气和TIME集成镜像已完成Keil重建，独立产物为 `build/time-sync-keil/mode-0/DeskClock.hex`，该镜像不包含本文的动作布防或STOP2实现，也尚未烧录。构建与哈希见 [time_protocol.md](time_protocol.md)。实施本指南前先阅读[显示任务边界](epd_gdey029t94_port.md)、[时钟与刷新](clock_gray4_ui.md)、[天气协议](weather_protocol.md)和[校时协议](time_protocol.md)，确定休眠时的数据与请求处理约定。
 
 ## 1. 选择 STOP2
 
@@ -188,7 +190,7 @@ Activity 锁存通过读取 INT_SOURCE 清除，STM32 EXTI pending 则由 `HAL_G
 1. 停止旧 accelTask 的 1 ms 轮询；动作任务进入事件阻塞。
 2. 停止连续 JustFloat 遥测，等待 debug 队列及 UART 最后一个停止位发完。低功耗期间不发送 100 Hz 帧。
 3. 显示任务完成当前刷新和 BUSY 等待，再由其所有者让屏幕休眠。当前生产页面按分钟全刷，但显示任务每 200 ms 检查快照；低功耗整合时需改为事件和 RTC 期限驱动，单靠少刷新不能进入长待机。
-4. 当前 defaultTask 每秒通过 `vTaskDelayUntil()` 运行时钟服务，需与 RTC/低功耗计时统一安排。其他任务、后台 Flash 扫描和软件定时器也要纳入最早唤醒期限。
+4. 当前 defaultTask 由 `clock_service_run()` 维护一秒轮询截止时间，并用任务通知立即处理 TIME 静态邮箱。低功耗整合时需统一 RTC/低速计时及这些请求的最早期限；有校时在途时不能直接停住 RTC 所有者。其他任务、后台 Flash 扫描和软件定时器也要纳入最早唤醒期限。
 5. 需要关闭电源域时，由相应业务所有者完成 WiFi / 传感器停机；确认没有 I2C/SPI/UART/DMA 事务或持有的总线锁。墨水屏保持供电，ADXL345 与 RTC 保留。
 6. 布防 Activity，记录已发生事件并检查 PA8 为低；有事件或准备失败就取消睡眠。
 
@@ -218,6 +220,7 @@ Idle 已挂起调度，传入 xExpectedIdleTime
 - LPTIM1 只有 16 位计数，处理计数回绕与比较值写入同步；有限睡眠必须在可判别的跨度内，长睡眠用分段或 RTC。不能只取一次计数差就忽略多次回绕。
 - 提前被 Activity 唤醒时，只补偿实际经过时间；到达任务期限时，遵守 FreeRTOS `vTaskStepTick()` 的边界，并通过端口的最后一个 tick 处理或等价路径解除到期任务。不能跨过最近期限，也不能指望 StepTick 本身完成所有到期处理。
 - HAL tick 与 RTOS tick 是两套时间。当前 TIM17 在 STOP2 停止，`HAL_SuspendTick()` 只控制 TIM17 中断，不会关闭 RTOS SysTick。RTC 日历用于真实时间；需要跨休眠连续的毫秒时间时必须另行定义和补偿。
+- 天气三小时有效期和故障时间锚点使用单调 RTOS tick，不能用经过 TIME 调整的 RTC 日历差代替。未来 STOP2 端口必须补偿这段单调时间，并验证长休眠后的天气过期；这项补偿当前尚未实现。
 - 唤醒先运行 MSI 或 HSI16，原有 HSE/PLL 80 MHz 不会自动恢复。若在中断被屏蔽且 HAL tick 已暂停时调用当前 `SystemClock_Config()`，其中依赖 HAL_GetTick 的超时可能失去作用。正式端口需要有独立超时的时钟恢复路径，再恢复节拍与调度。
 - 若选择先在临时时钟下开放部分中断以恢复 HAL 超时，必须阻止 PendSV/任务运行和普通外设访问，直到时钟恢复完成。不要在所有中断关着时等待 TIM17 tick。
 - 时钟恢复到原频率后，再使用 I2C2 和 USART2；若有实际丢失的配置、外设掉电或忙状态，则按所有者恢复。不要每次 STOP2 唤醒都重新调用 MX_RTC_Init 或清掉保留日历。

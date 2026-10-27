@@ -6,7 +6,7 @@ New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 $parserExe = Join-Path $OutputDirectory 'debug_console_host_test.exe'
 & $Compiler '-std=c99' '-Wall' '-Wextra' '-Werror' '-pedantic' '-O2' "-I$root/app" `
     (Join-Path $root 'tests/debug_console_host_test.c') `
-    (Join-Path $root 'app/debug_console.c') '-o' $parserExe
+    (Join-Path $root 'app/debug_console.c') (Join-Path $root 'app/clock_model.c') '-o' $parserExe
 if ($LASTEXITCODE -ne 0) { throw 'Console parser build failed' }
 & $parserExe
 if ($LASTEXITCODE -ne 0) { throw 'Console parser tests failed' }
@@ -15,7 +15,8 @@ $taskExe = Join-Path $OutputDirectory 'debug_task_host_test.exe'
     "-I$root/tests/stubs/debug" "-I$root/app" "-I$root/platform" "-I$root/device" `
     (Join-Path $root 'tests/debug_task_host_test.c') `
     (Join-Path $root 'app/debug.c') (Join-Path $root 'app/debug_console.c') `
-    (Join-Path $root 'app/vofa.c') (Join-Path $root 'app/weather.c') '-o' $taskExe
+    (Join-Path $root 'app/vofa.c') (Join-Path $root 'app/weather.c') `
+    (Join-Path $root 'app/clock_model.c') '-o' $taskExe
 if ($LASTEXITCODE -ne 0) { throw 'Debug task build failed' }
 & $taskExe
 if ($LASTEXITCODE -ne 0) { throw 'Debug task tests failed' }

@@ -59,6 +59,8 @@ static debug_command_t debug_console_command(const char *p_line)
     if (strcmp(p_line, "FORMAT 12") == 0) { return DEBUG_COMMAND_FORMAT_12; }
     if (strcmp(p_line, "FORMAT 24") == 0) { return DEBUG_COMMAND_FORMAT_24; }
     if (strcmp(p_line, "ERRORS") == 0) { return DEBUG_COMMAND_ERRORS; }
+    if (strncmp(p_line, "TIME", 4U) == 0 &&
+        (p_line[4] == '\0' || p_line[4] == ' ')) { return DEBUG_COMMAND_TIME; }
     if ((strncmp(p_line, "WEATHER", 7U) == 0) &&
         ((p_line[7] == '\0') || (p_line[7] == ' ') || (p_line[7] == ','))) {
         return DEBUG_COMMAND_WEATHER;
@@ -66,6 +68,51 @@ static debug_command_t debug_console_command(const char *p_line)
     if (strcmp(p_line, "PAGE WEATHER") == 0) { return DEBUG_COMMAND_PAGE_WEATHER; }
     if (strcmp(p_line, "PAGE CLOCK") == 0) { return DEBUG_COMMAND_PAGE_CLOCK; }
     return DEBUG_COMMAND_UNKNOWN;
+}
+
+static uint8_t debug_console_digits(const char *p_text, uint8_t length,
+                                    uint16_t *p_value)
+{
+    uint8_t i;
+    uint16_t value = 0U;
+    for (i = 0U; i < length; i++) {
+        if (p_text[i] < '0' || p_text[i] > '9') { return 0U; }
+        value = (uint16_t)(value * 10U + (uint16_t)(p_text[i] - '0'));
+    }
+    *p_value = value;
+    return 1U;
+}
+
+uint8_t debug_console_parse_time(const char *p_line, clock_calendar_t *p_calendar)
+{
+    static const uint8_t s_offsets[] = {5U, 10U, 13U, 16U, 19U, 22U};
+    uint16_t values[6];
+    clock_calendar_t calendar;
+    uint8_t length = 0U;
+    uint8_t i;
+    if (p_line == NULL || p_calendar == NULL) { return 0U; }
+    while (length <= DEBUG_CONSOLE_TIME_LINE_LENGTH && p_line[length] != '\0') {
+        length++;
+    }
+    if (length != DEBUG_CONSOLE_TIME_LINE_LENGTH ||
+        memcmp(p_line, "TIME ", 5U) != 0 || p_line[9] != '-' ||
+        p_line[12] != '-' || p_line[15] != 'T' || p_line[18] != ':' ||
+        p_line[21] != ':') { return 0U; }
+    for (i = 0U; i < 6U; i++) {
+        if (!debug_console_digits(p_line + s_offsets[i], i == 0U ? 4U : 2U,
+                                  &values[i])) { return 0U; }
+    }
+    calendar.year = values[0];
+    calendar.month = (uint8_t)values[1];
+    calendar.day = (uint8_t)values[2];
+    calendar.hour = (uint8_t)values[3];
+    calendar.minute = (uint8_t)values[4];
+    calendar.second = (uint8_t)values[5];
+    calendar.weekday = clock_calendar_weekday(calendar.year, calendar.month,
+                                              calendar.day);
+    if (!clock_calendar_valid(&calendar)) { return 0U; }
+    *p_calendar = calendar;
+    return 1U;
 }
 
 debug_command_t debug_console_parser_feed(debug_console_parser_t *p_parser,
