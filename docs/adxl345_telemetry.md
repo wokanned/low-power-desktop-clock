@@ -2,9 +2,11 @@
 
 ## 版本与范围
 
+状态核对：2026-10-27。三轴采样及 JustFloat 遥测已接入当前工程；下文保留 2026-10-14/15 的构建、主机测试和真实采集记录。历史流没有固件身份字段，不能据此认定当前全模块集成镜像已通过板测。Activity 中断、动作唤醒和 STOP2 尚未实现，整机进度统一见 [totalPLAN.md](totalPLAN.md) 的“当前开发状态（2026-10-27）”。
+
 器件为 ADXL345BCCZ-RL7 三轴加速度计。第一版验证通信、量程、数据符号和安装轴向，暂不实现角速度、姿态融合、FFT、零偏校准或噪声密度分析。温度字段保留，固定为 quiet NaN；温度无效标志始终置位。raw_x/y/z 是 ADXL345 数字输出原始码，不是 MCU PA0 电池 ADC。
 
-源码参考 `datasheet/主控板资料/加速度计.pdf`（Analog Devices ADXL345 Rev. E），手册印刷页 13、18、24–27。ADXL345 没有软件复位命令和温度数据寄存器。旧器件描述已清除，旧器件规格书已按本次要求删除。
+源码参考工作区的 `datasheet/主控板资料/加速度计.pdf`（Analog Devices ADXL345 Rev. E），手册印刷页 13、18、24–27。ADXL345 没有软件复位命令和温度数据寄存器。
 
 ## 硬件与初始化
 
@@ -86,7 +88,7 @@ py tools/adxl345_capture.py --port COM5 --baud 115200 --duration 60 --csv build/
 py tools/adxl345_capture.py --replay build/adxl345-run.bin --no-plot --csv build/adxl345-replay.csv
 ```
 
-当前电脑没有注册系统 Python。工程已创建 `build/adxl345-python` 独立环境，可以直接使用以下命令；若依赖尚未安装，先执行第一行。
+若系统 `py` 不可用，可使用本机已有的 `build/adxl345-python` 独立环境；该环境属于忽略目录，其他电脑需自行创建。依赖尚未安装时先执行第一行。
 
 ```powershell
 & ./build/adxl345-python/Scripts/python.exe -m pip install -r tools/requirements.txt
@@ -101,11 +103,13 @@ JustFloat 没有 CRC，字段合法的位损坏仍可能逃过检查；帧同步
 
 ## 验证记录
 
+以下记录按日期保留，本轮文档核对未复现采集或测试。构建与主机测试证明相应版本的实现范围，历史真实采集证明当时观察到的三轴响应；均不代表最新天气集成版本的完整验收。
+
 2026-10-14：源码已实现，Keil ARMCC V5.06 update 7 默认模式 0 构建通过，0 errors、0 warnings。ROM=40,496 字节，RAM=23,080 字节；日志/镜像在 `build/adxl345-keil/mode-0`。该结果不证明板上通信、实时性或安装轴向。
 
 主机 C 测试验证 ID/读改写/回读异常、六字节突发读取、字节序和补码边界、未就绪及 IO 返回、JustFloat 编码与失败返回。13 项 Python 测试覆盖分段/逐字节/连续帧、NaN、噪声、半帧、丢字节、错误通道数、序号间隙、计数/时间异常、回绕、复位及 C 编码到 Python 解码。另通过 capture CLI 从 C 输出的真实字节回放生成 CSV/JSON。
 
-工程 Python 环境已安装 pyserial 和 matplotlib。额外通过 pyserial `loop://` 软件回环把 C 编码帧送入 capture CLI，确认原始 BIN 完全一致并生成两行数据及质量 JSON；用 Agg 后端渲染 1000 个合成样本的三轴曲线，检查三条曲线和坐标可见。该测试验证串口适配与绘图代码，不代表真实 COM 口、交互窗口或板级测试。
+2026-10-14 的工程 Python 环境使用 pyserial 和 matplotlib。额外通过 pyserial `loop://` 软件回环把 C 编码帧送入 capture CLI，确认原始 BIN 完全一致并生成两行数据及质量 JSON；用 Agg 后端渲染 1000 个合成样本的三轴曲线，检查三条曲线和坐标可见。该测试验证串口适配与绘图代码，不代表真实 COM 口、交互窗口或板级测试。
 
 ```powershell
 ./tests/run_adxl345_host_tests.ps1
@@ -118,7 +122,7 @@ JustFloat 没有 CRC，字段合法的位损坏仍可能逃过检查；帧同步
 
 2026-10-15 修正：按 DATA_READY 发布，普通未就绪不计错且保留滤波状态，持续无数据超时与 IO 失败分别恢复。新增任务主机测试直接运行 `app/accel.c`，使用模拟 RTOS 时钟和传感器，覆盖独立 10.4 ms 数据时钟、滤波连续性、tick 回绕、无数据超时恢复、IO 错误恢复和初始化失败重试；Python 测试增加正常 10/11 ms 间隔检查。主机模拟不代表实际总线或 RTOS 调度验证。
 
-该修正已通过任务主机测试、C 驱动/编码测试、14 项 Python 协议测试及采集器回放。证据目录为 `build/adxl345-ready-host-20261015`。Keil ARMCC 默认模式 0 重建通过，0 errors、0 warnings，ROM=40,400 字节、RAM=23,080 字节；日志和镜像位于 `build/adxl345-ready-keil-20261015/mode-0`。镜像 `DeskClock.hex` 的 SHA256 为 `BD978E8C1958C837E145ECB6D9C01C633F91EBF9576F2F89444E46BC36AFB13D`。当前修正状态为 Build Passed + Host Verified。
+该修正已通过任务主机测试、C 驱动/编码测试、14 项 Python 协议测试及采集器回放。证据目录为 `build/adxl345-ready-host-20261015`。Keil ARMCC 默认模式 0 重建通过，0 errors、0 warnings，ROM=40,400 字节、RAM=23,080 字节；日志和镜像位于 `build/adxl345-ready-keil-20261015/mode-0`。镜像 `DeskClock.hex` 的 SHA256 为 `BD978E8C1958C837E145ECB6D9C01C633F91EBF9576F2F89444E46BC36AFB13D`。该次修正在采集前的记录状态为 Build Passed + Host Verified，后续实际采集结果见下文。
 
 2026-10-15 17:07（Asia/Shanghai）平放复测：用户报告设备平放桌面，COM12/115200 采集 30 s，2954 帧全部有效，状态均为 7，序号无缺失、未检测到复位。设备帧间隔为 10 ms（2510 次）和 11 ms（443 次），平均 10.1500 ms，速率 98.5220 Hz。sample_error_count 保持 0，queue_drop_count 和 uart_error_count 均保持 2，本轮未增长。解析器拒绝的两个残片分别是起始 36 字节和结束 1 字节，完整帧之间未发现被拒绝的片段。此前周期性 NOT_READY/NaN 断点在本轮未出现，运行节奏与按 DATA_READY 发布吻合；JustFloat 无固件身份字段，不能独立确认烧录镜像。
 

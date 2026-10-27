@@ -3,6 +3,7 @@
 #include "display.h"
 #include "storage.h"
 #include "stm32_debug_uart.h"
+#include "weather.h"
 #include "queue.h"
 #include "task.h"
 #include <assert.h>
@@ -22,6 +23,25 @@ static uint32_t s_requested_token;
 static uint32_t s_storage_requests;
 static uint32_t s_fault_mask;
 static uint32_t s_send_failure;
+static display_page_t s_selected_page = DISPLAY_PAGE_CLOCK;
+static char s_boundary_input[256];
+
+static void make_boundary_input(void)
+{
+    static const char s_before[] = "FORMAT 12\nERRORS\n";
+    static const char s_prefix[] = "WEATHER \xE6\xB7\xB1\xE5\x9C\xB3,";
+    static const char s_suffix[] = "2,235,180,270,65,2,35,2026-10-26T10:30";
+    static const char s_after[] = "\nPAGE WEATHER\n";
+    uint32_t offset = (uint32_t)strlen(s_before);
+    uint32_t prefix_length = (uint32_t)strlen(s_prefix);
+    uint32_t suffix_length = (uint32_t)strlen(s_suffix);
+    uint32_t padding = 127U - prefix_length - suffix_length;
+    memcpy(s_boundary_input, s_before, offset);
+    memcpy(s_boundary_input + offset, s_prefix, prefix_length);
+    memset(s_boundary_input + offset + prefix_length, '0', padding);
+    memcpy(s_boundary_input + offset + prefix_length + padding, s_suffix, suffix_length);
+    memcpy(s_boundary_input + offset + 127U, s_after, strlen(s_after) + 1U);
+}
 
 QueueHandle_t xQueueCreateStatic(uint32_t depth, uint32_t size, uint8_t *p_storage,
                                  StaticQueue_t *p_control)
@@ -49,6 +69,7 @@ BaseType_t xQueueReceive(QueueHandle_t queue, void *p_item, TickType_t wait)
 }
 BaseType_t xQueueReset(QueueHandle_t queue) { queue->count = 0U; return pdPASS; }
 TaskHandle_t xTaskGetCurrentTaskHandle(void) { return &s_step; }
+TickType_t xTaskGetTickCount(void) { return s_step * 20U; }
 void xTaskNotifyGive(TaskHandle_t task) { assert(task != NULL); }
 void vTaskNotifyGiveFromISR(TaskHandle_t task, BaseType_t *p_woken)
 { assert(task != NULL); *p_woken = pdFALSE; }
@@ -61,10 +82,18 @@ uint32_t ulTaskNotifyTake(BaseType_t clear, TickType_t wait)
     switch (s_step) {
     case 1U:
         assert(s_binary_frames == 1U && s_output_length == 0U);
-        s_input = "FORMAT 12\nERRORS\n";
+        make_boundary_input();
+        s_input = s_boundary_input;
         break;
     case 2U:
         assert(s_output_length == 0U);
+        {
+            weather_snapshot_t snapshot;
+            weather_get_snapshot(xTaskGetTickCount(), &snapshot);
+            assert(snapshot.available == 1U && snapshot.fresh == 1U);
+            assert(snapshot.data.temperature_tenths == 235);
+            assert(s_selected_page == DISPLAY_PAGE_WEATHER);
+        }
         s_input = "CONSOLE ON\r\n";
         break;
     case 3U:
@@ -72,12 +101,24 @@ uint32_t ulTaskNotifyTake(BaseType_t clear, TickType_t wait)
         assert(strcmp(s_output, "OK CONSOLE ON\r\n") == 0);
         assert(Debug_SendFloats(s_frame, VOFA_MAX_CHANNELS));
         assert(Debug_GetSuppressedCount() == 1U && Debug_GetQueueDropCount() == 0U);
-        s_input = "FORMAT 12\nFORMAT 24\nCONSOLE OFF\n";
+        s_input = "FORMAT 12\nWEATHER "
+            "\xE6\xB7\xB1\xE5\x9C\xB3,99,236,180,270,65,2,35,2026-10-26T10:31\n"
+            "WEATHER "
+            "\xE6\xB7\xB1\xE5\x9C\xB3,2,236,180,270,65,2,35,2026-10-26T10:31\n"
+            "PAGE CLOCK\nFORMAT 24\nCONSOLE OFF\n";
         break;
     case 4U:
         assert(s_storage_requests == 1U && Debug_IsConsoleActive());
         assert(strstr(s_output, "OK FORMAT") == NULL);
+        assert(strstr(s_output, "ERR WEATHER\r\nOK WEATHER\r\nOK PAGE CLOCK\r\n") != NULL);
         assert(strstr(s_output, "ERR BUSY\r\nERR BUSY\r\n") != NULL);
+        assert(s_selected_page == DISPLAY_PAGE_CLOCK);
+        {
+            weather_snapshot_t snapshot;
+            weather_get_snapshot(xTaskGetTickCount(), &snapshot);
+            assert(snapshot.data.temperature_tenths == 236);
+            assert(strcmp(snapshot.data.source_time, "2026-10-26T10:31") == 0);
+        }
         s_config.completed_token = s_requested_token;
         s_config.completed_result = 0;
         break;
@@ -181,6 +222,15 @@ const char *clock_fault_source_label(clock_fault_source_t source)
 { assert(source == CLOCK_FAULT_RTC); return "RTC"; }
 epd_gdey029t94_status_t display_get_last_status(void)
 { return (epd_gdey029t94_status_t)-2; }
+bool display_select_page(display_page_t page)
+{
+    if (s_step == 3U) {
+        assert(s_storage_requests == 1U);
+        assert(s_config.completed_token != s_requested_token);
+    }
+    s_selected_page = page;
+    return true;
+}
 
 int main(void)
 {
@@ -188,6 +238,6 @@ int main(void)
     assert(Debug_IsReady() && !Debug_IsConsoleActive());
     assert(Debug_SendFloats(s_frame, VOFA_MAX_CHANNELS));
     if (setjmp(s_finished) == 0) { StartDebugTask(NULL); }
-    puts("PASS: binary/text ownership, async persistence, busy, overflow, TX recovery and suppression");
+    puts("PASS: binary/text ownership, valid 127-byte weather, WEATHER/PAGE during FORMAT, persistence and recovery");
     return 0;
 }

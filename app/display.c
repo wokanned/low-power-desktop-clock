@@ -1,6 +1,7 @@
 #include "display.h"
 #include "debug.h"
 #include "epd_bringup.h"
+#include "clock_service.h"
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -18,6 +19,34 @@ static osThreadId_t s_display_task;
 static volatile epd_gdey029t94_status_t s_display_last_status =
     EPD_GDEY029T94_ERROR_STATE;
 static volatile bool s_display_stopped;
+static display_page_t s_selected_page = DISPLAY_PAGE_CLOCK;
+static uint32_t s_page_revision;
+
+bool display_select_page(display_page_t page)
+{
+    if ((page != DISPLAY_PAGE_CLOCK) && (page != DISPLAY_PAGE_WEATHER)) {
+        return false;
+    }
+    taskENTER_CRITICAL();
+    if (s_selected_page != page) {
+        s_selected_page = page;
+        s_page_revision++;
+        if (s_page_revision == 0U) { s_page_revision = 1U; }
+    }
+    taskEXIT_CRITICAL();
+    return true;
+}
+
+void display_get_snapshot(uint32_t now_tick, display_snapshot_t *p_snapshot)
+{
+    if (p_snapshot == NULL) { return; }
+    taskENTER_CRITICAL();
+    p_snapshot->page = s_selected_page;
+    p_snapshot->page_revision = s_page_revision;
+    clock_service_get_model(&p_snapshot->clock);
+    weather_get_snapshot(now_tick, &p_snapshot->weather);
+    taskEXIT_CRITICAL();
+}
 
 static void s_display_log_error(epd_gdey029t94_status_t status)
 {

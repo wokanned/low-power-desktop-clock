@@ -15,7 +15,7 @@ $taskExe = Join-Path $OutputDirectory 'debug_task_host_test.exe'
     "-I$root/tests/stubs/debug" "-I$root/app" "-I$root/platform" "-I$root/device" `
     (Join-Path $root 'tests/debug_task_host_test.c') `
     (Join-Path $root 'app/debug.c') (Join-Path $root 'app/debug_console.c') `
-    (Join-Path $root 'app/vofa.c') '-o' $taskExe
+    (Join-Path $root 'app/vofa.c') (Join-Path $root 'app/weather.c') '-o' $taskExe
 if ($LASTEXITCODE -ne 0) { throw 'Debug task build failed' }
 & $taskExe
 if ($LASTEXITCODE -ne 0) { throw 'Debug task tests failed' }

@@ -8,6 +8,7 @@ typedef int32_t BaseType_t;
 #define pdTRUE 1
 #define pdPASS 1
 #define pdMS_TO_TICKS(ms) ((TickType_t)(ms))
+#define configTICK_RATE_HZ 1000U
 #define taskENTER_CRITICAL() ((void)0)
 #define taskEXIT_CRITICAL() ((void)0)
 #define portYIELD_FROM_ISR(value) ((void)(value))

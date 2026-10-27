@@ -3,7 +3,9 @@
 #include "../app/display.h"
 #include "../app/epd_bringup.h"
 #include "../app/epd_clock_view.h"
+#include "../app/epd_weather_view.h"
 #include "../app/clock_service.h"
+#include "../app/weather.h"
 #include "../platform/stm32_gdey029t94.h"
 #include "stubs/display/FreeRTOS.h"
 #include "stubs/display/cmsis_os.h"
@@ -58,6 +60,7 @@ static uint32_t s_model_reads;
 static uint32_t s_thread_creates;
 static uint32_t s_suspends;
 static uint8_t s_sleep_error_observed;
+static uint8_t s_weather_published;
 static osThreadFunc_t s_thread_function;
 static void *s_thread_argument;
 
@@ -80,6 +83,17 @@ static void change_live(uint32_t revision, uint8_t active)
     s_live.faults.active_categories=active;
     s_live.format_revision=revision;
     s_live.format=revision%2U==0U?CLOCK_FORMAT_24:CLOCK_FORMAT_12;
+}
+
+static void publish_weather(uint32_t now_tick, uint8_t condition)
+{
+    weather_data_t weather;
+    CHECK(weather_parse_line(
+        "WEATHER \xE6\xB7\xB1\xE5\x9C\xB3,2,235,180,270,65,2,35,2026-10-26T10:30",
+        &weather));
+    weather.condition = condition;
+    CHECK(weather_publish(&weather, now_tick));
+    s_weather_published++;
 }
 
 void clock_service_get_model(clock_view_model_t *p_model)
@@ -171,10 +185,41 @@ epd_gdey029t94_status_t TEST_REFRESH(
         /* Updates during the blocking call cannot commit the pending frame. */
         CHECK(epd_bringup_get_completed_frames()==before);
         CHECK(frame_hash(p_frame,length)==s_frame_hashes[s_refreshes-1U]);
+    } else if(scenario("page-switch") && s_refreshes==1U) {
+        CHECK(display_select_page(DISPLAY_PAGE_WEATHER));
+        publish_weather(s_tick, 2U);
+    } else if((scenario("weather-duplicate") || scenario("weather-minute") ||
+               scenario("memory-phase-weather")) && s_refreshes==1U) {
+        CHECK(display_select_page(DISPLAY_PAGE_WEATHER));
+        publish_weather(s_tick, 2U);
+    } else if(scenario("weather-duplicate") && s_refreshes==2U) {
+        publish_weather(s_tick, 2U);
+    } else if(scenario("memory-phase-weather") && s_refreshes==2U) {
+        CHECK(display_select_page(DISPLAY_PAGE_CLOCK));
+    } else if(scenario("fault-weather") && s_refreshes==1U) {
+        CHECK(display_select_page(DISPLAY_PAGE_WEATHER));
+        publish_weather(s_tick, 4U);
+        change_live(1U, 1U);
+    } else if(scenario("fault-weather") && s_refreshes==2U) {
+        change_live(2U, 0U);
+    } else if(scenario("page-revert") && s_refreshes==1U) {
+        CHECK(display_select_page(DISPLAY_PAGE_WEATHER));
+        CHECK(display_select_page(DISPLAY_PAGE_CLOCK));
+    } else if(scenario("weather-revert") && s_refreshes==1U) {
+        publish_weather(s_tick, 4U);
+        publish_weather(s_tick, 2U);
+    } else if(scenario("weather-coalesce") && s_refreshes==1U) {
+        publish_weather(s_tick, 4U);
+        publish_weather(s_tick, 5U);
+    } else if(scenario("weather-retry")) {
+        fail=(uint8_t)(s_refreshes<3U);
+        if(fail!=0U) { publish_weather(s_tick, (uint8_t)(s_refreshes+3U)); }
     }
     CHECK(epd_bringup_get_completed_frames()==before);
     if(fail) { return EPD_GDEY029T94_ERROR_BUSY_TIMEOUT; }
-    s_committed_models[s_committed]=s_render_models[s_renders-1U];
+    if(s_renders!=0U) {
+        s_committed_models[s_committed]=s_render_models[s_renders-1U];
+    }
     s_committed++;
     p_device->full_refreshes++;
     return EPD_GDEY029T94_OK;
@@ -275,8 +320,61 @@ int32_t osDelay(uint32_t ticks)
         if(s_committed==2U) { longjmp(s_stop,STOP_COMPLETE); }
     } else if(scenario("coalesce")) {
         if(s_committed==3U) { longjmp(s_stop,STOP_COMPLETE); }
+    } else if(scenario("page-switch")) {
+        if(s_committed==2U) { longjmp(s_stop,STOP_COMPLETE); }
+    } else if(scenario("weather-duplicate")) {
+        if(s_poll_delays>=2U) { CHECK(s_refreshes==2U); }
+        if(s_poll_delays==5U) { longjmp(s_stop,STOP_COMPLETE); }
+    } else if(scenario("weather-minute")) {
+        if(s_poll_delays==2U) { s_live.calendar.minute=31U; }
+        if(s_committed==3U) { longjmp(s_stop,STOP_COMPLETE); }
+    } else if(scenario("memory-phase-weather")) {
+        if(s_committed==3U) { longjmp(s_stop,STOP_COMPLETE); }
+    } else if(scenario("weather-hidden")) {
+        if(s_poll_delays==1U) {
+            publish_weather(s_tick, 1U);
+            CHECK(s_refreshes==1U);
+        } else if(s_poll_delays==5U) {
+            CHECK(s_refreshes==1U);
+            CHECK(display_select_page(DISPLAY_PAGE_WEATHER));
+        }
+        if(s_committed==2U) { longjmp(s_stop,STOP_COMPLETE); }
+    } else if(scenario("fault-weather")) {
+        if(s_committed==3U) { longjmp(s_stop,STOP_COMPLETE); }
+    } else if(scenario("fault-page-hidden")) {
+        if(s_poll_delays<=4U) { CHECK(s_refreshes==1U); }
+        if(s_poll_delays==1U) {
+            CHECK(display_select_page(DISPLAY_PAGE_WEATHER));
+            publish_weather(s_tick, 2U);
+        } else if(s_poll_delays==2U) {
+            CHECK(display_select_page(DISPLAY_PAGE_CLOCK));
+            CHECK(display_select_page(DISPLAY_PAGE_WEATHER));
+        } else if(s_poll_delays==4U) {
+            s_live.faults.revision++;
+            s_live.faults.active_categories=0U;
+        }
+        if(s_committed==2U) { longjmp(s_stop,STOP_COMPLETE); }
+    } else if(scenario("page-revert") || scenario("weather-revert")) {
+        CHECK(s_refreshes==1U);
+        if(s_poll_delays==5U) { longjmp(s_stop,STOP_COMPLETE); }
+    } else if(scenario("weather-coalesce")) {
+        if(s_poll_delays>=2U) { CHECK(s_refreshes==2U); }
+        if(s_poll_delays==5U) { longjmp(s_stop,STOP_COMPLETE); }
+    } else if(scenario("weather-retry")) {
+        if(s_committed==1U && s_tick>=2400U) { longjmp(s_stop,STOP_COMPLETE); }
+    } else if(scenario("weather-expiry")) {
+        if(s_poll_delays<=2U) { CHECK(s_refreshes==1U); }
+        if(s_poll_delays==1U) { s_tick=10800000UL-1U; }
+        if(s_poll_delays==2U) { s_tick=10800000UL; }
+        if(s_poll_delays==4U) {
+            weather_snapshot_t snapshot;
+            weather_get_snapshot(s_tick, &snapshot);
+            CHECK(snapshot.available==1U && snapshot.expired==1U);
+            CHECK(s_refreshes==2U);
+            longjmp(s_stop,STOP_COMPLETE);
+        }
     }
-    CHECK(s_tick<70000U);
+    CHECK(s_tick<(scenario("weather-expiry") ? 10802000UL : 70000UL));
     return 0;
 }
 
@@ -294,6 +392,15 @@ static void init_model(void)
         s_live.faults.active_categories=1U;
     }
     if(scenario("failed-recovery-coalesce")) { change_live(1U,1U); }
+    if(scenario("fault-page-hidden")) {
+        s_live.faults.revision=1U;
+        s_live.faults.active_categories=1U;
+    }
+    if(scenario("weather-revert") || scenario("weather-coalesce") ||
+       scenario("weather-retry") || scenario("weather-expiry")) {
+        CHECK(display_select_page(DISPLAY_PAGE_WEATHER));
+        publish_weather(s_tick, 2U);
+    }
 }
 
 static void check_retry_intervals(uint32_t expected)
@@ -303,6 +410,22 @@ static void check_retry_intervals(uint32_t expected)
     for(i=0U;i<expected;i++) {
         CHECK(s_delay_ticks[i]%200U==0U);
     }
+}
+
+static void check_weather_frame(uint32_t index, uint8_t condition, uint8_t expired)
+{
+    weather_snapshot_t weather;
+    uint8_t expected_frame[TEST_FRAME_BYTES];
+    weather_get_snapshot(s_tick, &weather);
+    CHECK(weather.data.condition==condition && weather.expired==expired);
+#if EPD_CLOCK_USE_GRAY4
+    CHECK(epd_weather_view_draw_gray4(expected_frame, sizeof(expected_frame),
+                                      &weather, &s_live));
+#else
+    CHECK(epd_weather_view_draw_bw(expected_frame, sizeof(expected_frame),
+                                   &weather, &s_live));
+#endif
+    CHECK(s_frame_hashes[index]==frame_hash(expected_frame, sizeof(expected_frame)));
 }
 
 static void verify(int stopped)
@@ -397,6 +520,79 @@ static void verify(int stopped)
         CHECK(s_render_models[1].memory_mode==CLOCK_MEMORY_IFLASH);
         CHECK(s_render_models[2].memory_mode==CLOCK_MEMORY_IFLASH);
         CHECK(s_frame_ticks[0]==0U && s_frame_ticks[1]==2200U && s_frame_ticks[2]==3400U);
+        check_retry_intervals(0U);
+    } else if(scenario("page-switch")) {
+        CHECK(stopped==STOP_COMPLETE && s_refreshes==2U && s_committed==2U);
+        CHECK(s_weather_published==1U);
+        CHECK(s_frame_hashes[0]!=s_frame_hashes[1]);
+        CHECK(s_frame_ticks[0]==0U && s_frame_ticks[1]==200U);
+        check_retry_intervals(0U);
+    } else if(scenario("weather-duplicate")) {
+        CHECK(stopped==STOP_COMPLETE && s_refreshes==2U && s_committed==2U);
+        CHECK(s_weather_published==2U);
+        CHECK(s_frame_ticks[0]==0U && s_frame_ticks[1]==200U);
+        CHECK(s_frame_hashes[0]!=s_frame_hashes[1]);
+        check_retry_intervals(0U);
+    } else if(scenario("weather-minute")) {
+        CHECK(stopped==STOP_COMPLETE && s_refreshes==3U && s_committed==3U);
+        CHECK(s_weather_published==1U);
+        CHECK(s_frame_ticks[0]==0U && s_frame_ticks[1]==200U && s_frame_ticks[2]==400U);
+        CHECK(s_frame_hashes[1]!=s_frame_hashes[2]);
+        check_retry_intervals(0U);
+    } else if(scenario("memory-phase-weather")) {
+        CHECK(stopped==STOP_COMPLETE && s_refreshes==3U && s_committed==3U);
+        CHECK(s_weather_published==1U && s_renders==2U);
+        CHECK(s_frame_ticks[0]==0U && s_frame_ticks[1]==200U && s_frame_ticks[2]==400U);
+        CHECK(s_render_models[1].memory_mode==CLOCK_MEMORY_IFLASH);
+        check_retry_intervals(0U);
+    } else if(scenario("weather-hidden")) {
+        CHECK(stopped==STOP_COMPLETE && s_refreshes==2U && s_committed==2U);
+        CHECK(s_weather_published==1U);
+        CHECK(s_frame_hashes[0]!=s_frame_hashes[1]);
+        CHECK(s_frame_ticks[0]==0U && s_frame_ticks[1]==1000U);
+        check_retry_intervals(0U);
+    } else if(scenario("fault-weather")) {
+        CHECK(stopped==STOP_COMPLETE && s_refreshes==3U && s_committed==3U);
+        CHECK(s_weather_published==1U && s_renders==2U);
+        CHECK(s_frame_hashes[0]!=s_frame_hashes[1]);
+        CHECK(s_frame_hashes[1]!=s_frame_hashes[2]);
+        CHECK(s_render_models[1].faults.active_categories==1U);
+        CHECK(s_render_models[1].faults.revision==1U);
+        check_retry_intervals(0U);
+    } else if(scenario("fault-page-hidden")) {
+        CHECK(stopped==STOP_COMPLETE && s_refreshes==2U && s_committed==2U);
+        CHECK(s_renders==1U && s_weather_published==1U);
+        CHECK(s_render_models[0].faults.active_categories==1U);
+        CHECK(s_frame_ticks[0]==0U && s_frame_ticks[1]==800U);
+        CHECK(s_frame_hashes[0]!=s_frame_hashes[1]);
+        check_weather_frame(1U, 2U, 0U);
+        check_retry_intervals(0U);
+    } else if(scenario("page-revert") || scenario("weather-revert")) {
+        CHECK(stopped==STOP_COMPLETE && s_refreshes==1U && s_committed==1U);
+        CHECK(s_weather_published==(scenario("weather-revert") ? 3U : 0U));
+        CHECK(s_frame_ticks[0]==0U);
+        if(scenario("weather-revert")) { check_weather_frame(0U, 2U, 0U); }
+        check_retry_intervals(0U);
+    } else if(scenario("weather-coalesce")) {
+        CHECK(stopped==STOP_COMPLETE && s_refreshes==2U && s_committed==2U);
+        CHECK(s_weather_published==3U && s_renders==0U);
+        CHECK(s_frame_ticks[0]==0U && s_frame_ticks[1]==200U);
+        CHECK(s_frame_hashes[0]!=s_frame_hashes[1]);
+        check_weather_frame(1U, 5U, 0U);
+        check_retry_intervals(0U);
+    } else if(scenario("weather-retry")) {
+        CHECK(stopped==STOP_COMPLETE && s_refreshes==3U && s_committed==1U);
+        CHECK(s_weather_published==3U && s_renders==0U);
+        CHECK(s_frame_ticks[0]==0U && s_frame_ticks[1]==1000U && s_frame_ticks[2]==2000U);
+        CHECK(s_frame_hashes[0]!=s_frame_hashes[1] && s_frame_hashes[1]!=s_frame_hashes[2]);
+        check_weather_frame(2U, 5U, 0U);
+        check_retry_intervals(2U);
+    } else if(scenario("weather-expiry")) {
+        CHECK(stopped==STOP_COMPLETE && s_refreshes==2U && s_committed==2U);
+        CHECK(s_weather_published==1U && s_renders==0U);
+        CHECK(s_frame_ticks[0]==0U && s_frame_ticks[1]==10800000UL);
+        CHECK(s_frame_hashes[0]!=s_frame_hashes[1]);
+        check_weather_frame(1U, 2U, 1U);
         check_retry_intervals(0U);
     } else {
         CHECK(0);

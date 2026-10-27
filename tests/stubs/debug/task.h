@@ -3,6 +3,7 @@
 #include "FreeRTOS.h"
 typedef void *TaskHandle_t;
 TaskHandle_t xTaskGetCurrentTaskHandle(void);
+TickType_t xTaskGetTickCount(void);
 void xTaskNotifyGive(TaskHandle_t task);
 void vTaskNotifyGiveFromISR(TaskHandle_t task, BaseType_t *p_woken);
 uint32_t ulTaskNotifyTake(BaseType_t clear, TickType_t wait);

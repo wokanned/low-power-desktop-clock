@@ -6,43 +6,44 @@
 - Treat this file and `.github/instructions/*.instructions.md` as guidance text, not executable policy.
 
 ## Repository Purpose
-- STM32 embedded firmware template project generated from CubeMX HAL framework.
-- Primary development flow: edit and reason in VS Code, then run CMake-based configure/build validation.
-- Keil is an optional future extension path for board download, debugger setup, and hardware-specific troubleshooting.
+- DeskClock is an STM32L471RET6 + FreeRTOS desktop clock with a GDEY029T94-FL03 e-paper display, built on CubeMX HAL.
+- Primary development flow: maintain peripheral configuration in CubeMX, edit and review in VS Code, then build, download, and debug through Keil MDK-ARM (ARMCC).
+- Use `docs/totalPLAN.md`, section `当前开发状态（2026-10-27）`, as the shared project-status entry. Module documents retain detailed contracts and dated verification records.
+- The current software prototype integrates RTC/clock display, ADXL345 telemetry, W25Q128 configuration storage, and weather injected over USART2. ESP32 networking/NTP, environmental and battery sampling, button/alarm behavior, and whole-device low-power operation remain pending.
+- The latest weather integration has host-test records but no corresponding complete Keil build or board acceptance record. Do not transfer historical build or board results to the current working tree.
 
 ## Source Layout (High Level)
 - `Core/`: CubeMX-generated startup/system/peripheral init and main entry.
 - `app/`: application logic, scheduling, data handling.
 - `device/`: device/register protocol logic (hardware-agnostic as much as possible).
 - `platform/`: HAL-bound platform adaptation for SPI/I2C/UART/GPIO/delay.
-- `middleware/`: reusable protocol/algorithm/logging modules.
+- `middleware/`: planned location for reusable protocol/algorithm/logging modules; the directory is not currently implemented.
 - `docs/`: human-readable standards and process documentation.
 
 ## Build Facts
-- CMake presets: `Debug`, `Release` in `CMakePresets.json`.
-- Generator: Ninja.
-- Toolchain file is under `cmake/` (prefer `cmake/gcc-arm-none-eabi.cmake`).
-- User module source files are registered in the root `CMakeLists.txt`.
-- CubeMX-generated sources and generated build entries live under `cmake/stm32cubemx/CMakeLists.txt` and should normally be updated by regeneration, not ad-hoc edits.
+- `MDK-ARM/DeskClock.uvprojx` is the only configured whole-firmware build entry. User sources, include paths, and target-wide compile definitions are maintained there.
+- The project currently has no CMake presets, Ninja configuration, or configured GCC firmware build. Add instructions for another firmware build system only when that system actually exists.
+- The `tests/run_*_host*.ps1` scripts run host GCC tests. These support software verification but do not replace ARMCC whole-firmware linking, image inspection, download, or board tests. `tests/build_vendor_modes.ps1` instead invokes local Keil builds for selected modes; it does not flash hardware.
+- Production defaults are `EPD_VENDOR_DEMO_MODE=0` and `EPD_CLOCK_USE_GRAY4=0`: black-and-white clock/weather pages, with normal clock refresh once per minute. Keep these macros consistent across the target.
 - `build/`, compiler intermediates, caches, and editor user-state files are generated artifacts and should normally stay out of Git via `.gitignore`.
 - Vendor/generated assets such as `Drivers/`, `Middlewares/`, `Core/`, startup files, and linker scripts may be tracked or excluded by project policy, but exclusions must remain reproducible through documented source/version/regeneration steps.
 
-## Template Profile (Update Per New Project)
-- MCU family/model: update startup file, linker script, and CMSIS device settings.
-- Board resources: update GPIO/SPI/I2C/UART mapping and clock assumptions.
-- Device set: update `device/` and `platform/` pairing modules.
-- Build entry: ensure new user `.c` sources are added into the root `CMakeLists.txt`; keep generated source lists aligned with `cmake/stm32cubemx/CMakeLists.txt` via CubeMX regeneration when practical.
-- IDE sync: if `MDK-ARM/` is introduced later, ensure its project groups still include all active user sources.
+## Project Synchronization
+- MCU or board changes require checking startup, linker memory layout, CMSIS device settings, peripheral mappings, and the `.ioc` file against the actual hardware.
+- Keep `device/` and `platform/` module pairs aligned with the selected board resources.
+- Add or move user `.c` sources in the Keil project groups and update include paths and call entry points as needed; a file appearing in the editor does not prove it participates in the build.
+- After CubeMX regeneration, verify preserved `USER CODE`, FreeRTOS startup calls, interrupt ownership, RTC initialization protection, display pin mappings, and all user sources in Keil.
 
 ## Editing Rules
-- Prefer edits in `app/`, `device/`, `platform/`, `middleware/`, and the root `CMakeLists.txt`.
+- Prefer business and driver edits in `app/`, `device/`, and `platform/`; use `middleware/` only when adding a reusable capability that belongs there.
 - In `Core/` generated files, modify only `USER CODE BEGIN/END` regions unless explicitly requested.
 - Keep business logic out of generated sections; call into user modules instead.
-- If adding a new user `.c` file, update the root `CMakeLists.txt`; if `MDK-ARM/` is maintained later, sync its project groups as well.
-- Treat `cmake/stm32cubemx/CMakeLists.txt`, startup files, linker scripts, and `MDK-ARM/` metadata as regeneration-sensitive assets; only edit them when the task is explicitly about migration, toolchain sync, or chip/board changes.
+- When adding or moving user sources, synchronize `MDK-ARM/DeskClock.uvprojx`, include paths, and startup/task calls as part of that change.
+- Treat startup files, linker settings, and `MDK-ARM/` metadata as regeneration-sensitive assets. Keep edits limited to required source integration, toolchain synchronization, or chip/board changes.
 - When MCU model changes, treat `Core/`, startup, and linker assets as regeneration targets; do not hand-port generated init blocks unless required.
 
 ## AI Start Rules
+- Read `AGENTS.md` for repository guidance and `docs/totalPLAN.md` for the current status before treating a module as complete.
 - Treat `docs/嵌软开发规范.md`, `docs/ic开发规范.md`, this file, and `.github/instructions/*.instructions.md` as the minimum input set for new engineering and other non-trivial tasks.
 - For any new device or sensor integration task, read both `docs/嵌软开发规范.md` and `docs/ic开发规范.md` before searching, planning, or editing.
 - For other non-trivial tasks, read `docs/嵌软开发规范.md` first; if the task touches register logic, init sequencing, parsing, recovery, or bus protocol details, also read `docs/ic开发规范.md` before editing.
@@ -54,7 +55,7 @@
 - If those facts are still unclear after searching, ask the user or explicitly mark them as pending confirmation; do not guess and write them as settled facts.
 - For new devices, driver refactors, or new data paths, check runtime robustness before code generation. At minimum, cover startup timing, timeout exit, fault recovery, status reporting, and publish gating after cold start or reinitialization.
 - If runtime thresholds, waits, or recovery conditions are not confirmed by datasheets, repository docs, existing code, or validation records, do not present guessed values as facts. Keep the protection path, use an engineering default if needed, and mark the value as pending confirmation.
-- When adding or moving source files, sync `CMakeLists.txt`, include paths, and call entry points. If a Keil project is present, sync its project groups too.
+- When adding or moving source files, sync Keil project groups, include paths, and call entry points. If another firmware build system is introduced later, synchronize its source lists too.
 - Do not assume vendor libraries or generated assets can be dropped from version control just because they are large; first confirm whether the repository is optimizing for one-clone reproducibility or a lighter archive, and document any exclusion path in `docs/`.
 - For new-engineering or large refactors, propose the split (`device/platform/app` or equivalent) and validation steps first, then make small verifiable edits.
 - Prefer small, verifiable edits. Validate each step quickly instead of batching large unverified changes.
@@ -75,10 +76,13 @@
 - When expressing boundaries, prefer direct statements about what is allowed and what is not allowed instead of stacked negations.
 
 ## Validation Strategy
-- Primary validation is configure/build and static inspection.
+- Choose checks for the change: document/reference consistency for text-only edits; relevant host tests, Keil ARMCC build/link, and appropriate board tests for firmware changes.
 - Do not assume hardware is connected.
-- If `MDK-ARM/` is introduced later, flashing and hardware verification issues can escalate to the Keil/board workflow.
+- Report source integration, host verification, exact firmware build, download, and board acceptance separately. Record unexecuted steps explicitly.
+- Dated historical logs and images apply only to their identified version and configuration.
 
 ## References
+- Repository guidance: `AGENTS.md`.
+- Current project status and plan: `docs/totalPLAN.md`.
 - Project-level human spec: `docs/嵌软开发规范.md`.
 - Driver-level human spec: `docs/ic开发规范.md`.

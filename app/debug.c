@@ -1,5 +1,6 @@
 #include "debug.h"
 #include "debug_console.h"
+#include "weather.h"
 #include "clock_faults.h"
 #include "display.h"
 #include "storage.h"
@@ -114,7 +115,33 @@ static void debug_print_errors(void)
 static void debug_command(debug_command_t command)
 {
     clock_format_t format;
+    weather_data_t weather;
     if (command == DEBUG_COMMAND_NONE) { return; }
+    if (command == DEBUG_COMMAND_WEATHER) {
+        if (!weather_parse_line(s_parser.line, &weather)) {
+            if (s_console_active != 0U) { (void)debug_send_text("ERR WEATHER\r\n"); }
+            return;
+        }
+        if (!weather_publish(&weather, (uint32_t)xTaskGetTickCount())) {
+            if (s_console_active != 0U) { (void)debug_send_text("ERR WEATHER\r\n"); }
+            return;
+        }
+        debug_fault_update(0U, CLOCK_FAULT_RX | CLOCK_FAULT_OVERFLOW);
+        if (s_console_active != 0U) { (void)debug_send_text("OK WEATHER\r\n"); }
+        return;
+    }
+    if ((command == DEBUG_COMMAND_PAGE_WEATHER) ||
+        (command == DEBUG_COMMAND_PAGE_CLOCK)) {
+        display_page_t page = command == DEBUG_COMMAND_PAGE_WEATHER ?
+            DISPLAY_PAGE_WEATHER : DISPLAY_PAGE_CLOCK;
+        (void)display_select_page(page);
+        debug_fault_update(0U, CLOCK_FAULT_RX | CLOCK_FAULT_OVERFLOW);
+        if (s_console_active != 0U) {
+            (void)debug_send_text(command == DEBUG_COMMAND_PAGE_WEATHER ?
+                                  "OK PAGE WEATHER\r\n" : "OK PAGE CLOCK\r\n");
+        }
+        return;
+    }
     if (s_console_active == 0U) {
         if (command != DEBUG_COMMAND_ON) { return; }
         /* This task parses only between complete blocking TX operations. */
@@ -195,6 +222,7 @@ void Debug_Init(void)
     s_next_token = 0U;
     s_pending_token = 0U;
     debug_console_parser_reset(&s_parser);
+    weather_init();
     s_debug_queue = xQueueCreateStatic(DEBUG_QUEUE_DEPTH,
         VOFA_MAX_CHANNELS * sizeof(float), s_queue_storage, &s_queue_control);
 }
@@ -287,6 +315,7 @@ void StartDebugTask(void *p_argument)
             if (!available) { break; }
             debug_command(debug_console_parser_feed(&s_parser, byte));
         }
+        (void)weather_poll_expiry((uint32_t)xTaskGetTickCount());
         debug_poll_config();
         if (s_console_active == 0U &&
             xQueueReceive(s_debug_queue, frame, 0U) == pdPASS) {

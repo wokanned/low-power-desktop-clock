@@ -2074,6 +2074,16 @@
               <FilePath>../app/epd_clock_view.h</FilePath>
             </File>
             <File>
+              <FileName>epd_weather_view.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../app/epd_weather_view.c</FilePath>
+            </File>
+            <File>
+              <FileName>epd_weather_view.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../app/epd_weather_view.h</FilePath>
+            </File>
+            <File>
               <FileName>epd_vendor_demo.c</FileName>
               <FileType>1</FileType>
               <FilePath>../app/epd_vendor_demo.c</FilePath>
@@ -2152,6 +2162,16 @@
               <FileName>debug_console.h</FileName>
               <FileType>5</FileType>
               <FilePath>../app/debug_console.h</FilePath>
+            </File>
+            <File>
+              <FileName>weather.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../app/weather.c</FilePath>
+            </File>
+            <File>
+              <FileName>weather.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../app/weather.h</FilePath>
             </File>
           </Files>
         </Group>
@@ -2332,6 +2352,16 @@
               <FileName>clock_gray_assets.h</FileName>
               <FileType>5</FileType>
               <FilePath>../resources/clock_gray_assets.h</FilePath>
+            </File>
+            <File>
+              <FileName>weather_glyphs.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../resources/weather_glyphs.c</FilePath>
+            </File>
+            <File>
+              <FileName>weather_glyphs.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../resources/weather_glyphs.h</FilePath>
             </File>
           </Files>
         </Group>

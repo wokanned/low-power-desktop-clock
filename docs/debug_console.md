@@ -1,12 +1,19 @@
 # USART2 显式文本控制台
 
+状态更新：2026-10-27。工程总进度见 [totalPLAN.md 的“当前开发状态（2026-10-27）”](totalPLAN.md#当前开发状态2026-10-27)。当前控制台、天气注入和切页已接入源码，有主机测试通过记录；包含最新集成的 Keil 镜像及板上验收仍待完成。
+
 USART2 使用 H10，PA2 TX / PA3 RX，115200、8N1、3.3V TTL。默认发送现有
 16 通道、68 字节 JustFloat 帧，`debugTask` 始终是唯一发送者。
+普通文本终端看到二进制乱码符合默认协议。`Debug_Log()` 当前为空实现，启动、重试和
+挂起位置的文字不会自动输出；发送 `CONSOLE ON` 并换行后才使用下文文本应答。
 
 ## 命令
 
-命令区分大小写，不带前后空格，以 CR、LF 或 CRLF 结束。每行内容最多
-31 字节。二进制模式只接受 `CONSOLE ON`，其他命令不发送文本响应。
+命令区分大小写，不带前后空格，以 CR、LF 或 CRLF 结束。`WEATHER` 行内容最多
+127 字节；其他输入仍保留原有 31 字节限制。长度不包含换行和终止 NUL。
+只有精确 `WEATHER` 命令族（后接空格或逗号）使用长行缓冲上限，`WEATHERX` 等未知命令仍受 31 字节限制。
+二进制模式下 `WEATHER` 和 `PAGE` 命令静默执行，其他文本仅
+`CONSOLE ON` 会产生切换应答。
 
 | 命令 | 结果 |
 | --- | --- |
@@ -14,11 +21,17 @@ USART2 使用 H10，PA2 TX / PA3 RX，115200、8N1、3.3V TTL。默认发送现�
 | `FORMAT 12` / `FORMAT 24` | 异步请求保存格式；验证持久化成功后回复 `OK FORMAT 12` / `OK FORMAT 24` |
 | `ERRORS` | 输出活动类别数、故障修订号、保留 EPD 状态；各来源输出当前原因、初次原因、首次完整时间和 tick |
 | `CONSOLE OFF` | 回复 `OK CONSOLE OFF` 成功后清空旧队列，恢复二进制输出 |
+| `WEATHER <record>` | 控制台回复 `OK WEATHER`；完整记录通过校验后原子替换 RAM 天气缓存 |
+| `PAGE WEATHER` / `PAGE CLOCK` | 控制台分别回复 `OK PAGE WEATHER` / `OK PAGE CLOCK`；选择的页面仅保存在 RAM |
 
 存储请求尚未完成时，新的 FORMAT 或 CONSOLE OFF 返回 `ERR BUSY`；ERRORS
-仍可使用。存储未就绪、拒绝请求或提交失败返回 `ERR STORAGE`。未知文本命令
-返回 `ERR COMMAND`，损坏或超长命令整行丢弃并返回 `ERR RX`。此版本不实现
-校时、NTP 或任意 Flash 读写命令。
+仍可使用。WEATHER 和 PAGE 命令不受存储事务阻塞。天气内容错误返回
+`ERR WEATHER`，损坏或超长命令整行丢弃并返回 `ERR RX`。存储未就绪、拒绝请求
+或提交失败返回 `ERR STORAGE`。未知文本命令返回 `ERR COMMAND`。此版本不实现
+校时、NTP 或任意 Flash 读写命令。天气字段和有效范围见 [weather_protocol.md](weather_protocol.md)。
+`WEATHER` 只更新 RAM 缓存，不自动切页；`PAGE WEATHER` 后才显示天气。天气与页面
+选择不跨复位保存，格式配置则由 storageTask 持久化。命令应答表示请求已接受或配置已
+按对应契约保存，不表示屏幕刷新已经完成。
 
 `ERRORS` 的 active/first 是十六进制位掩码，依次为 IO=001、CONFIG=002、
 TIMEOUT=004、ID=008、VERIFY=010、START=020、TX=040、RX=080、OVERFLOW=100。
@@ -48,9 +61,12 @@ HAL 错误在重新接收前保留，任务只调用接收端恢复，不中止 
 
 ## 验证
 
-运行 `./tests/run_debug_host_tests.ps1`，覆盖精确命令和边界、CR/LF、整行丢弃、
+2026-10-27已有三套 debug 主机测试通过记录，详见 [weather_protocol.md](weather_protocol.md)。
+本次文档整理未重新运行测试，也未进行当前镜像的 Keil 构建或串口板测。
+
+运行 `./tests/run_debug_host_tests.ps1`，覆盖旧输入 31/32 字节与 WEATHER 127/128 字节边界、UTF-8、CR/LF、整行丢弃、
 二进制与文本互斥、异步持久化应答、忙拒绝、全部故障时间输出、主动暂停、
-失败的退出应答、环形缓冲溢出、HAL 错误保存和 RX 单独恢复。
+FORMAT 事务未完成时接收天气和切页、失败的退出应答、环形缓冲溢出、HAL 错误保存和 RX 单独恢复。
 原遥测回归入口为 `./tests/run_adxl345_host_tests.ps1`。
 
 上述测试使用主机桩，不证明实机 IRQ、RTOS 调度、栈余量或串口电气性能。

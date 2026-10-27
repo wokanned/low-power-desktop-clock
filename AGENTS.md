@@ -4,15 +4,17 @@
 
 ## 工程概况
 
-低功耗 IoT 桌面时钟。MCU 为 STM32L471RET6（Cortex-M4，80MHz，512KB Flash，128KB SRAM，LQFP-64）。RTOS 为 FreeRTOS V10.3.1，使用 CMSIS-RTOS V2 封装层，已集成并运行。工程处于早期硬件调试阶段。CubeMX HAL + FreeRTOS 基础工程已加入调试/VOFA 支持，以及分层实现的 GDEY029T94-FL03 墨水屏时钟移植。该移植的构建和目标板验证证据记录在 `docs/epd_gdey029t94_port.md` 中；仅完成源码集成不能视为硬件验收通过。
+目标为低功耗 IoT 桌面时钟。MCU 为 STM32L471RET6（Cortex-M4，80MHz，512KB Flash，128KB SRAM，LQFP-64），使用 FreeRTOS V10.3.1 和 CMSIS-RTOS V2。2026-10-27 当前处于软件集成原型阶段，已接入 RTC/黑白时钟显示、ADXL345 遥测、W25Q 配置存储和 USART2 注入天气；自动联网、环境/电量采集、按键闹钟及整机低功耗尚未实现。
+
+**工程进度统一维护在 [docs/totalPLAN.md](docs/totalPLAN.md) 的“当前开发状态（2026-10-27）”。** 最新天气整合有主机测试记录，完整 Keil 构建及整机验收待完成。模块文档保留具体历史证据；源码接入、历史构建或局部实采均不能代替当前完整镜像的板测。
 
 ## 构建
 
-**主要构建方式：Keil MDK-ARM（ARMCC）。** 打开 `MDK-ARM/DeskClock.uvprojx`，编译后通过 ST-Link 或同类调试探针下载。这是目前唯一启用的构建方式。
+**固件构建方式：Keil MDK-ARM（ARMCC）。** 打开 `MDK-ARM/DeskClock.uvprojx`，编译后通过 ST-Link 或同类调试探针下载。这是目前唯一的整机固件构建入口。`tests/` 下主机 GCC 测试是逻辑/模拟验证，不能代替固件链接或板测。
 
 目前尚未配置 CMake 工具链，根目录下不存在 `CMakeLists.txt`、`CMakePresets.json` 和 `cmake/gcc-arm-none-eabi.cmake`。如果后续引入 CMake，应将其作为 Keil 之外的辅助验证方式。
 
-Keil 的主要编译产物位于 `MDK-ARM/DeskClock/`，其中已有 `.o`、`.d` 和 `.crf` 文件。
+Keil 默认输出到 `MDK-ARM/DeskClock/`，历史独立验证产物位于 `build/`。目录中已有镜像不代表覆盖当前源码；其日期、模式和验证范围见统一进度入口。
 
 ## 仓库结构
 
@@ -24,12 +26,12 @@ Core/              # CubeMX 生成：启动、HAL 初始化、系统和中断
                    #   stm32l4xx_hal_timebase_tim.c
 Drivers/           # CMSIS + STM32L4 HAL 库（厂商提供，禁止修改）
 Middlewares/       # FreeRTOS 内核源码（V10.3.1）+ CMSIS_RTOS_V2 适配层
-app/               # 调试/VOFA、显示任务、时钟绘制和硬件调试策略
-device/            # 不依赖 HAL 的 GDEY029T94 控制器驱动
-platform/          # STM32 SPI2/GPIO/延时适配
+app/               # 时钟/故障、显示/天气、加速度、调试/VOFA和存储业务
+device/            # 无 HAL 依赖的 GDEY029T94、ADXL345、W25Q128 驱动
+platform/          # STM32 显示、I2C加速度、Flash、RTC和调试串口适配
 gui/               # 复用的厂商 Paint 绘图代码（全局画布）
 fonts/             # 复用的拉丁字符和中文字库
-resources/         # 复用的厂商显示资源
+resources/         # 厂商显示资源及离线时钟/天气字形
 MDK-ARM/           # Keil 工程文件、启动文件和构建产物
 docs/              # 规范与技术方案（见下方“关键文档”）
 DeskClock.ioc      # CubeMX 工程配置
@@ -39,7 +41,7 @@ DeskClock.ioc      # CubeMX 工程配置
 
 ## 外设当前状态
 
-下表中的外设均已在 CubeMX 中配置，并在 `main.c` 中初始化。显示模块已具有 device/platform/app 分层实现；除非另有文档说明，其余设备的集成仍属于后续工作。
+下表列出 CubeMX 配置和 `main.c` 初始化资源，不表示每个器件都有业务实现。GDEY029T94、ADXL345、W25Q128 已有 device/platform/app 分层及启动入口；环境传感器、电量、ESP32 和提醒业务仍待接入，详细状态见 `docs/totalPLAN.md`。
 
 | 外设   | 实例   | 用途                                                                 | 关键引脚 / 说明                                                                              |
 | :----- | :----- | :------------------------------------------------------------------- | :------------------------------------------------------------------------------------------- |
@@ -49,14 +51,16 @@ DeskClock.ioc      # CubeMX 工程配置
 | I2C2   | hi2c2  | ADXL345（IMU）+ MAX17043（电量计）                                   | SCL=PB13，SDA=PB11                                                                           |
 | USART1 | huart1 | ESP32-C3 WiFi 模块                                                   | TX=PA9（U1.42），RX=PA10（U1.43）；电源域开关：ESPPWREN（PC8），通过 SY6288D20AAC（U13）控制 |
 | USART2 | huart2 | 调试串口（H10 排针，3.3V TTL）                                       | TX=PA2，RX=PA3                                                                               |
-| ADC1   | hadc1  | 电池电压采样                                                         | PA0 通过电阻分压采样电池电压；电池 NTC 接到 BQ24074 TS，不接此 ADC                           |
-| TIM4   | htim4  | 蜂鸣器 PWM 输出                                                      | 驱动 5.2kHz 无源压电蜂鸣器                                                                   |
+| ADC1   | hadc1  | 预留电池电压采样，尚未接入业务                                       | PA0 接电池分压；电池 NTC 接到 BQ24074 TS，不接此 ADC                                         |
+| TIM4   | htim4  | 预留蜂鸣器 PWM，尚未启动响铃业务                                     | 5.2kHz 无源压电蜂鸣器，当前仅完成外设配置                                                     |
 | TIM17  | htim17 | HAL SysTick 时间基准                                                 | 用于`HAL_IncTick()`（FreeRTOS 使用 SysTick 作为内核节拍）                                  |
-| RTC    | hrtc   | 日历计时、闹钟唤醒                                                   | LSE 32.768kHz；只要备份域保持供电，RTC_BKP_DR0 初始化标记就用于保留日历                      |
+| RTC    | hrtc   | 日历计时已接入；闹钟提醒与低功耗唤醒业务待实现                       | LSE 32.768kHz；备份域供电时使用 RTC_BKP_DR0 标记保留日历；冷初始化为 2000-10-18 00:00:00    |
 
 ### 电源域 GPIO
 
 以下两个 GPIO 控制 SY6288D20AAC 负载开关，用于控制 WiFi 和传感器供电。墨水屏在系统供电期间持续上电，显示负载开关已移除。
+
+当前 SENEN/ESPPWREN 初始化后保持低电平，尚无按事件切换电源域的流程。低电平开启仅为项目约定，实际极性和输出电压仍待确认，不能把 GPIO 配置当作已经断电的证据。
 
 | 引脚 | 网络名   | 电源域             | 控制对象                            |
 | :--- | :------- | :----------------- | :---------------------------------- |
@@ -81,18 +85,20 @@ DeskClock.ioc      # CubeMX 工程配置
 
 - **版本**：FreeRTOS V10.3.1，使用 CMSIS-RTOS V2 封装层
 - **调度**：抢占式，1000 Hz 节拍，最多 56 个优先级
-- **内存**：heap_4，总堆大小为 3000 字节，同时支持静态和动态分配。显示任务使用独立的静态控制块和 2048 字节栈；加入该任务不增加 RTOS 堆占用。
+- **内存**：heap_4，总堆大小为 3000 字节，同时支持静态和动态分配。显示/存储任务各有 2048 字节静态栈，加速度任务有 1024 字节静态栈；实际栈裕量待板测。
 - **定时器**：已启用（优先级 2，栈大小 256 个字，队列深度 10）
 - **任务间通信**：互斥锁、递归互斥锁、计数信号量、事件标志和任务通知
 - **功能**：可使用跟踪功能、任务状态枚举和运行时间统计钩子
-- **FPU / MPU**：均禁用
+- **FPU / MPU**：`configENABLE_FPU=1`，`configENABLE_MPU=0`，以 `Core/Inc/FreeRTOSConfig.h` 为准
 - **节拍**：FreeRTOS 使用 SysTick；HAL 使用 TIM17 调用 `HAL_IncTick()`（见 `stm32l4xx_hal_timebase_tim.c`）
 - **NVIC**：允许调用系统 API 的最高中断优先级值为 5，内核中断优先级为 15（最低）
+- **当前任务**：defaultTask、debugTask、accelTask、displayTask、storageTask；Tickless、Stop 2 和运动唤醒尚未接入。
 
 ## 显示模块集成
 
 - 复用远端 `EinKTest` 的设备驱动、GUI、字库和资源，不得随意重构协议或资源。`device/` 保持不依赖 HAL；`platform/stm32_gdey029t94` 负责绑定 SPI2、控制引脚和延时。
 - `app/display` 独占显示控制器、帧缓冲区和全局 `Paint` 画布。在 RTOS 初始化阶段通过 `display_start()` 启动。禁止从其他任务或 ISR 调用绘制、演示或刷新函数。
+- `app/weather` 只在 RAM 中缓存经校验的完整天气消息并跟踪单调 tick 过期状态；`app/display` 合并选中页面、天气与时钟为一致快照，天气渲染由 `app/epd_weather_view` 完成。切页或天气页可见内容变化触发全刷；天气页隐藏时新数据只更新缓存，不能因此刷新屏幕。串口协议见 `docs/weather_protocol.md`。
 - `app/epd_bringup` 的生产时钟默认黑白分钟全刷：每帧复位、黑白初始化、完整图像写入并同步旧图 RAM、F7 激活、BUSY 完成后提交和休眠。字模边缘按半覆盖阈值二值化，结构线保持实黑。`EPD_CLOCK_USE_GRAY4=1` 可选择原四灰阶路径；默认0。错误集合或持久化格式变化申请额外全刷；快刷/局刷仅保留在演示与诊断路径。
 - 正式时钟使用 `EPD_VENDOR_DEMO_MODE=0`，头文件及 Keil 当前默认均为0，并统一设置 `EPD_CLOCK_USE_GRAY4=0`。模式7仍保留专用四灰阶诊断页，刷新和休眠成功后保留画面，仅挂起显示任务，不进入时钟；模式1–6为原厂演示，完成后进入所选格式的时钟。两个宏独立，必须在整个工程统一设置，编号见显示移植文档。当前实屏四灰阶验收未通过，不将其解释为面板确定不支持。
 - 显示启动/恢复最多尝试三次，失败后间隔一秒再尝试。尝试耗尽后记录保留的状态，并仅挂起显示任务。调度器启动后，平台延时通过 RTOS 让出执行权。
@@ -100,7 +106,9 @@ DeskClock.ioc      # CubeMX 工程配置
 - `.ioc` 与生成的 SPI2 初始化必须保持一致，预分频为 32（2.5MHz）。普通 MCU 复位应保留 RTC 备份标记和日历。
 - 显示信号连接以对应板版本的原始网表为准，`.ioc`、Core 和文档按网表同步，不能反过来用固件配置推断接线。当前参考提交 `8583f09` 的主板网表为 `MOSI2 ; H8.6 U1.11`，对应 PC3 AF5；BUSY 为 `H8.2 U1.25`，对应 PC5，并保留 `BUSY` 标签。USART2 中断入口由 CubeMX 生成，平台仅保留 HAL 接收和错误回调。完整映射见 `docs/epd_gdey029t94_port.md`。
 - `defaultTask` 每秒运行时钟服务、每十秒缓存内存统计；只有显示任务绘制。不存在的数据提供者显示 N/A。静态故障表按七类聚合，EPD 故障只保留诊断，不上屏。
-- USART2 默认 JustFloat；显式 `CONSOLE ON` 后暂停遥测，支持持久化 FORMAT 和 ERRORS。storageTask 独占配置事务，预留 W25Q 最后两个独立扇区；不可与启动测试区混用。
+- USART2 默认 JustFloat；WEATHER 和 PAGE 命令在两种串口模式下均可接收，JustFloat 模式静默处理；显式 `CONSOLE ON` 后暂停遥测并启用控制台应答，支持 FORMAT、ERRORS、WEATHER 和 PAGE。weather 数据只缓存在 RAM；storageTask 独占配置事务，预留 W25Q 最后两个独立扇区，不可与启动测试区混用。
+- `Debug_Log()` 当前为空实现，不能期待文字启动日志。EPD 自身状态通过控制台 `ERRORS` 或调试器查看。
+- `STORAGE_BOOT_TEST_ENABLE` 默认 1，每次启动擦写 `0x0000F000..0x0000FFFF` 专用扇区；配置在 `0x00FFE000`、`0x00FFF000` 两个扇区。首屏等待时钟轮询及自检后的配置 ready。该联调策略尚未收为产品启动策略。
 
 ## 分层边界（必须严格遵守）
 
@@ -141,9 +149,14 @@ Core ---------> 仅负责系统初始化，不放业务逻辑
 | `docs/嵌软开发规范.md`                                   | 工程级规范：分层架构、依赖规则、文件命名、构建约束、提交检查清单    | 所有非简单任务                     |
 | `docs/ic开发规范.md`                                     | IC 驱动规范：ctx 注入模式、初始化顺序、健壮性、寄存器建模、常见故障 | 所有设备/传感器任务                |
 | `docs/嵌入式遥测与实验调试工作流.md`                     | 遥测契约、实验准备、观测、日志和调试工作流                          | 遥测、串口观测、实验或硬件调试任务 |
-| `docs/totalPLAN.md`                                      | 完整技术方案：含封装约束的 BOM、电源树、低功耗流程、开发阶段        | 架构或硬件决策                     |
+| `docs/totalPLAN.md`                                      | 统一工程进度、默认上电行为、下一阶段，以及产品目标/BOM/电源树      | 开始任务、判断进度或架构决策       |
 | `docs/epd_gdey029t94_port.md`                            | 显示源码来源、GPIO/连接器映射、刷新/任务归属、验证状态              | 显示移植或硬件调试                 |
-| `docs/clock_gray4_ui.md`                               | 四灰阶界面、快照与故障契约、内存统计、刷新调度和验证状态           | 时钟界面和数据接入                 |
+| `docs/clock_gray4_ui.md`                               | 黑白/四灰阶时钟界面、快照与故障、内存统计及历史验证               | 时钟界面和数据接入                 |
+| `docs/weather_protocol.md`                              | 串口天气输入、RAM 缓存、过期和页面切换                            | 天气数据和天气页                   |
+| `docs/debug_console.md`                                 | JustFloat/控制台切换、时制和故障查询                              | 调试控制台                         |
+| `docs/w25q128_storage.md`                                | Flash 自检区、配置持久化和物理占用扫描                            | 存储与配置                         |
+| `docs/adxl345_telemetry.md`                              | 三轴采样、遥测及历史实板采集                                      | 加速度数据和串口观测               |
+| `docs/adxl345_stop2_guide.md`                            | 尚未接入构建的低功耗与动作唤醒设计                                | 低功耗实现规划                     |
 | `.github/copilot-instructions.md`                        | AI 启动规则和仓库级指导                                             | 所有任务                           |
 | `.github/instructions/project-structure.instructions.md` | 分层边界和构建同步规则                                              | 新增/移动源文件                    |
 | `.github/instructions/cubemx-generated.instructions.md`  | CubeMX 文件修改安全规则                                             | 修改 Core/ 或`.ioc`              |

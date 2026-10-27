@@ -1,8 +1,8 @@
 # ADXL345 动作中断与 STM32L471 STOP2 配置指南
 
-日期：2026-10-17。适用工程：STM32L471RET6、FreeRTOS V10.3.1 / CMSIS-RTOS V2、Keil ARMCC。
+设计日期：2026-10-17；状态核对：2026-10-27。适用工程：STM32L471RET6、FreeRTOS V10.3.1 / CMSIS-RTOS V2、Keil ARMCC。
 
-本文件是配置教程与代码设计，状态为 Planned。示例没有加入当前构建，未修改 `.ioc`、固件源码或烧录设备。
+本文件是配置教程与代码设计，动作唤醒及 STOP2 状态仍为 Planned，本文示例尚未加入当前构建。当前工程已有 LPTIM1 的 LSE、DIV1 和优先级 5 中断配置，但没有自定义 Tickless 或 STOP2 入口，ADXL345 仍关闭中断输出并轮询采样。部分外设配置已存在，不代表低功耗功能已经完成。整机进度统一见 [totalPLAN.md](totalPLAN.md) 的“当前开发状态（2026-10-27）”。
 
 ## 1. 选择 STOP2
 
@@ -34,7 +34,7 @@ ADXL345 的 VS、VDD_IO、CS 高电平和 I2C 上拉需要在主控休眠时保�
 
 ## 3. CubeMX 逐项配置
 
-打开当前 `DeskClock.ioc`，先完成 A；B 在实现自定义 Tickless 后启用。
+后续实施时打开 `DeskClock.ioc`，先核对并完成 A；B 中的 LPTIM1 基础配置当前已存在，Tickless 只在实现自定义端口后启用。以下是待实施的配置步骤，本次文档更新不修改 `.ioc` 或固件。
 
 ### A. Activity 中断与基础唤醒
 
@@ -63,7 +63,7 @@ ADXL345 中断输出为推挽，下面设置为有效高，与 PA8 的上升沿�
 | 位置 | 设置 |
 | --- | --- |
 | Timers -> LPTIM1 | 启用内部计数器；Clock Source=`APB clock / low-power oscillator`，不占外部计数或输出引脚 |
-| RCC 的 LPTIM1 Clock Mux | 选择 LSE，32768 Hz；不能继续使用 PCLK |
+| RCC 的 LPTIM1 Clock Mux | 保持当前 LSE，32768 Hz；不能改为在 STOP2 停止的 PCLK |
 | LPTIM1 prescaler | 第一版可选 DIV1，16 位计数周期约 2 s；长休眠分段。以后可选 DIV32，1024 Hz，周期约 64 s |
 | NVIC | 启用 LPTIM1 global interrupt；例如抢占优先级 5、子优先级 0 |
 | FreeRTOS -> Config parameters | 接入自定义 Tickless 后令 `configUSE_TICKLESS_IDLE=2`；保留 RTOS 1000 Hz |
@@ -187,8 +187,8 @@ Activity 锁存通过读取 INT_SOURCE 清除，STM32 EXTI pending 则由 `HAL_G
 
 1. 停止旧 accelTask 的 1 ms 轮询；动作任务进入事件阻塞。
 2. 停止连续 JustFloat 遥测，等待 debug 队列及 UART 最后一个停止位发完。低功耗期间不发送 100 Hz 帧。
-3. 显示任务完成当前刷新和 BUSY 等待，再由其所有者让屏幕休眠。需要每秒显示时仍会定时唤醒；若目标是长待机，改为 RTC 驱动所需刷新。
-4. 默认任务去掉 `osDelay(1)` 的周期轮询，改为实际事件等待。其他任务和软件定时器也要纳入最早唤醒期限。
+3. 显示任务完成当前刷新和 BUSY 等待，再由其所有者让屏幕休眠。当前生产页面按分钟全刷，但显示任务每 200 ms 检查快照；低功耗整合时需改为事件和 RTC 期限驱动，单靠少刷新不能进入长待机。
+4. 当前 defaultTask 每秒通过 `vTaskDelayUntil()` 运行时钟服务，需与 RTC/低功耗计时统一安排。其他任务、后台 Flash 扫描和软件定时器也要纳入最早唤醒期限。
 5. 需要关闭电源域时，由相应业务所有者完成 WiFi / 传感器停机；确认没有 I2C/SPI/UART/DMA 事务或持有的总线锁。墨水屏保持供电，ADXL345 与 RTC 保留。
 6. 布防 Activity，记录已发生事件并检查 PA8 为低；有事件或准备失败就取消睡眠。
 
