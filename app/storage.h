@@ -10,7 +10,7 @@
 
 /* Destructive once per boot, enabled by the selected bring-up policy. */
 #ifndef STORAGE_BOOT_TEST_ENABLE
-#define STORAGE_BOOT_TEST_ENABLE 1
+#define STORAGE_BOOT_TEST_ENABLE 0
 #endif
 
 typedef enum {

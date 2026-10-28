@@ -74,13 +74,14 @@ int main(void)
     }
     receive_text("CONSOLE ON\r\n");
     expect_text("CONSOLE ON\r\n");
-    for (i = 0U; i < 256U; i++) { receive_byte('A'); }
-    for (i = 0U; i < 256U; i++) {
+    for (i = 0U; i < 1024U; i++) { receive_byte('A'); }
+    for (i = 0U; i < 1024U; i++) {
         assert(stm32_debug_uart_receive(&byte, &errors) && errors == 0U && byte == 'A');
     }
-    for (i = 0U; i < 257U; i++) { receive_byte('B'); }
+    for (i = 0U; i < 1025U; i++) { receive_byte('B'); }
     assert(!stm32_debug_uart_receive(&byte, &errors));
     assert(errors == STM32_DEBUG_UART_RX_OVERFLOW);
+    stm32_debug_uart_set_binary(0U); /* Polling unchanged mode preserves line discard. */
     receive_text("CONSOLE ON\nFORMAT 12\n");
     expect_text("FORMAT 12\n");
     receive_text("CON");
@@ -109,7 +110,19 @@ int main(void)
     assert(s_primask == 1U);
     assert(!stm32_debug_uart_send(NULL, NULL, 1U));
     assert(stm32_debug_uart_send(NULL, (const uint8_t *)"OK", 2U));
+    stm32_debug_uart_set_binary(1U);
+    for (i = 0U; i < 1025U; i++) { receive_byte(0U); }
+    assert(!stm32_debug_uart_receive(&byte, &errors));
+    assert(errors == STM32_DEBUG_UART_RX_OVERFLOW);
+    receive_byte('D');
+    assert(stm32_debug_uart_receive(&byte, &errors) && byte == 'D' && errors == 0U);
+    huart2.ErrorCode = 2U;
+    HAL_UART_ErrorCallback(&huart2);
+    assert(stm32_debug_uart_rx_recover());
+    receive_byte('C');
+    assert(stm32_debug_uart_receive(&byte, &errors) && byte == 'C');
+    assert(errors == STM32_DEBUG_UART_RX_ERROR);
     assert(s_notifications > 500U);
-    puts("PASS: 256-byte RX ring, overflow isolation, HAL error capture and receive-only recovery");
+    puts("PASS: 1024-byte RX ring, text/binary overflow recovery, HAL error capture and receive-only recovery");
     return 0;
 }

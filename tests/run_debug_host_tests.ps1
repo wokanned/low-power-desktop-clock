@@ -12,10 +12,11 @@ if ($LASTEXITCODE -ne 0) { throw 'Console parser build failed' }
 if ($LASTEXITCODE -ne 0) { throw 'Console parser tests failed' }
 $taskExe = Join-Path $OutputDirectory 'debug_task_host_test.exe'
 & $Compiler '-std=c99' '-Wall' '-Wextra' '-Werror' '-pedantic' '-O2' `
-    "-I$root/tests/stubs/debug" "-I$root/app" "-I$root/platform" "-I$root/device" `
+    "-I$root/tests/stubs/debug" "-I$root/app" "-I$root/platform" "-I$root/device" "-I$root/middleware" `
     (Join-Path $root 'tests/debug_task_host_test.c') `
     (Join-Path $root 'app/debug.c') (Join-Path $root 'app/debug_console.c') `
     (Join-Path $root 'app/vofa.c') (Join-Path $root 'app/weather.c') `
+    (Join-Path $root 'app/file_transfer.c') `
     (Join-Path $root 'app/clock_model.c') '-o' $taskExe
 if ($LASTEXITCODE -ne 0) { throw 'Debug task build failed' }
 & $taskExe
@@ -28,4 +29,12 @@ $uartExe = Join-Path $OutputDirectory 'debug_uart_host_test.exe'
 if ($LASTEXITCODE -ne 0) { throw 'Debug UART build failed' }
 & $uartExe
 if ($LASTEXITCODE -ne 0) { throw 'Debug UART tests failed' }
+$transferExe = Join-Path $OutputDirectory 'file_transfer_host_test.exe'
+& $Compiler '-std=c99' '-Wall' '-Wextra' '-Werror' '-pedantic' '-O2' `
+    "-I$root/app" "-I$root/device" "-I$root/middleware" `
+    (Join-Path $root 'tests/file_transfer_host_test.c') `
+    (Join-Path $root 'app/file_transfer.c') '-o' $transferExe
+if ($LASTEXITCODE -ne 0) { throw 'File transfer build failed' }
+& $transferExe
+if ($LASTEXITCODE -ne 0) { throw 'File transfer tests failed' }
 Write-Host "PASS: debug host tests. Evidence: $OutputDirectory"

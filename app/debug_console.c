@@ -1,9 +1,9 @@
 #include "debug_console.h"
 #include <string.h>
 
-static uint8_t debug_console_utf8_valid(const uint8_t *p_text, uint8_t length)
+static uint8_t debug_console_utf8_valid(const uint8_t *p_text, uint16_t length)
 {
-    uint8_t i = 0U;
+    uint16_t i = 0U;
     uint8_t first;
     uint8_t second;
     while (i < length) {
@@ -46,7 +46,7 @@ void debug_console_parser_reset(debug_console_parser_t *p_parser)
     memset(p_parser, 0, sizeof(*p_parser));
 }
 
-static uint8_t debug_console_weather_line(const char *p_line, uint8_t length)
+static uint8_t debug_console_weather_line(const char *p_line, uint16_t length)
 {
     return (uint8_t)(length >= 8U && memcmp(p_line, "WEATHER", 7U) == 0 &&
                      (p_line[7] == ' ' || p_line[7] == ','));
@@ -59,6 +59,8 @@ static debug_command_t debug_console_command(const char *p_line)
     if (strcmp(p_line, "FORMAT 12") == 0) { return DEBUG_COMMAND_FORMAT_12; }
     if (strcmp(p_line, "FORMAT 24") == 0) { return DEBUG_COMMAND_FORMAT_24; }
     if (strcmp(p_line, "ERRORS") == 0) { return DEBUG_COMMAND_ERRORS; }
+    if (strncmp(p_line, "FS", 2U) == 0 &&
+        (p_line[2] == '\0' || p_line[2] == ' ')) { return DEBUG_COMMAND_FILES; }
     if (strncmp(p_line, "TIME", 4U) == 0 &&
         (p_line[4] == '\0' || p_line[4] == ' ')) { return DEBUG_COMMAND_TIME; }
     if ((strncmp(p_line, "WEATHER", 7U) == 0) &&
@@ -119,7 +121,7 @@ debug_command_t debug_console_parser_feed(debug_console_parser_t *p_parser,
                                          uint8_t byte)
 {
     debug_command_t command;
-    uint8_t line_max;
+    uint16_t line_max;
     if (byte == '\r' || byte == '\n') {
         if (byte == '\n' && p_parser->previous_cr != 0U) {
             p_parser->previous_cr = 0U;
@@ -148,6 +150,9 @@ debug_command_t debug_console_parser_feed(debug_console_parser_t *p_parser,
     if (p_parser->discard != 0U) { return DEBUG_COMMAND_NONE; }
     line_max = debug_console_weather_line(p_parser->line, p_parser->length) != 0U ?
         DEBUG_CONSOLE_WEATHER_LINE_MAX : DEBUG_CONSOLE_LINE_MAX;
+    if (p_parser->length >= 3U && memcmp(p_parser->line, "FS ", 3U) == 0) {
+        line_max = DEBUG_CONSOLE_FILES_LINE_MAX;
+    }
     if (byte < 0x20U || byte == 0x7FU ||
         p_parser->length >= line_max) {
         p_parser->discard = p_parser->length >= line_max ? 2U : 1U;

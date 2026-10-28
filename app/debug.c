@@ -1,5 +1,6 @@
 #include "debug.h"
 #include "debug_console.h"
+#include "file_transfer.h"
 #include "weather.h"
 #include "clock_faults.h"
 #include "clock_service.h"
@@ -58,23 +59,26 @@ static void debug_notify_rx(void)
     }
 }
 
-static bool debug_send_text(const char *p_text)
+static uint8_t debug_send_bytes(const uint8_t *p_data, uint16_t length)
 {
-    uint16_t length;
     uint16_t chunk;
-    length = (uint16_t)strlen(p_text);
     while (length != 0U) {
         chunk = length > DEBUG_TEXT_CHUNK ? DEBUG_TEXT_CHUNK : length;
-        if (!stm32_debug_uart_send(NULL, (const uint8_t *)p_text, chunk)) {
+        if (!stm32_debug_uart_send(NULL, p_data, chunk)) {
             debug_uart_error();
             debug_fault_update(CLOCK_FAULT_TX, 0U);
-            return false;
+            return 0U;
         }
-        p_text += chunk;
+        p_data += chunk;
         length = (uint16_t)(length - chunk);
     }
     debug_fault_update(0U, CLOCK_FAULT_TX);
-    return true;
+    return 1U;
+}
+
+static bool debug_send_text(const char *p_text)
+{
+    return debug_send_bytes((const uint8_t *)p_text, (uint16_t)strlen(p_text)) != 0U;
 }
 
 static void debug_print_errors(void)
@@ -199,12 +203,22 @@ static void debug_command(debug_command_t command)
         (void)debug_send_text("OK CONSOLE ON\r\n");
         return;
     }
+    if (command == DEBUG_COMMAND_FILES) {
+        if (strcmp(s_parser.line, "FS TRANSFER") == 0 &&
+            (s_pending_token != 0U || s_pending_time_token != 0U)) {
+            (void)debug_send_text("ERR BUSY\r\n");
+            return;
+        }
+        (void)file_transfer_console(s_parser.line, (uint32_t)xTaskGetTickCount());
+        stm32_debug_uart_set_binary(file_transfer_active());
+        return;
+    }
     if (s_pending_token != 0U) {
         (void)debug_send_text("ERR BUSY\r\n");
         return;
     }
     if (command == DEBUG_COMMAND_OFF) {
-        if (s_pending_time_token != 0U) {
+        if (s_pending_time_token != 0U || file_transfer_busy() != 0U) {
             (void)debug_send_text("ERR BUSY\r\n");
             return;
         }
@@ -273,6 +287,7 @@ void Debug_Init(void)
     s_pending_time_token = 0U;
     s_pending_time_reply = 0U;
     debug_console_parser_reset(&s_parser);
+    file_transfer_init(debug_send_bytes);
     weather_init();
     s_debug_queue = xQueueCreateStatic(DEBUG_QUEUE_DEPTH,
         VOFA_MAX_CHANNELS * sizeof(float), s_queue_storage, &s_queue_control);
@@ -361,11 +376,16 @@ void StartDebugTask(void *p_argument)
                     ((errors & STM32_DEBUG_UART_RX_ERROR) != 0U ? CLOCK_FAULT_RX : 0U) |
                     ((errors & STM32_DEBUG_UART_RX_OVERFLOW) != 0U ? CLOCK_FAULT_OVERFLOW : 0U),
                     0U);
-                if (s_console_active != 0U) { (void)debug_send_text("ERR RX\r\n"); }
+                if (file_transfer_active() != 0U) { file_transfer_rx_error(); }
+                else if (s_console_active != 0U) { (void)debug_send_text("ERR RX\r\n"); }
             }
             if (!available) { break; }
-            debug_command(debug_console_parser_feed(&s_parser, byte));
+            if (file_transfer_active() != 0U) {
+                file_transfer_feed(byte, (uint32_t)xTaskGetTickCount());
+            } else { debug_command(debug_console_parser_feed(&s_parser, byte)); }
         }
+        file_transfer_poll((uint32_t)xTaskGetTickCount());
+        stm32_debug_uart_set_binary(file_transfer_active());
         (void)weather_poll_expiry((uint32_t)xTaskGetTickCount());
         debug_poll_config();
         debug_poll_time();

@@ -255,7 +255,7 @@ osThreadId_t osThreadNew(osThreadFunc_t function, void *p_argument,
 {
     (void)p_argument;
     assert(p_attributes->cb_mem != NULL && p_attributes->stack_mem != NULL);
-    assert(p_attributes->stack_size == 2048U);
+    assert(p_attributes->stack_size == 4096U);
     s_entry = function;
     return &s_entry;
 }
@@ -357,7 +357,6 @@ int32_t clock_config_save(const w25q128_ctx_t *p_context, clock_config_state_t *
     return W25Q128_OK;
 }
 
-#if STORAGE_BOOT_TEST_ENABLE
 w25q128_status_t w25q128_erase_sector(const w25q128_ctx_t *p_context, uint32_t address)
 {
     (void)p_context;
@@ -380,7 +379,6 @@ w25q128_status_t w25q128_update(const w25q128_ctx_t *p_context, uint32_t address
     assert(0);
     return W25Q128_ERROR_IO;
 }
-#endif
 
 void clock_fault_report(clock_fault_source_t source, uint32_t mask)
 {

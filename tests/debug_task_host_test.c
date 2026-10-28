@@ -3,6 +3,7 @@
 #include "clock_service.h"
 #include "display.h"
 #include "storage.h"
+#include "storage_files.h"
 #include "stm32_debug_uart.h"
 #include "weather.h"
 #include "queue.h"
@@ -322,6 +323,7 @@ uint32_t ulTaskNotifyTake(BaseType_t clear, TickType_t wait)
 bool stm32_debug_uart_rx_start(stm32_debug_uart_notify_t notify)
 { assert(notify != NULL); return true; }
 bool stm32_debug_uart_rx_recover(void) { return true; }
+void stm32_debug_uart_set_binary(uint8_t enabled) { assert(enabled == 0U); }
 bool stm32_debug_uart_receive(uint8_t *p_byte, uint32_t *p_errors)
 {
     *p_errors = 0U;
@@ -355,6 +357,12 @@ int32_t storage_request_format(clock_format_t format, uint32_t token)
 }
 void storage_get_config_snapshot(storage_config_snapshot_t *p_snapshot)
 { *p_snapshot = s_config; }
+int32_t storage_file_request(const file_store_request_t *p_request)
+{ (void)p_request; assert(0); return FILE_STORE_ERROR_BUSY; }
+uint8_t storage_file_take_result(uint32_t token, file_store_response_t *p_response)
+{ (void)token; (void)p_response; assert(0); return 0U; }
+void storage_get_files_snapshot(file_store_snapshot_t *p_snapshot)
+{ memset(p_snapshot, 0, sizeof(*p_snapshot)); }
 void clock_fault_report(clock_fault_source_t source, uint32_t mask)
 { assert(source == CLOCK_FAULT_DEBUG); s_fault_mask = mask; }
 void clock_faults_get_snapshot(clock_fault_snapshot_t *p_snapshot)

@@ -65,8 +65,7 @@ shift = 6 - 2 * (native_x % 4)
 ## 模型、任务与刷新
 
 `clock_view_model_t` 是纯值快照。`UNAVAILABLE`、`ERROR` 字段显示 N/A，只有
-READY 数值可展示。`INITIALIZING` 通常显示 N/A，W25Q 使用量在此状态显示
-`SCAN`，使用既有标签字模，从(236,102)绘制，宽28px。当前 TEMP/BAT/WIFI 没有提供者，
+READY数值可展示。2026-10-28起W25Q使用文件系统快照，检查中和未格式化显示N/A；物理扫描不再驱动SCAN，绘制器保留原INITIALIZING字模以兼容历史测试。当前TEMP/BAT/WIFI没有提供者，
 不创建虚假的正常值或故障。ADXL345 不支持温度，不把其 temperature-invalid 位报为 TEMP。
 
 defaultTask 通过 `clock_service_run()` 每秒读取完整 RTC 日历，每十秒缓存内存统计；星期由公历日期计算。TIME 请求通过静态邮箱和任务通知提前唤醒该所有者，一秒轮询截止时间不随校时请求推迟。
@@ -126,16 +125,7 @@ used = linked - xPortGetFreeHeapSize()
 因此动态TCB/栈不能再次相加，也不减stack high-water。两块非连续SRAM逐region求和。
 IFLASH 分母524288字节，统计 `Load$$LR$$LR_IROM1$$Limit - Base`，包含压缩后的
 RW初值与实际加载区开销。链接器符号只取地址，不解引用。百分比四舍五入。
-W25Q 使用 `storage_get_usage_snapshot()` 的 RAM 快照，不在显示或时钟服务中读 Flash。
-storageTask 启动后分段扫描全片16MiB，每个4KiB扇区只要有一字节非0xFF就将整个
-扇区计为已用，包含配置、自检与残留内容。每轮结束后等待1小时再次全扫。
-首次扫描及重扫均发布 INITIALIZING，轮到 W25Q 格时显示 SCAN；扫描成功后发布
-READY，容量按非空扇区数计算，百分比向上取整。空片0%，非空最低1%，最多100%。
-未启动为 UNAVAILABLE；扫描失败为 ERROR，丢弃本轮结果、显示N/A并报告既有
-STORAGE故障，1小时后重试。存在故障类别时仍使用既有错误页。
-时钟服务只接受总容量为 `W25Q128_TOTAL_SIZE` 且已用容量不超过总量的 READY
-快照，其余 READY 数据按 ERROR 处理。容量状态变化不额外触发刷新、不阻塞首刷，
-沿用分钟刷新和 SRAM -> IFLASH -> W25Q 轮换；扫描状态可能在下一次 W25Q 轮次才上屏。
+W25Q使用 `storage_get_files_snapshot()` 的RAM快照，不在显示或时钟服务中读Flash。只接受总块数3070且已分配块数不超过总量的READY快照，容量向上取整，非空最低1%；格式化后元数据本身也占空间。未就绪/未格式化显示N/A，文件错误显示N/A并聚合STORAGE故障。物理全片扫描保留为独立诊断，每轮结束1小时重扫；其非空扇区数包含残留内容，不能替代文件容量。容量变化不额外触发刷新、不阻塞首刷，沿用分钟刷新和SRAM/IFLASH/W25Q轮换。详情见[文件系统](filesystem.md)。
 
 24h默认、12/24格式配置由storageTask独占的静态请求队列保存。双独立4KiB扇区
 0x00FFE000、0x00FFF000，避开既有0x0000F000启动测试区。提交算法、损坏恢复及

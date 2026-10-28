@@ -51,6 +51,8 @@
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
 osThreadId_t debugTaskHandle;
+static StaticTask_t s_debug_task_control;
+static StackType_t s_debug_task_stack[2048U / sizeof(StackType_t)];
 /* USER CODE END Variables */
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
@@ -108,7 +110,10 @@ void MX_FREERTOS_Init(void) {
   /* creation of debugTask */
   const osThreadAttr_t debugTask_attributes = {
     .name = "debugTask",
-    .stack_size = 256 * 4,
+    .cb_mem = &s_debug_task_control,
+    .cb_size = sizeof(s_debug_task_control),
+    .stack_mem = s_debug_task_stack,
+    .stack_size = sizeof(s_debug_task_stack),
     .priority = osPriorityBelowNormal,
   };
   debugTaskHandle = osThreadNew(StartDebugTask, NULL, &debugTask_attributes);

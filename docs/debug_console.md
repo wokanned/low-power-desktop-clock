@@ -9,9 +9,8 @@ USART2 使用 H10，PA2 TX / PA3 RX，115200、8N1、3.3V TTL。默认发送现�
 
 ## 命令
 
-命令区分大小写，不带前后空格，以 CR、LF 或 CRLF 结束。`WEATHER` 行内容最多
-127 字节；其他输入仍保留原有 31 字节限制。长度不包含换行和终止 NUL。
-只有精确 `WEATHER` 命令族（后接空格或逗号）使用长行缓冲上限，`WEATHERX` 等未知命令仍受 31 字节限制。
+命令区分大小写，不带前后空格，以CR、LF或CRLF结束。WEATHER行最多127字节，FS行最多223字节；其他输入保留31字节限制。长度不含换行和终止NUL。
+只有精确WEATHER命令族（后接空格或逗号）和FS命令族使用各自长行上限，WEATHERX等未知命令仍受31字节限制。
 二进制模式下 `WEATHER`、`PAGE` 和 `TIME` 命令静默执行，其他文本仅
 `CONSOLE ON` 会产生切换应答。
 
@@ -24,6 +23,10 @@ USART2 使用 H10，PA2 TX / PA3 RX，115200、8N1、3.3V TTL。默认发送现�
 | `WEATHER <record>` | 控制台回复 `OK WEATHER`；完整记录通过校验后原子替换 RAM 天气缓存 |
 | `PAGE WEATHER` / `PAGE CLOCK` | 控制台分别回复 `OK PAGE WEATHER` / `OK PAGE CLOCK`；选择的页面仅保存在 RAM |
 | `TIME YYYY-MM-DDTHH:MM:SS` | 北京时间直接校时；RTC 写入并读回验证成功后，控制台回复 `OK TIME` |
+| `FS STATUS` / `FS LIST /` | 查询文件系统快照或目录；STATUS 的 FLASH 字段保留文件故障的底层原因，文件检查中返回未就绪 |
+| `FS MKDIR /name` / `FS REMOVE /name` / `FS RENAME /old /new` | 异步文件维护 |
+| `FS FORMAT CONFIRM` / `FS SELFTEST CONFIRM` | 分别格式化文件分区或擦写专用自检扇区，上传期间拒绝 |
+| `FS TRANSFER` | 进入带CRC32的二进制文件维护会话；详细协议及Python工具见[文件系统](filesystem.md) |
 
 存储请求尚未完成时，新的 FORMAT 或 CONSOLE OFF 返回 `ERR BUSY`；ERRORS
 仍可使用。WEATHER、PAGE 和 TIME 命令不受存储事务阻塞。校时在途时再次 TIME 或 CONSOLE OFF 返回 `ERR BUSY`，FORMAT 仍可提交。TIME 格式错误返回 `ERR TIME`，时钟任务不可用或 RTC 操作失败返回 `ERR RTC`。天气内容错误返回
@@ -52,15 +55,21 @@ TIMEOUT=004、ID=008、VERIFY=010、START=020、TX=040、RX=080、OVERFLOW=100�
 USART2 IRQ 优先级为 5。`.ioc` 启用 IRQ，由 CubeMX 在
 `Core/Src/stm32l4xx_it.c` 生成唯一中断入口并调用 `HAL_UART_IRQHandler(&huart2)`。
 平台仅持有 HAL RX 和错误回调。重新生成后应检查中断入口唯一及 Keil 源文件分组。
-ISR 只收单字节、写 256 字节静态环形缓冲并通知 debugTask。任务解析命令，
+ISR只收单字节、写1024字节静态环形缓冲并通知debugTask。任务解析命令，
 按 20 ms 等待参数轮询异步完成，该参数不是实机往返延迟上限。环形缓冲溢出时清空待处理字节，丢弃当前行到下一个
 换行；不会将损坏行的后半段当作新命令执行。
+
+文件二进制会话使用帧魔数、长度和CRC恢复同步，不丢弃到换行。会话期间所有文字命令均暂停解析，避免混入应答。长存储操作返回BUSY，最终应答可按相同请求重放；EXIT清理后保留7.5秒以处理5秒后的重试，再返回文本控制台。重新发送CONSOLE ON后可继续使用上述命令。
+
+存储任务未启动时，文件请求返回最终未就绪错误。此时 EXIT 或空闲退出可结束无在途请求的会话，不会一直按 BUSY 重试；显式 EXIT 的错误应答同样保留7.5秒重放。`FS STATUS` 的 `FLASH` 原因与文件请求的 littlefs 错误分开记录，文件超时可在 `ERRORS` 中显示 TIMEOUT，成功恢复后清除。
 
 HAL 错误在重新接收前保留，任务只调用接收端恢复，不中止 TX。当前 TX/RX/溢出
 故障通过 DEBUG 来源归入 SYSTEM；成功发送或完整有效命令分别清除相应故障。
 累计错误计数不清除。UART 超时不是完整往返命令延迟的实测上限。
 
 ## 验证
+
+2026-10-28文件维护接入后，四组debug主机测试及最终默认/模式7 Keil构建通过；最新精确身份见[验证记录](测试数据.md)。RX已由256B扩为1024B；以下2026-10-27记录为历史范围。
 
 2026-10-27 校时集成后已重跑三套 debug 主机测试并通过，默认黑白整机 Keil 构建为0错误、0警告；显示集成25场景分别通过 BW 和 gray4 配置。日志、资源占用、镜像哈希及源码快照记录见 [校时协议的验证记录](time_protocol.md#2026-10-27-验证记录)。本次文档整理未重跑测试或构建，未烧录，也未进行串口板测。
 

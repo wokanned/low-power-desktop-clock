@@ -1,12 +1,12 @@
 # AGENTS.md
 
-本文件为 AI 编程助手提供本仓库的开发规则。更新日期：2026-10-27。面向使用者的说明见 [文档导航](docs/README.md)。
+本文件为 AI 编程助手提供本仓库的开发规则。更新日期：2026-10-28。面向使用者的说明见 [文档导航](docs/README.md)。
 
 ## 工程概况
 
 目标为低功耗 IoT 桌面时钟。MCU 为 STM32L471RET6（Cortex-M4，80MHz，512KB Flash，128KB SRAM，LQFP-64），使用 FreeRTOS V10.3.1 和 CMSIS-RTOS V2。2026-10-27 当前处于软件集成原型阶段，已接入 RTC/黑白时钟显示、ADXL345 遥测、W25Q 配置存储、USART2 注入天气和 TIME 校时；自动联网、环境/电量采集、按键闹钟及整机低功耗尚未实现。
 
-**工程进度统一维护在 [docs/totalPLAN.md](docs/totalPLAN.md) 的“当前开发状态（2026-10-27）”。** 天气与 TIME 集成后的主机测试及默认黑白完整 Keil 构建通过，镜像位于 `build/time-sync-keil/mode-0/`，整机验收待完成。模块文档保留具体历史证据；源码接入、历史构建或局部实采均不能代替当前完整镜像的板测。
+**工程进度统一维护在 [docs/totalPLAN.md](docs/totalPLAN.md) 的“当前开发状态”。** 文件系统第一阶段新增 littlefs 与 USART2 文件维护；具体构建身份和测试范围见统一进度及 `docs/测试数据.md`，整机验收待完成。模块文档保留具体历史证据；源码接入、历史构建或局部实采均不能代替当前完整镜像的板测。
 
 ## 构建
 
@@ -37,7 +37,7 @@ docs/              # 规范与技术方案（见下方“关键文档”）
 DeskClock.ioc      # CubeMX 工程配置
 ```
 
-`middleware/` 仍是规划中的可复用协议、算法和日志模块目录。
+`middleware/` 已加入官方 littlefs v2.9.3 和无 HAL/RTOS 依赖的 `file_store`，日志轮转等业务仍待接入。
 
 ## 外设当前状态
 
@@ -85,7 +85,7 @@ DeskClock.ioc      # CubeMX 工程配置
 
 - **版本**：FreeRTOS V10.3.1，使用 CMSIS-RTOS V2 封装层
 - **调度**：抢占式，1000 Hz 节拍，最多 56 个优先级
-- **内存**：heap_4，总堆大小为 3000 字节，同时支持静态和动态分配。显示/存储任务各有 2048 字节静态栈，加速度任务有 1024 字节静态栈；实际栈裕量待板测。
+- **内存**：heap_4，总堆大小为3000字节，同时支持静态和动态分配。显示/debug任务各有2048字节静态栈，存储任务4096字节，加速度任务1024字节；littlefs禁用malloc，实际栈裕量待板测。
 - **定时器**：已启用（优先级 2，栈大小 256 个字，队列深度 10）
 - **任务间通信**：互斥锁、递归互斥锁、计数信号量、事件标志和任务通知
 - **功能**：可使用跟踪功能、任务状态枚举和运行时间统计钩子
@@ -108,7 +108,7 @@ DeskClock.ioc      # CubeMX 工程配置
 - `defaultTask` 独占运行期 RTC 读写，按一秒截止时间轮询并被校时请求通知立即唤醒，每十秒缓存内存统计；只有显示任务绘制。不存在的数据提供者显示 N/A。静态故障表按七类聚合，EPD 故障只保留诊断，不上屏。
 - USART2 默认 JustFloat；WEATHER、PAGE 和 TIME 命令在两种串口模式下均可接收，JustFloat 模式静默处理；显式 `CONSOLE ON` 后暂停遥测并启用控制台应答，支持 FORMAT、ERRORS、WEATHER、PAGE 和 TIME。TIME 使用北京时间整秒，RTC 写入及读回验证完成后才应答，详见 `docs/time_protocol.md`；板载 ESP32 的 USART1 尚未接入该业务。weather 数据只缓存在 RAM；storageTask 独占配置事务，预留 W25Q 最后两个独立扇区，不可与启动测试区混用。
 - `Debug_Log()` 当前为空实现，不能期待文字启动日志。EPD 自身状态通过控制台 `ERRORS` 或调试器查看。
-- `STORAGE_BOOT_TEST_ENABLE` 默认 1，每次启动擦写 `0x0000F000..0x0000FFFF` 专用扇区；配置在 `0x00FFE000`、`0x00FFF000` 两个扇区。首屏等待时钟轮询及自检后的配置 ready。该联调策略尚未收为产品启动策略。
+- `STORAGE_BOOT_TEST_ENABLE` 默认0，正常启动不擦写自检区。`FS SELFTEST CONFIRM` 仅擦写 `0x0000F000..0x0000FFFF`；配置在 `0x00FFE000`、`0x00FFF000`，littlefs在 `0x00400000..0x00FFDFFF`，前4MiB预留OTA/维护。首屏等待时钟轮询和配置ready，不等待文件空白检查；不自动格式化，使用 `FS FORMAT CONFIRM`。USART2文件维护和Python工具见 `docs/filesystem.md`；屏幕按littlefs分配块显示容量，物理小时扫描保留为独立诊断。
 
 ## 分层边界（必须严格遵守）
 

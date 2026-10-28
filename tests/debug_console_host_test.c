@@ -73,6 +73,7 @@ int main(void)
 {
     struct { uint32_t before; debug_console_parser_t parser; uint32_t after; } guarded;
     char weather_line[129];
+    char files_line[226];
     uint32_t i;
     guarded.before = 0x12345678U;
     guarded.after = 0xABCDEF12U;
@@ -106,6 +107,16 @@ int main(void)
     assert(strncmp(guarded.parser.line, "WEATHER ", 8U) == 0);
     assert(feed(&guarded.parser, "PAGE WEATHER\n") == DEBUG_COMMAND_PAGE_WEATHER);
     assert(feed(&guarded.parser, "PAGE CLOCK\n") == DEBUG_COMMAND_PAGE_CLOCK);
+    assert(feed(&guarded.parser, "FS STATUS\n") == DEBUG_COMMAND_FILES);
+    memcpy(files_line, "FS RENAME ", 10U);
+    memset(files_line + 10U, 'x', 213U);
+    files_line[223] = '\n';
+    files_line[224] = '\0';
+    assert(feed(&guarded.parser, files_line) == DEBUG_COMMAND_FILES);
+    files_line[223] = 'x';
+    files_line[224] = '\n';
+    files_line[225] = '\0';
+    assert(feed(&guarded.parser, files_line) == DEBUG_COMMAND_RX_OVERFLOW);
     assert(feed(&guarded.parser, "WEATHER,\n") == DEBUG_COMMAND_WEATHER);
     for (i = 0U; i < 31U; i++) {
         assert(debug_console_parser_feed(&guarded.parser, 'A') == DEBUG_COMMAND_NONE);

@@ -4,6 +4,7 @@
 #include "clock_service.h"
 #include "stm32_clock.h"
 #include "storage.h"
+#include "storage_files.h"
 #include "task.h"
 #include <assert.h>
 #include <stdio.h>
@@ -23,7 +24,7 @@ static uint32_t s_linked_sram;
 static uint32_t s_image_flash;
 static size_t s_free_heap;
 static storage_config_snapshot_t s_config;
-static storage_usage_snapshot_t s_usage;
+static file_store_snapshot_t s_usage;
 static uint32_t s_usage_reads;
 static uint8_t s_task_marker;
 static jmp_buf s_run_exit;
@@ -144,7 +145,7 @@ void storage_get_config_snapshot(storage_config_snapshot_t *p_config)
 {
     taskENTER_CRITICAL(); *p_config = s_config; taskEXIT_CRITICAL();
 }
-void storage_get_usage_snapshot(storage_usage_snapshot_t *p_usage)
+void storage_get_files_snapshot(file_store_snapshot_t *p_usage)
 {
     assert(s_critical != 0U);
     taskENTER_CRITICAL();
@@ -368,11 +369,11 @@ static void s_test_service(void)
     assert(model.faults.active_categories == 0U);
     s_config.ready = 1U;
     s_config.format = CLOCK_FORMAT_12; s_config.revision = 2U;
-    s_usage.state = CLOCK_DATA_INITIALIZING;
+    s_usage.state = FILE_STORE_INITIALIZING;
     clock_service_get_model(&model);
     assert(model.startup_ready == 1U && model.format == CLOCK_FORMAT_12 && model.format_revision == 2U);
-    assert(model.memory[CLOCK_MEMORY_W25Q].state == CLOCK_DATA_INITIALIZING);
-    s_usage.state = CLOCK_DATA_UNAVAILABLE;
+    assert(model.memory[CLOCK_MEMORY_W25Q].state == CLOCK_DATA_UNAVAILABLE);
+    s_usage.state = FILE_STORE_UNAVAILABLE;
     s_free_heap = 0U; s_image_flash = 262144U;
     for (second = 1U; second < 10U; second++) {
         s_ticks = second * 1000U;
@@ -432,22 +433,19 @@ static void s_test_service(void)
 static void s_test_usage_snapshot(void)
 {
     static const struct {
-        uint32_t used_bytes;
+        uint32_t used_blocks;
         int32_t percent;
     } cases[] = {
-        {0U, 0}, {1U, 1}, {W25Q128_SECTOR_SIZE, 1},
-        {40U * W25Q128_SECTOR_SIZE, 1},
-        {41U * W25Q128_SECTOR_SIZE, 2},
-        {W25Q128_TOTAL_SIZE / 2U, 50},
-        {W25Q128_TOTAL_SIZE / 2U + W25Q128_SECTOR_SIZE, 51},
-        {W25Q128_TOTAL_SIZE - W25Q128_SECTOR_SIZE, 100},
-        {W25Q128_TOTAL_SIZE, 100}
+        {0U, 0}, {1U, 1}, {2U, 1}, {30U, 1}, {31U, 2},
+        {FILE_STORE_BLOCK_COUNT / 2U, 50},
+        {FILE_STORE_BLOCK_COUNT / 2U + 1U, 51},
+        {FILE_STORE_BLOCK_COUNT - 1U, 100}, {FILE_STORE_BLOCK_COUNT, 100}
     };
-    static const clock_data_state_t states[] = {
-        CLOCK_DATA_UNAVAILABLE, CLOCK_DATA_INITIALIZING, CLOCK_DATA_ERROR
+    static const file_store_state_t states[] = {
+        FILE_STORE_UNAVAILABLE, FILE_STORE_INITIALIZING, FILE_STORE_UNFORMATTED, FILE_STORE_ERROR
     };
     static const uint32_t invalid_totals[] = {
-        0U, W25Q128_TOTAL_SIZE - 1U, W25Q128_TOTAL_SIZE + 1U, UINT32_MAX
+        0U, FILE_STORE_BLOCK_COUNT - 1U, FILE_STORE_BLOCK_COUNT + 1U, UINT32_MAX
     };
     clock_view_model_t model;
     uint32_t image_reads = s_image_reads;
@@ -457,34 +455,35 @@ static void s_test_usage_snapshot(void)
     clock_service_init();
     clock_service_get_model(NULL);
     assert(s_usage_reads == usage_reads);
-    s_usage.total_bytes = W25Q128_TOTAL_SIZE;
-    s_usage.result = W25Q128_OK;
-    s_usage.used_bytes = W25Q128_TOTAL_SIZE;
+    s_usage.total_blocks = FILE_STORE_BLOCK_COUNT;
+    s_usage.result = FILE_STORE_OK;
+    s_usage.used_blocks = FILE_STORE_BLOCK_COUNT;
     for (i = 0U; i < sizeof(states) / sizeof(states[0]); i++) {
         s_usage.state = states[i];
         clock_service_get_model(&model);
-        assert(model.memory[CLOCK_MEMORY_W25Q].state == states[i]);
+        assert(model.memory[CLOCK_MEMORY_W25Q].state ==
+            (states[i] == FILE_STORE_ERROR ? CLOCK_DATA_ERROR : CLOCK_DATA_UNAVAILABLE));
         assert(model.memory[CLOCK_MEMORY_W25Q].value == 0);
     }
-    s_usage.state = CLOCK_DATA_READY;
+    s_usage.state = FILE_STORE_READY;
     for (i = 0U; i < sizeof(cases) / sizeof(cases[0]); i++) {
-        s_usage.used_bytes = cases[i].used_bytes;
+        s_usage.used_blocks = cases[i].used_blocks;
         clock_service_get_model(&model);
         assert(model.memory[CLOCK_MEMORY_W25Q].state == CLOCK_DATA_READY);
         assert(model.memory[CLOCK_MEMORY_W25Q].value == cases[i].percent);
     }
     for (i = 0U; i < sizeof(invalid_totals) / sizeof(invalid_totals[0]); i++) {
-        s_usage.total_bytes = invalid_totals[i];
-        s_usage.used_bytes = 0U;
+        s_usage.total_blocks = invalid_totals[i];
+        s_usage.used_blocks = 0U;
         clock_service_get_model(&model);
         assert(model.memory[CLOCK_MEMORY_W25Q].state == CLOCK_DATA_ERROR);
         assert(model.memory[CLOCK_MEMORY_W25Q].value == 0);
     }
-    s_usage.total_bytes = W25Q128_TOTAL_SIZE;
-    s_usage.used_bytes = W25Q128_TOTAL_SIZE + 1U;
+    s_usage.total_blocks = FILE_STORE_BLOCK_COUNT;
+    s_usage.used_blocks = FILE_STORE_BLOCK_COUNT + 1U;
     clock_service_get_model(&model);
     assert(model.memory[CLOCK_MEMORY_W25Q].state == CLOCK_DATA_ERROR);
-    s_usage.used_bytes = UINT32_MAX;
+    s_usage.used_blocks = UINT32_MAX;
     clock_service_get_model(&model);
     assert(model.memory[CLOCK_MEMORY_W25Q].state == CLOCK_DATA_ERROR);
     assert(s_image_reads == image_reads && s_rtc_reads == rtc_reads);

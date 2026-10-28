@@ -23,12 +23,13 @@ $service = Join-Path $output 'storage_service_host_test.exe'
 $serviceArguments = @('-std=c99', '-Wall', '-Wextra', '-Werror', '-pedantic', '-O2',
     '-DSTORAGE_BOOT_TEST_ENABLE=0', ('-I' + (Join-Path $root 'tests/stubs/storage')),
     ('-I' + (Join-Path $root 'device')), ('-I' + (Join-Path $root 'platform')),
-    ('-I' + (Join-Path $root 'app')), (Join-Path $root 'app/storage.c'),
+    ('-I' + (Join-Path $root 'app')), ('-I' + (Join-Path $root 'middleware')),
+    (Join-Path $root 'app/storage.c'), (Join-Path $root 'tests/stubs/file_store_stub.c'),
     (Join-Path $root 'tests/storage_service_host_test.c'), '-o', $service)
 & $Compiler @serviceArguments
 if ($LASTEXITCODE -ne 0) { throw 'Storage service host compilation failed' }
 foreach ($scenario in @('normal', 'init-failure', 'load-failure', 'save-failure', 'late-commit',
-    'corrupt', 'bind-failure', 'task-failure', 'queue-failure')) {
+    'corrupt', 'bind-failure', 'task-failure', 'queue-failure', 'files')) {
     & $service $scenario
     if ($LASTEXITCODE -ne 0) { throw ('Storage service failed: ' + $scenario) }
 }
@@ -36,7 +37,8 @@ $usage = Join-Path $output 'storage_usage_host_test.exe'
 $usageArguments = @('-std=c99', '-Wall', '-Wextra', '-Werror', '-pedantic', '-O2',
     '-DSTORAGE_BOOT_TEST_ENABLE=0', ('-I' + (Join-Path $root 'tests/stubs/storage')),
     ('-I' + (Join-Path $root 'device')), ('-I' + (Join-Path $root 'platform')),
-    ('-I' + (Join-Path $root 'app')), (Join-Path $root 'app/storage.c'),
+    ('-I' + (Join-Path $root 'app')), ('-I' + (Join-Path $root 'middleware')),
+    (Join-Path $root 'app/storage.c'), (Join-Path $root 'tests/stubs/file_store_stub.c'),
     (Join-Path $root 'tests/storage_usage_host_test.c'), '-o', $usage)
 & $Compiler @usageArguments
 if ($LASTEXITCODE -ne 0) { throw 'Storage usage host compilation failed' }

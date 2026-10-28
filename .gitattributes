@@ -1,0 +1,4 @@
+# Keep imported upstream bytes stable for the recorded SHA256 manifest.
+middleware/littlefs/*.c text eol=lf
+middleware/littlefs/*.h text eol=lf
+middleware/littlefs/LICENSE.md text eol=lf

@@ -338,9 +338,9 @@
             <v6Rtti>0</v6Rtti>
             <VariousControls>
               <MiscControls></MiscControls>
-              <Define>USE_HAL_DRIVER,STM32L471xx,EPD_VENDOR_DEMO_MODE=0,EPD_CLOCK_USE_GRAY4=0</Define>
+              <Define>USE_HAL_DRIVER,STM32L471xx,EPD_VENDOR_DEMO_MODE=0,EPD_CLOCK_USE_GRAY4=0,LFS_NO_MALLOC,LFS_NO_DEBUG,LFS_NO_WARN,LFS_NO_ERROR,LFS_NAME_MAX=31</Define>
               <Undefine></Undefine>
-              <IncludePath>../app;../device;../platform;../gui;../fonts;../resources;../Core/Inc;../Drivers/STM32L4xx_HAL_Driver/Inc;../Drivers/STM32L4xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32L4xx/Include;../Drivers/CMSIS/Include;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F</IncludePath>
+              <IncludePath>../middleware;../app;../device;../platform;../gui;../fonts;../resources;../Core/Inc;../Drivers/STM32L4xx_HAL_Driver/Inc;../Drivers/STM32L4xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32L4xx/Include;../Drivers/CMSIS/Include;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -2104,6 +2104,21 @@
               <FilePath>../app/storage.h</FilePath>
             </File>
             <File>
+              <FileName>storage_files.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../app/storage_files.h</FilePath>
+            </File>
+            <File>
+              <FileName>file_transfer.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../app/file_transfer.c</FilePath>
+            </File>
+            <File>
+              <FileName>file_transfer.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../app/file_transfer.h</FilePath>
+            </File>
+            <File>
               <FileName>clock_model.c</FileName>
               <FileType>1</FileType>
               <FilePath>../app/clock_model.c</FilePath>
@@ -2172,6 +2187,41 @@
               <FileName>weather.h</FileName>
               <FileType>5</FileType>
               <FilePath>../app/weather.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>middleware</GroupName>
+          <Files>
+            <File>
+              <FileName>file_store.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../middleware/file_store.c</FilePath>
+            </File>
+            <File>
+              <FileName>file_store.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../middleware/file_store.h</FilePath>
+            </File>
+            <File>
+              <FileName>lfs.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../middleware/littlefs/lfs.c</FilePath>
+            </File>
+            <File>
+              <FileName>lfs.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../middleware/littlefs/lfs.h</FilePath>
+            </File>
+            <File>
+              <FileName>lfs_util.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../middleware/littlefs/lfs_util.c</FilePath>
+            </File>
+            <File>
+              <FileName>lfs_util.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../middleware/littlefs/lfs_util.h</FilePath>
             </File>
           </Files>
         </Group>

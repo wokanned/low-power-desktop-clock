@@ -1,6 +1,7 @@
 #include "clock_service.h"
 #include "clock_faults.h"
 #include "storage.h"
+#include "storage_files.h"
 #include "stm32_clock.h"
 #include "FreeRTOS.h"
 #include "task.h"
@@ -199,23 +200,25 @@ void clock_service_mark_unavailable(void)
 void clock_service_get_model(clock_view_model_t *p_model)
 {
     storage_config_snapshot_t config;
-    storage_usage_snapshot_t usage;
+    file_store_snapshot_t usage;
     if (p_model == NULL) { return; }
     taskENTER_CRITICAL();
     *p_model = s_model;
     storage_get_config_snapshot(&config);
-    storage_get_usage_snapshot(&usage);
+    storage_get_files_snapshot(&usage);
     p_model->format = config.format;
     p_model->format_revision = config.revision;
     p_model->startup_ready = (uint8_t)(s_polled != 0U && config.ready != 0U);
-    p_model->memory[CLOCK_MEMORY_W25Q].state = usage.state;
+    p_model->memory[CLOCK_MEMORY_W25Q].state =
+        usage.state == FILE_STORE_READY ? CLOCK_DATA_READY :
+        (usage.state == FILE_STORE_ERROR ? CLOCK_DATA_ERROR : CLOCK_DATA_UNAVAILABLE);
     p_model->memory[CLOCK_MEMORY_W25Q].value = 0;
-    if (usage.state == CLOCK_DATA_READY) {
-        if (usage.total_bytes == W25Q128_TOTAL_SIZE &&
-            usage.used_bytes <= usage.total_bytes) {
+    if (usage.state == FILE_STORE_READY) {
+        if (usage.total_blocks == FILE_STORE_BLOCK_COUNT &&
+            usage.used_blocks <= usage.total_blocks) {
             p_model->memory[CLOCK_MEMORY_W25Q].value = (int32_t)(
-                (usage.used_bytes * 100UL + usage.total_bytes - 1UL) /
-                usage.total_bytes);
+                (usage.used_blocks * 100UL + usage.total_blocks - 1UL) /
+                usage.total_blocks);
         } else {
             p_model->memory[CLOCK_MEMORY_W25Q].state = CLOCK_DATA_ERROR;
         }

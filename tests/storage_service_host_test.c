@@ -1,4 +1,5 @@
 #include "storage.h"
+#include "storage_files.h"
 #include "clock_config.h"
 #include "clock_faults.h"
 #include "cmsis_os.h"
@@ -38,7 +39,7 @@ QueueHandle_t xQueueCreateStatic(uint32_t length, uint32_t item_size,
 int xQueueSend(QueueHandle_t queue, const void *p_item, uint32_t wait)
 {
     assert(queue != NULL && wait == 0U && s_critical == 0U);
-    assert(s_queued == 0U);
+    if (s_queued != 0U) { return 0; }
     (void)memcpy(s_queue_bytes, p_item, s_queue_size);
     s_queued = 1U;
     return pdPASS;
@@ -48,9 +49,45 @@ int xQueueReceive(QueueHandle_t queue, void *p_item, uint32_t wait)
 {
     storage_config_snapshot_t snapshot;
     storage_diagnostics_t diagnostics;
+    file_store_request_t file_request;
+    file_store_response_t file_response;
     assert(queue != NULL && wait != portMAX_DELAY && s_critical == 0U);
     storage_get_config_snapshot(&snapshot);
     assert(snapshot.ready == 1U && snapshot.busy == 0U);
+    if (s_is("files")) {
+        memset(&file_request, 0, sizeof(file_request));
+        if (s_phase == 0U) {
+            assert(storage_file_request(NULL) == FILE_STORE_ERROR_ARGUMENT);
+            file_request.operation = FILE_STORE_OP_STATUS;
+            assert(storage_file_request(&file_request) == FILE_STORE_ERROR_ARGUMENT);
+            file_request.token = 101U;
+            file_request.size = 73U;
+            assert(storage_file_request(&file_request) == 0);
+            file_request.size = 99U; /* Mailbox must retain its own copy. */
+            assert(storage_file_request(&file_request) == FILE_STORE_ERROR_BUSY);
+            assert(storage_file_take_result(101U, &file_response) == 0U);
+        } else if (s_phase == 1U) {
+            assert(storage_file_request(&file_request) == FILE_STORE_ERROR_ARGUMENT);
+            assert(storage_file_take_result(102U, &file_response) == 0U);
+            assert(storage_file_take_result(101U, NULL) == 0U);
+            assert(storage_file_take_result(101U, &file_response) == 1U);
+            assert(file_response.size == 73U && file_response.result == 0);
+            assert(storage_file_take_result(101U, &file_response) == 0U);
+            file_request.token = 102U;
+            file_request.operation = FILE_STORE_OP_LIST;
+            assert(storage_file_request(&file_request) == 0);
+            storage_set_scan_paused(1U);
+        } else {
+            assert(storage_file_take_result(102U, &file_response) == 1U);
+            assert(file_response.operation == FILE_STORE_OP_LIST);
+            longjmp(s_finished, 1);
+        }
+        s_phase++;
+        assert(s_queued != 0U);
+        memcpy(p_item, s_queue_bytes, s_queue_size);
+        s_queued = 0U;
+        return pdPASS;
+    }
     if (s_phase == 0U) {
         assert(snapshot.format == ((s_is("init-failure") || s_is("load-failure") ||
                                     s_is("corrupt")) ? CLOCK_FORMAT_24 : CLOCK_FORMAT_12));
@@ -108,7 +145,7 @@ osThreadId_t osThreadNew(osThreadFunc_t function, void *p_argument,
 {
     (void)p_argument;
     assert(p_attributes->cb_mem != NULL && p_attributes->stack_mem != NULL);
-    assert(p_attributes->stack_size == 2048U);
+    assert(p_attributes->stack_size == 4096U);
     s_entry = function;
     return s_is("task-failure") != 0U ? NULL : &s_entry;
 }
@@ -142,6 +179,23 @@ w25q128_status_t w25q128_read(const w25q128_ctx_t *p_context, uint32_t address,
     assert(s_critical == 0U && address <= W25Q128_TOTAL_SIZE - length);
     (void)memset(p_bytes, 0xFF, length);
     return W25Q128_OK;
+}
+w25q128_status_t w25q128_erase_sector(const w25q128_ctx_t *p_context, uint32_t address)
+{
+    (void)p_context; (void)address; assert(0); return W25Q128_ERROR_IO;
+}
+w25q128_status_t w25q128_program(const w25q128_ctx_t *p_context, uint32_t address,
+                                 const uint8_t *p_data, uint32_t length)
+{
+    (void)p_context; (void)address; (void)p_data; (void)length;
+    assert(0); return W25Q128_ERROR_IO;
+}
+w25q128_status_t w25q128_update(const w25q128_ctx_t *p_context, uint32_t address,
+                                const uint8_t *p_data, uint32_t length,
+                                uint8_t *p_scratch, uint32_t scratch_length)
+{
+    (void)p_context; (void)address; (void)p_data; (void)length;
+    (void)p_scratch; (void)scratch_length; assert(0); return W25Q128_ERROR_IO;
 }
 int32_t clock_config_load(const w25q128_ctx_t *p_context, clock_config_state_t *p_state)
 {

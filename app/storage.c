@@ -1,4 +1,5 @@
 #include "storage.h"
+#include "storage_files.h"
 #include "clock_config.h"
 #include "clock_faults.h"
 #include "stm32_w25q128.h"
@@ -7,8 +8,9 @@
 #include "task.h"
 #include "cmsis_os.h"
 #include <stddef.h>
+#include <string.h>
 
-#define STORAGE_TASK_STACK_BYTES 2048U
+#define STORAGE_TASK_STACK_BYTES 4096U
 #define STORAGE_TEST_PAGE_OFFSET 250U
 #define STORAGE_TEST_LENGTH      32U
 #define STORAGE_TEST_PATCH_OFFSET 8U
@@ -17,6 +19,23 @@
 #define STORAGE_TEST_PATCH_BASE   0xA0U
 #define STORAGE_ERASED_BYTE       0xFFU
 #define STORAGE_SCAN_YIELD_TICKS  ((TickType_t)1U)
+#define STORAGE_BITMAP_BYTES (W25Q128_TOTAL_SIZE / W25Q128_SECTOR_SIZE / 8U)
+
+typedef enum { STORAGE_FILE_IDLE, STORAGE_FILE_PENDING, STORAGE_FILE_RUNNING,
+               STORAGE_FILE_COMPLETE } storage_file_state_t;
+static file_store_request_t s_file_request;
+static file_store_response_t s_file_response;
+static file_store_snapshot_t s_files = {
+    FILE_STORE_UNAVAILABLE, FILE_STORE_ERROR_NOT_READY, 0U, FILE_STORE_BLOCK_COUNT, 0U, 0U,
+    W25Q128_OK
+};
+static volatile storage_file_state_t s_file_state;
+static uint8_t s_scan_occupied[STORAGE_BITMAP_BYTES];
+static uint8_t s_scan_dirty[STORAGE_BITMAP_BYTES];
+static volatile uint8_t s_scan_paused;
+static uint32_t s_maintenance_fault;
+static uint8_t s_maintenance_valid;
+static w25q128_status_t s_maintenance_result;
 
 typedef struct {
     uint32_t address;
@@ -39,8 +58,20 @@ static StaticQueue_t s_request_queue_control;
 static uint8_t s_request_queue_bytes[sizeof(storage_request_t)];
 static QueueHandle_t s_request_queue;
 
-#if STORAGE_BOOT_TEST_ENABLE
 static uint8_t s_update_scratch[W25Q128_SECTOR_SIZE];
+
+static void s_mark_dirty(uint32_t address, uint32_t length)
+{
+    uint32_t first;
+    uint32_t last;
+    if (length == 0U || address >= W25Q128_TOTAL_SIZE ||
+        length > W25Q128_TOTAL_SIZE - address) { return; }
+    first = address / W25Q128_SECTOR_SIZE;
+    last = (address + length - 1U) / W25Q128_SECTOR_SIZE;
+    for (; first <= last; first++) {
+        s_scan_dirty[first / 8U] |= (uint8_t)(1U << (first % 8U));
+    }
+}
 
 static w25q128_status_t s_check_sector(uint8_t patched)
 {
@@ -86,6 +117,7 @@ static w25q128_status_t s_run_test(void)
     for (i = 0U; i < sizeof(patch); i++) {
         patch[i] = (uint8_t)(STORAGE_TEST_PATCH_BASE + STORAGE_TEST_PATCH_OFFSET + i);
     }
+    s_mark_dirty(STORAGE_TEST_ADDRESS, STORAGE_TEST_SIZE);
     result = w25q128_erase_sector(&s_context, STORAGE_TEST_ADDRESS);
     if (result == W25Q128_OK) {
         result = w25q128_program(&s_context, STORAGE_TEST_ADDRESS + STORAGE_TEST_PAGE_OFFSET,
@@ -102,12 +134,18 @@ static w25q128_status_t s_run_test(void)
     if (result == W25Q128_OK) { result = s_check_sector(1U); }
     return result;
 }
-#endif
 
 static void s_publish(const storage_diagnostics_t *p_diagnostics)
 {
     taskENTER_CRITICAL();
     s_diagnostics = *p_diagnostics;
+    if (s_maintenance_valid != 0U) {
+        s_diagnostics.test_status = s_maintenance_result == W25Q128_OK ?
+            STORAGE_TEST_PASSED : STORAGE_TEST_FAILED;
+        if (s_maintenance_result != W25Q128_OK) {
+            s_diagnostics.result = s_maintenance_result;
+        }
+    }
     taskEXIT_CRITICAL();
 }
 
@@ -157,18 +195,111 @@ static w25q128_status_t s_scan_sector(uint32_t address, uint8_t *p_used)
 static w25q128_status_t s_scan_step(storage_scan_t *p_scan)
 {
     uint8_t used;
+    uint8_t old_used;
+    uint8_t mask;
+    uint32_t sector;
+    uint32_t address;
+    uint32_t i;
     w25q128_status_t result;
 
     do {
-        result = s_scan_sector(p_scan->address, &used);
+        address = p_scan->address;
+        if (address == W25Q128_TOTAL_SIZE) {
+            for (i = 0U; i < STORAGE_BITMAP_BYTES && s_scan_dirty[i] == 0U; i++) { }
+            if (i == STORAGE_BITMAP_BYTES) { return W25Q128_OK; }
+            sector = i * 8U;
+            while ((s_scan_dirty[sector / 8U] & (1U << (sector % 8U))) == 0U) {
+                sector++;
+            }
+            address = sector * W25Q128_SECTOR_SIZE;
+        }
+        sector = address / W25Q128_SECTOR_SIZE;
+        mask = (uint8_t)(1U << (sector % 8U));
+        result = s_scan_sector(address, &used);
         if (result != W25Q128_OK) { return result; }
-        if (used != 0U) { p_scan->used_bytes += W25Q128_SECTOR_SIZE; }
-        p_scan->address += W25Q128_SECTOR_SIZE;
-        /* Only the final two sectors can change at runtime. Check both and
-         * publish before dequeuing another configuration transaction. */
+        old_used = (uint8_t)((s_scan_occupied[sector / 8U] & mask) != 0U);
+        if (used != old_used) {
+            if (used != 0U) { p_scan->used_bytes += W25Q128_SECTOR_SIZE; }
+            else { p_scan->used_bytes -= W25Q128_SECTOR_SIZE; }
+        }
+        if (used != 0U) { s_scan_occupied[sector / 8U] |= mask; }
+        else { s_scan_occupied[sector / 8U] &= (uint8_t)~mask; }
+        s_scan_dirty[sector / 8U] &= (uint8_t)~mask;
+        if (p_scan->address < W25Q128_TOTAL_SIZE) {
+            p_scan->address += W25Q128_SECTOR_SIZE;
+        }
+        /* Preserve an uninterrupted tail snapshot, and track mutations of ALL
+         * other sectors (including failed attempts) for subsequent rechecks. */
     } while (p_scan->address > CLOCK_CONFIG_SECTOR_A &&
              p_scan->address < W25Q128_TOTAL_SIZE);
     return W25Q128_OK;
+}
+
+static uint8_t s_scan_clean(void)
+{
+    uint32_t i;
+    for (i = 0U; i < STORAGE_BITMAP_BYTES; i++) {
+        if (s_scan_dirty[i] != 0U) { return 0U; }
+    }
+    return 1U;
+}
+
+static void s_files_publish(void)
+{
+    file_store_snapshot_t snapshot;
+    file_store_get_snapshot(&snapshot);
+    taskENTER_CRITICAL();
+    s_files = snapshot;
+    s_files.busy = (uint8_t)(snapshot.busy != 0U ||
+        s_file_state == STORAGE_FILE_PENDING || s_file_state == STORAGE_FILE_RUNNING);
+    taskEXIT_CRITICAL();
+}
+
+static void s_files_process(void)
+{
+    uint8_t execute;
+    uint8_t deferred;
+    taskENTER_CRITICAL();
+    execute = (uint8_t)(s_file_state == STORAGE_FILE_PENDING);
+    if (execute != 0U) { s_file_state = STORAGE_FILE_RUNNING; }
+    taskEXIT_CRITICAL();
+    if (execute != 0U) {
+        if (s_file_request.operation == FILE_STORE_OP_SELFTEST) {
+            memset(&s_file_response, 0, sizeof(s_file_response));
+            s_file_response.token = s_file_request.token;
+            s_file_response.operation = FILE_STORE_OP_SELFTEST;
+            s_file_response.result = s_file_request.confirm == 0U ? FILE_STORE_ERROR_CONFIRM :
+                (s_files.upload_active != 0U ? FILE_STORE_ERROR_BUSY : (int32_t)w25q128_init(&s_context));
+            if (s_file_response.result == W25Q128_OK) {
+                s_file_response.result = (int32_t)s_run_test();
+            }
+            if (s_file_request.confirm != 0U && s_files.upload_active == 0U) {
+                s_maintenance_fault = s_fault_mask(s_file_response.result);
+                s_maintenance_valid = 1U;
+                s_maintenance_result = (w25q128_status_t)s_file_response.result;
+                taskENTER_CRITICAL();
+                s_diagnostics.test_status = s_file_response.result == 0 ?
+                    STORAGE_TEST_PASSED : STORAGE_TEST_FAILED;
+                s_diagnostics.result = (w25q128_status_t)s_file_response.result;
+                taskEXIT_CRITICAL();
+            }
+            deferred = 0U;
+        } else {
+            deferred = file_store_execute(&s_file_request, &s_file_response);
+        }
+        if (deferred == 0U) {
+            taskENTER_CRITICAL();
+            s_file_state = STORAGE_FILE_COMPLETE;
+            taskEXIT_CRITICAL();
+        }
+    }
+    file_store_step();
+    if (s_file_state == STORAGE_FILE_RUNNING && file_store_poll(&s_file_response) != 0U) {
+        taskENTER_CRITICAL();
+        s_file_state = STORAGE_FILE_COMPLETE;
+        taskEXIT_CRITICAL();
+    }
+    s_files_publish();
 }
 
 static int32_t s_initialize(storage_diagnostics_t *p_diagnostics)
@@ -220,6 +351,7 @@ static void s_storage_task(void *p_argument)
     uint32_t boot_fault;
     uint32_t config_fault;
     uint32_t scan_fault;
+    uint32_t file_fault = 0U;
     w25q128_status_t scan_result;
     uint8_t online;
     uint8_t test_ran = 0U;
@@ -265,34 +397,49 @@ static void s_storage_task(void *p_argument)
     s_publish(&diagnostics);
     s_publish_config(&state, 1U, 0U, 0U, 0);
     taskEXIT_CRITICAL();
+    file_store_init(online != 0U ? &s_context : NULL, s_mark_dirty);
+    s_files_publish();
     /* Configuration recovery and scan recovery are independent: a successful
      * scan must not bypass reload after an ambiguous configuration commit. */
     for (;;) {
         now = xTaskGetTickCount();
-        if (scan.running == 0U && (TickType_t)(now - scan.completed_tick) >=
+        if (scan.running == 0U && s_scan_paused == 0U && s_files.upload_active == 0U &&
+            s_file_state != STORAGE_FILE_RUNNING && (TickType_t)(now - scan.completed_tick) >=
             pdMS_TO_TICKS(STORAGE_USAGE_INTERVAL_MS)) {
             s_publish_usage(CLOCK_DATA_INITIALIZING, 0U, W25Q128_OK);
             scan_result = w25q128_init(&s_context);
             if (scan_result == W25Q128_OK) {
                 scan.address = 0U;
                 scan.used_bytes = 0U;
+                memset(s_scan_occupied, 0, sizeof(s_scan_occupied));
+                memset(s_scan_dirty, 0, sizeof(s_scan_dirty));
                 scan.running = 1U;
+                if ((s_files.state == FILE_STORE_UNAVAILABLE || s_files.state == FILE_STORE_ERROR) &&
+                    s_files.upload_active == 0U && s_file_state == STORAGE_FILE_IDLE) {
+                    file_store_init(&s_context, s_mark_dirty);
+                }
             } else {
                 online = 0U;
                 scan.completed_tick = xTaskGetTickCount();
                 scan_fault = s_fault_mask(scan_result);
                 taskENTER_CRITICAL();
                 s_publish_usage(CLOCK_DATA_ERROR, 0U, scan_result);
-                clock_fault_report(CLOCK_FAULT_W25Q, boot_fault | config_fault | scan_fault);
+                clock_fault_report(CLOCK_FAULT_W25Q, boot_fault | config_fault | scan_fault |
+                                   file_fault | s_maintenance_fault);
                 taskEXIT_CRITICAL();
             }
         }
         now = xTaskGetTickCount();
         elapsed = (TickType_t)(now - scan.completed_tick);
-        wait = scan.running != 0U ? STORAGE_SCAN_YIELD_TICKS :
-            (elapsed >= pdMS_TO_TICKS(STORAGE_USAGE_INTERVAL_MS) ? 0U :
-             pdMS_TO_TICKS(STORAGE_USAGE_INTERVAL_MS) - elapsed);
-        if (xQueueReceive(s_request_queue, &request, wait) == pdPASS) {
+        wait = ((scan.running != 0U && s_scan_paused == 0U && s_files.upload_active == 0U) ||
+                s_files.state == FILE_STORE_INITIALIZING || s_file_state == STORAGE_FILE_RUNNING) ?
+            STORAGE_SCAN_YIELD_TICKS :
+            ((scan.running != 0U || s_scan_paused != 0U || s_files.upload_active != 0U) ?
+             pdMS_TO_TICKS(STORAGE_USAGE_INTERVAL_MS) :
+             (elapsed >= pdMS_TO_TICKS(STORAGE_USAGE_INTERVAL_MS) ? 0U :
+              pdMS_TO_TICKS(STORAGE_USAGE_INTERVAL_MS) - elapsed));
+        /* token zero is a wake-only message for the separate file mailbox. */
+        if (xQueueReceive(s_request_queue, &request, wait) == pdPASS && request.token != 0U) {
             result = W25Q128_OK;
             if (online == 0U) {
                 result = s_initialize(&diagnostics);
@@ -308,6 +455,7 @@ static void s_storage_task(void *p_argument)
                 }
             }
             if (result == W25Q128_OK) {
+                s_mark_dirty(CLOCK_CONFIG_SECTOR_A, 2U * W25Q128_SECTOR_SIZE);
                 result = clock_config_save(&s_context, &state, request.format);
             }
             online = result == W25Q128_OK ? 1U : 0U;
@@ -317,14 +465,25 @@ static void s_storage_task(void *p_argument)
             diagnostics.result = (w25q128_status_t)result;
             taskENTER_CRITICAL();
             clock_fault_report(CLOCK_FAULT_CONFIG, config_fault);
-            clock_fault_report(CLOCK_FAULT_W25Q, boot_fault | config_fault | scan_fault);
+            clock_fault_report(CLOCK_FAULT_W25Q, boot_fault | config_fault | scan_fault |
+                               file_fault | s_maintenance_fault);
             s_publish(&diagnostics);
             s_publish_config(&state, 1U, 1U, request.token, result);
             taskEXIT_CRITICAL();
         }
-        if (scan.running != 0U) {
+        s_files_process();
+        file_fault = s_files.state == FILE_STORE_ERROR ?
+            (s_files.flash_result == W25Q128_OK ? CLOCK_FAULT_IO :
+             s_fault_mask(s_files.flash_result)) : 0U;
+        taskENTER_CRITICAL();
+        clock_fault_report(CLOCK_FAULT_W25Q, boot_fault | config_fault | scan_fault |
+                           file_fault | s_maintenance_fault);
+        taskEXIT_CRITICAL();
+        if (scan.running != 0U && s_scan_paused == 0U &&
+            s_files.upload_active == 0U && s_file_state != STORAGE_FILE_RUNNING) {
             scan_result = s_scan_step(&scan);
-            if (scan_result != W25Q128_OK || scan.address == W25Q128_TOTAL_SIZE) {
+            if (scan_result != W25Q128_OK ||
+                (scan.address == W25Q128_TOTAL_SIZE && s_scan_clean() != 0U)) {
                 scan.running = 0U;
                 scan.completed_tick = xTaskGetTickCount();
                 scan_fault = s_fault_mask(scan_result);
@@ -332,7 +491,8 @@ static void s_storage_task(void *p_argument)
                 taskENTER_CRITICAL();
                 s_publish_usage(scan_result == W25Q128_OK ? CLOCK_DATA_READY : CLOCK_DATA_ERROR,
                                 scan_result == W25Q128_OK ? scan.used_bytes : 0U, scan_result);
-                clock_fault_report(CLOCK_FAULT_W25Q, boot_fault | config_fault | scan_fault);
+                clock_fault_report(CLOCK_FAULT_W25Q, boot_fault | config_fault | scan_fault |
+                                   file_fault | s_maintenance_fault);
                 taskEXIT_CRITICAL();
             }
         }
@@ -426,4 +586,66 @@ int32_t storage_request_format(clock_format_t format, uint32_t token)
         return STORAGE_REQUEST_BUSY;
     }
     return STORAGE_REQUEST_OK;
+}
+
+int32_t storage_file_request(const file_store_request_t *p_request)
+{
+    storage_request_t wake = {CLOCK_FORMAT_24, 0U};
+    if (p_request == NULL || p_request->token == 0U ||
+        p_request->length > FILE_STORE_DATA_MAX ||
+        p_request->operation < FILE_STORE_OP_STATUS ||
+        p_request->operation > FILE_STORE_OP_SELFTEST) {
+        return FILE_STORE_ERROR_ARGUMENT;
+    }
+    taskENTER_CRITICAL();
+    if (s_storage_task_handle == NULL || s_request_queue == NULL) {
+        taskEXIT_CRITICAL();
+        return FILE_STORE_ERROR_NOT_READY;
+    }
+    if (s_file_state != STORAGE_FILE_IDLE) {
+        taskEXIT_CRITICAL();
+        return FILE_STORE_ERROR_BUSY;
+    }
+    s_file_request = *p_request;
+    s_file_state = STORAGE_FILE_PENDING;
+    s_files.busy = 1U;
+    taskEXIT_CRITICAL();
+    /* A full queue already contains configuration work that wakes the owner.
+     * The file mailbox is retained independently and processed in either case. */
+    (void)xQueueSend(s_request_queue, &wake, 0U);
+    return FILE_STORE_OK;
+}
+
+uint8_t storage_file_take_result(uint32_t token, file_store_response_t *p_response)
+{
+    uint8_t complete = 0U;
+    if (token == 0U || p_response == NULL) { return 0U; }
+    taskENTER_CRITICAL();
+    if (s_file_state == STORAGE_FILE_COMPLETE && s_file_response.token == token) {
+        *p_response = s_file_response;
+        s_file_state = STORAGE_FILE_IDLE;
+        complete = 1U;
+    }
+    taskEXIT_CRITICAL();
+    return complete;
+}
+
+void storage_get_files_snapshot(file_store_snapshot_t *p_snapshot)
+{
+    if (p_snapshot != NULL) {
+        taskENTER_CRITICAL();
+        *p_snapshot = s_files;
+        taskEXIT_CRITICAL();
+    }
+}
+
+void storage_set_scan_paused(uint8_t paused)
+{
+    storage_request_t wake = {CLOCK_FORMAT_24, 0U};
+    QueueHandle_t queue;
+    taskENTER_CRITICAL();
+    s_scan_paused = (uint8_t)(paused != 0U);
+    queue = s_request_queue;
+    taskEXIT_CRITICAL();
+    if (queue != NULL) { (void)xQueueSend(queue, &wake, 0U); }
 }
