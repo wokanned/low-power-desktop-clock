@@ -133,6 +133,35 @@ static uint8_t frame_regions_equal(uint16_t left, uint16_t top,
     return 1U;
 }
 
+static void test_wifi_elapsed_hours(void)
+{
+    clock_view_model_t model=normal_model();
+    reset_guards();
+    model.wifi.state=CLOCK_DATA_UNAVAILABLE;
+    CHECK(draw_frame(s_frame,FRAME_BYTES,&model)==1U);
+    memcpy(s_previous,s_frame,FRAME_BYTES);
+    model.wifi.state=CLOCK_DATA_READY;
+    model.wifi.value=0;
+    CHECK(draw_frame(s_frame,FRAME_BYTES,&model)==1U);
+    CHECK(!frame_regions_equal(168U,98U,228U,120U));
+    CHECK(frame_regions_equal(0U,0U,168U,128U));
+    memcpy(s_previous,s_frame,FRAME_BYTES);
+    model.wifi.value=1;
+    CHECK(draw_frame(s_frame,FRAME_BYTES,&model)==1U);
+    CHECK(!frame_regions_equal(168U,98U,228U,120U));
+    model.wifi.value=99;
+    CHECK(draw_frame(s_frame,FRAME_BYTES,&model)==1U);
+    memcpy(s_previous,s_frame,FRAME_BYTES);
+    model.wifi.value=100;
+    CHECK(draw_frame(s_frame,FRAME_BYTES,&model)==1U);
+    CHECK(!frame_regions_equal(168U,98U,228U,120U));
+    memcpy(s_previous,s_frame,FRAME_BYTES);
+    model.wifi.value=INT_MAX;
+    CHECK(draw_frame(s_frame,FRAME_BYTES,&model)==1U);
+    CHECK(memcmp(s_previous,s_frame,FRAME_BYTES)==0);
+    check_guards();
+}
+
 static void write_preview(const char *p_directory, const char *p_name)
 {
     char path[4096];
@@ -899,6 +928,7 @@ int main(int argc, char **argv)
         test_times();
         test_dates();
         test_missing_and_ranges();
+        test_wifi_elapsed_hours();
         test_invalid_calendar();
         test_w25q_usage();
         test_faults();

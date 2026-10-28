@@ -194,7 +194,19 @@ try {
             'Objects/state.json', 'Objects/data.csv', 'Objects/frame.png', 'Objects/backup.bak',
             'Objects/host.exe', 'assets/unrelated.o', 'src/unrelated.obj')
         foreach ($relative in @($delete + $keep)) { Write-FixtureFile (Join-Path $root $relative) }
-        Assert-ExitCode (Invoke-Cleaner $root @('-Details')) 0
+        $cleanupResult = Invoke-Cleaner $root
+        Assert-ExitCode $cleanupResult 0
+        foreach ($relative in $delete) {
+            $fullPath = [IO.Path]::GetFullPath((Join-Path $root $relative))
+            Assert-True ($cleanupResult.Stdout.Contains('已删除：' + $fullPath)) `
+                ('Default cleanup did not report the deleted full path: ' + $fullPath + "`n" + $cleanupResult.Stdout)
+        }
+        Assert-True ($cleanupResult.Stdout -match '清理开始时间：\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \+08:00') `
+            'Cleanup start timestamp is missing'
+        Assert-True ($cleanupResult.Stdout -match '清理结束时间：\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \+08:00') `
+            'Cleanup end timestamp is missing'
+        Assert-True ($cleanupResult.Stdout -match '清理总耗时：\d+[.,]\d{3} 秒') `
+            'Cleanup elapsed time is missing'
         foreach ($relative in $delete) { Assert-File (Join-Path $root $relative) $false }
         foreach ($relative in $keep) { Assert-File (Join-Path $root $relative) }
         Assert-File (Join-Path $root 'demo.uvprojx')

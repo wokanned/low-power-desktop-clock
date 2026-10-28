@@ -21,7 +21,9 @@ typedef struct {
     stm32_gdey029t94_pin_t busy;
 } stm32_gdey029t94_context_t;
 
-/* Bind SPI2 and the DeskClock main-board netlist pins. Does not perform IO. */
+/* Bind SPI2 and the DeskClock main-board netlist pins. Does not perform IO.
+   SPI writes use DMA with a private completion semaphore and return only after
+   completion or confirmed stop. Call only from displayTask with RTOS running. */
 epd_gdey029t94_status_t stm32_gdey029t94_make_io(
     epd_gdey029t94_io_t *io,
     stm32_gdey029t94_context_t *context);

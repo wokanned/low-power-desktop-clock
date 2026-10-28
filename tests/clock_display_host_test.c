@@ -62,6 +62,7 @@ static uint32_t s_thread_creates;
 static uint32_t s_suspends;
 static uint8_t s_sleep_error_observed;
 static uint8_t s_weather_published;
+static uint32_t s_sync_successes;
 static osThreadFunc_t s_thread_function;
 static void *s_thread_argument;
 
@@ -111,6 +112,13 @@ void clock_service_get_model(clock_view_model_t *p_model)
     }
 }
 
+void clock_service_note_sync_success(void)
+{
+    s_sync_successes++;
+    s_live.wifi.state=CLOCK_DATA_READY;
+    s_live.wifi.value=0;
+}
+
 uint8_t TEST_DRAW(uint8_t *p_frame,size_t length,
                   const clock_view_model_t *p_model)
 {
@@ -125,6 +133,7 @@ uint8_t TEST_DRAW(uint8_t *p_frame,size_t length,
     p_frame[24U]=(uint8_t)p_model->memory_mode;
     p_frame[25U]=(uint8_t)p_model->calendar_state;
     p_frame[26U]=p_model->faults.active_categories;
+    memcpy(p_frame+28U,&p_model->wifi,sizeof(p_model->wifi));
     return 1U;
 }
 
@@ -173,7 +182,18 @@ epd_gdey029t94_status_t TEST_REFRESH(
     s_frame_hashes[s_refreshes]=frame_hash(p_frame,length);
     s_frame_ticks[s_refreshes]=s_tick;
     s_refreshes++;
-    if(debug_tx_scenario()) {
+    if(scenario("wifi-coalesce") && s_refreshes==1U) {
+        /* Multiple successes while BUSY merge into one latest target. */
+        clock_service_note_sync_success();
+        s_live.wifi.value=1;
+        clock_service_note_sync_success();
+        CHECK(frame_hash(p_frame,length)==s_frame_hashes[0]);
+        CHECK(epd_bringup_get_completed_frames()==before);
+    } else if(scenario("wifi-revert") && s_refreshes==1U) {
+        s_live.wifi.value=1;
+        clock_service_note_sync_success();
+        CHECK(frame_hash(p_frame,length)==s_frame_hashes[0]);
+    } else if(debug_tx_scenario()) {
         /* A TX failure/recovery during BUSY must not request another frame. */
         if(s_refreshes==1U) {
             clock_fault_report(CLOCK_FAULT_DEBUG,CLOCK_FAULT_TX);
@@ -305,7 +325,55 @@ int32_t osDelay(uint32_t ticks)
         s_poll_delays++;
     }
     s_tick+=ticks;
-    if(debug_tx_scenario()) {
+    if(scenario("wifi-visible")) {
+        if(s_poll_delays==1U || s_poll_delays==2U ||
+           s_poll_delays==4U || s_poll_delays==5U) {
+            clock_service_note_sync_success();
+        } else if(s_poll_delays==3U) {
+            CHECK(s_refreshes==2U);
+            s_live.wifi.value=1;
+        } else if(s_poll_delays==6U) {
+            CHECK(s_refreshes==4U);
+            s_live.wifi.state=CLOCK_DATA_ERROR;
+        } else if(s_poll_delays==7U) {
+            s_live.wifi.state=CLOCK_DATA_UNAVAILABLE;
+        } else if(s_poll_delays==8U) {
+            CHECK(s_refreshes==5U);
+            longjmp(s_stop,STOP_COMPLETE);
+        }
+    } else if(scenario("wifi-saturated")) {
+        if(s_poll_delays==1U) { s_live.wifi.value=100; }
+        else if(s_poll_delays==2U) { s_live.wifi.value=101; }
+        else if(s_poll_delays==3U) {
+            CHECK(s_refreshes==2U);
+            s_live.wifi.value=100;
+        } else if(s_poll_delays==4U) {
+            CHECK(s_refreshes==2U);
+            clock_service_note_sync_success();
+        } else if(s_poll_delays==5U) {
+            longjmp(s_stop,STOP_COMPLETE);
+        }
+    } else if(scenario("wifi-weather-hidden") || scenario("wifi-fault-hidden")) {
+        if(s_poll_delays<=4U) { CHECK(s_refreshes==1U); }
+        if(s_poll_delays==1U || s_poll_delays==3U) {
+            clock_service_note_sync_success();
+        } else if(s_poll_delays==2U) {
+            s_live.wifi.value=100;
+        } else if(s_poll_delays==4U) {
+            if(scenario("wifi-weather-hidden")) {
+                CHECK(display_select_page(DISPLAY_PAGE_CLOCK));
+            } else {
+                s_live.faults.active_categories=0U;
+                s_live.faults.revision++;
+            }
+        } else if(s_poll_delays==5U) {
+            longjmp(s_stop,STOP_COMPLETE);
+        }
+    } else if(scenario("wifi-coalesce") || scenario("wifi-revert")) {
+        CHECK(s_refreshes==(scenario("wifi-coalesce") ?
+            (s_poll_delays==1U ? 1U : 2U) : 1U));
+        if(s_poll_delays==4U) { longjmp(s_stop,STOP_COMPLETE); }
+    } else if(debug_tx_scenario()) {
         CHECK(s_refreshes==(s_poll_delays<=4U ? 1U : 2U));
         if(s_poll_delays==1U || s_poll_delays==3U) {
             clock_fault_report(CLOCK_FAULT_DEBUG,CLOCK_FAULT_TX);
@@ -466,6 +534,10 @@ static void init_model(void)
     s_live.format=CLOCK_FORMAT_24;
     s_live.calendar_state=CLOCK_DATA_READY;
     s_live.calendar=(clock_calendar_t){2026U,10U,18U,7U,21U,30U,0U};
+    if(scenario("wifi-saturated") || scenario("wifi-revert")) {
+        s_live.wifi.state=CLOCK_DATA_READY;
+        s_live.wifi.value=scenario("wifi-saturated") ? 99 : 0;
+    }
     if(scenario("startup")) { s_live.startup_ready=0U; }
     if(scenario("rtc-error")) {
         s_live.calendar_state=CLOCK_DATA_ERROR;
@@ -473,13 +545,15 @@ static void init_model(void)
         s_live.faults.active_categories=1U;
     }
     if(scenario("failed-recovery-coalesce")) { change_live(1U,1U); }
-    if(scenario("fault-page-hidden") || scenario("cycle-fault")) {
+    if(scenario("fault-page-hidden") || scenario("cycle-fault") ||
+       scenario("wifi-fault-hidden")) {
         s_live.faults.revision=1U;
         s_live.faults.active_categories=1U;
     }
     if(scenario("weather-revert") || scenario("weather-coalesce") ||
        scenario("weather-retry") || scenario("weather-expiry") ||
-       scenario("weather-time-jump") || scenario("debug-tx-weather")) {
+       scenario("weather-time-jump") || scenario("debug-tx-weather") ||
+       scenario("wifi-weather-hidden")) {
         CHECK(display_select_page(DISPLAY_PAGE_WEATHER));
         publish_weather(s_tick, 2U);
     }
@@ -516,7 +590,47 @@ static void verify(int stopped)
     CHECK(s_thread_creates==1U);
     CHECK(s_bind_calls==s_prepare_calls);
     CHECK(epd_bringup_get_completed_frames()==s_committed);
-    if(debug_tx_scenario()) {
+    if(scenario("wifi-visible")) {
+        CHECK(stopped==STOP_COMPLETE && s_refreshes==5U && s_committed==5U);
+        CHECK(s_sync_successes==4U);
+        CHECK(s_frame_ticks[0]==0U && s_frame_ticks[1]==200U &&
+              s_frame_ticks[2]==600U && s_frame_ticks[3]==800U &&
+              s_frame_ticks[4]==1200U);
+        CHECK(s_render_models[0].wifi.state==CLOCK_DATA_UNAVAILABLE);
+        CHECK(s_render_models[1].wifi.state==CLOCK_DATA_READY &&
+              s_render_models[1].wifi.value==0);
+        CHECK(s_render_models[2].wifi.value==1);
+        CHECK(s_render_models[3].wifi.value==0);
+        CHECK(s_render_models[4].wifi.state==CLOCK_DATA_ERROR);
+        check_retry_intervals(0U);
+    } else if(scenario("wifi-saturated")) {
+        CHECK(stopped==STOP_COMPLETE && s_refreshes==3U && s_committed==3U);
+        CHECK(s_frame_ticks[0]==0U && s_frame_ticks[1]==200U && s_frame_ticks[2]==800U);
+        CHECK(s_render_models[0].wifi.value==99 && s_render_models[1].wifi.value==100);
+        CHECK(s_render_models[2].wifi.value==0);
+        check_retry_intervals(0U);
+    } else if(scenario("wifi-weather-hidden") || scenario("wifi-fault-hidden")) {
+        CHECK(stopped==STOP_COMPLETE && s_refreshes==2U && s_committed==2U);
+        CHECK(s_frame_ticks[0]==0U && s_frame_ticks[1]==800U);
+        CHECK(s_render_models[s_renders-1U].wifi.state==CLOCK_DATA_READY);
+        CHECK(s_render_models[s_renders-1U].wifi.value==0);
+        CHECK(s_renders==(scenario("wifi-weather-hidden") ? 1U : 2U));
+        check_retry_intervals(0U);
+    } else if(scenario("wifi-coalesce")) {
+        CHECK(stopped==STOP_COMPLETE && s_refreshes==2U && s_committed==2U);
+        CHECK(s_frame_ticks[0]==0U && s_frame_ticks[1]==200U);
+        CHECK(s_render_models[0].wifi.state==CLOCK_DATA_UNAVAILABLE);
+        CHECK(s_committed_models[0].wifi.state==CLOCK_DATA_UNAVAILABLE);
+        CHECK(s_render_models[1].wifi.state==CLOCK_DATA_READY &&
+              s_render_models[1].wifi.value==0);
+        CHECK(s_sync_successes==2U);
+        check_retry_intervals(0U);
+    } else if(scenario("wifi-revert")) {
+        CHECK(stopped==STOP_COMPLETE && s_refreshes==1U && s_committed==1U);
+        CHECK(s_render_models[0].wifi.value==0 && s_live.wifi.value==0);
+        CHECK(s_sync_successes==1U);
+        check_retry_intervals(0U);
+    } else if(debug_tx_scenario()) {
         clock_fault_snapshot_t diagnostics;
         display_snapshot_t snapshot;
         CHECK(stopped==STOP_COMPLETE && s_refreshes==2U && s_committed==2U);
@@ -834,6 +948,38 @@ static void verify_cycle_contract(void)
         (unsigned int)EPD_CLOCK_USE_GRAY4,s_scenario,s_checks);
 }
 
+static void verify_weather_sync_contract(void)
+{
+    weather_data_t weather;
+    display_snapshot_t before;
+    display_snapshot_t after;
+    CHECK(!display_publish_weather(NULL, s_tick));
+    CHECK(s_sync_successes==0U);
+    CHECK(weather_parse_line(
+        "WEATHER \xE6\xB7\xB1\xE5\x9C\xB3,2,235,180,270,65,2,35,2026-10-28T14:30",
+        &weather));
+    CHECK(display_publish_weather(&weather, s_tick));
+    display_get_snapshot(s_tick, &before);
+    CHECK(s_sync_successes==1U);
+    CHECK(before.page==DISPLAY_PAGE_WEATHER && before.weather.available==1U);
+    CHECK(before.clock.wifi.state==CLOCK_DATA_READY && before.clock.wifi.value==0);
+    s_tick=1000U;
+    CHECK(display_publish_weather(&weather, s_tick));
+    display_get_snapshot(s_tick, &after);
+    CHECK(s_sync_successes==2U);
+    CHECK(after.weather.revision==before.weather.revision);
+    CHECK(after.clock.wifi.state==CLOCK_DATA_READY && after.clock.wifi.value==0);
+    CHECK(display_select_page(DISPLAY_PAGE_CLOCK));
+    weather.humidity=101U;
+    CHECK(!display_publish_weather(&weather, s_tick));
+    display_get_snapshot(s_tick, &after);
+    CHECK(s_sync_successes==2U && after.page==DISPLAY_PAGE_CLOCK);
+    CHECK(after.weather.data.humidity==65U);
+    CHECK(s_thread_creates==1U && s_refreshes==0U);
+    printf("PASS: WEATHER sync commit gray4=%u (%lu checks)\n",
+        (unsigned int)EPD_CLOCK_USE_GRAY4,s_checks);
+}
+
 int main(int argc,char **argv)
 {
     int stopped;
@@ -843,6 +989,7 @@ int main(int argc,char **argv)
     init_model();
     CHECK(display_start());CHECK(display_start());
     CHECK(s_thread_function!=NULL);
+    if(scenario("weather-sync-contract")) { verify_weather_sync_contract();return 0; }
     if(cycle_contract_scenario()) { verify_cycle_contract();return 0; }
     stopped=setjmp(s_stop);
     if(stopped==0) {

@@ -12,6 +12,8 @@
 #define CLOCK_FLASH_BYTES      524288UL
 #define CLOCK_POLL_MS          1000U
 #define CLOCK_TICK_HALF_RANGE  ((TickType_t)(UINT32_MAX / 2U + 1U))
+#define CLOCK_SYNC_HOUR_TICKS  ((TickType_t)configTICK_RATE_HZ * 3600UL)
+#define CLOCK_SYNC_MAX_HOURS   100U
 
 typedef enum {
     CLOCK_TIME_IDLE = 0,
@@ -29,6 +31,7 @@ typedef struct {
 
 static clock_view_model_t s_model;
 static clock_calendar_t s_calendar;
+static TickType_t s_sync_tick;
 static TickType_t s_memory_tick;
 static uint8_t s_memory_sampled;
 static uint8_t s_polled;
@@ -36,11 +39,33 @@ static uint8_t s_rtc_trust_lost;
 static TaskHandle_t s_owner_task;
 static clock_time_request_t s_time_request;
 
+/* Caller holds the model lock; sample the tick under that same lock. */
+static void s_note_sync_success_locked(void)
+{
+    s_sync_tick = xTaskGetTickCount();
+    s_model.wifi.state = CLOCK_DATA_READY;
+    s_model.wifi.value = 0;
+}
+
+static void s_update_sync_age_locked(void)
+{
+    TickType_t elapsed;
+    uint32_t hours;
+    if (s_model.wifi.state != CLOCK_DATA_READY ||
+        s_model.wifi.value >= (int32_t)CLOCK_SYNC_MAX_HOURS) { return; }
+    elapsed = (TickType_t)(xTaskGetTickCount() - s_sync_tick);
+    hours = (uint32_t)(elapsed / CLOCK_SYNC_HOUR_TICKS);
+    /* Latch saturation before a later tick wrap can make the age small. */
+    s_model.wifi.value = (int32_t)(hours >= CLOCK_SYNC_MAX_HOURS ?
+        CLOCK_SYNC_MAX_HOURS : hours);
+}
+
 void clock_service_init(void)
 {
     memset(&s_model, 0, sizeof(s_model));
     s_model.calendar_state = CLOCK_DATA_INITIALIZING;
     s_model.format = CLOCK_FORMAT_24;
+    s_sync_tick = 0U;
     s_memory_tick = 0U;
     s_memory_sampled = 0U;
     s_polled = 0U;
@@ -48,6 +73,13 @@ void clock_service_init(void)
     s_owner_task = NULL;
     memset(&s_time_request, 0, sizeof(s_time_request));
     clock_faults_init();
+}
+
+void clock_service_note_sync_success(void)
+{
+    taskENTER_CRITICAL();
+    s_note_sync_success_locked();
+    taskEXIT_CRITICAL();
 }
 
 int32_t clock_service_request_time(const clock_calendar_t *p_calendar,
@@ -171,6 +203,11 @@ void clock_service_poll(void)
         (result == -2 ? CLOCK_FAULT_CONFIGURATION : CLOCK_FAULT_IO));
     if (result == 0) { s_model.calendar = s_calendar; }
     s_model.calendar_state = result == 0 ? CLOCK_DATA_READY : CLOCK_DATA_ERROR;
+    if (apply_time != 0U && write_result == 0) {
+        s_note_sync_success_locked();
+    } else {
+        s_update_sync_age_locked();
+    }
     if (sample_memory != 0U) {
         s_model.memory[CLOCK_MEMORY_SRAM] = sram;
         s_model.memory[CLOCK_MEMORY_IFLASH] = flash;

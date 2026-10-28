@@ -22,6 +22,7 @@
 #include "stm32l4xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "spi.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -263,5 +264,17 @@ void LPTIM1_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
+
+/* Move these USER handlers to the generated implementations after CubeMX
+   regenerates the DMA1 Channel5 and SPI2 IRQs from DeskClock.ioc. */
+void DMA1_Channel5_IRQHandler(void)
+{
+  HAL_DMA_IRQHandler(&hdma_spi2_tx);
+}
+
+void SPI2_IRQHandler(void)
+{
+  HAL_SPI_IRQHandler(&hspi2);
+}
 
 /* USER CODE END 1 */

@@ -22,6 +22,10 @@
 
 /* USER CODE BEGIN 0 */
 
+DMA_HandleTypeDef hdma_spi2_tx;
+
+#define SPI2_DMA_IRQ_PRIORITY 5U
+
 /* USER CODE END 0 */
 
 SPI_HandleTypeDef hspi1;
@@ -156,6 +160,28 @@ void HAL_SPI_MspInit(SPI_HandleTypeDef* spiHandle)
 
   /* USER CODE BEGIN SPI2_MspInit 1 */
 
+    /* Keep this USER implementation until CubeMX regenerates the SPI2 DMA
+       topology from DeskClock.ioc; then remove the duplicate USER setup. */
+    hdma_spi2_tx.Instance = DMA1_Channel5;
+    hdma_spi2_tx.Init.Request = DMA_REQUEST_1;
+    hdma_spi2_tx.Init.Direction = DMA_MEMORY_TO_PERIPH;
+    hdma_spi2_tx.Init.PeriphInc = DMA_PINC_DISABLE;
+    hdma_spi2_tx.Init.MemInc = DMA_MINC_ENABLE;
+    hdma_spi2_tx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+    hdma_spi2_tx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+    hdma_spi2_tx.Init.Mode = DMA_NORMAL;
+    hdma_spi2_tx.Init.Priority = DMA_PRIORITY_LOW;
+    if (HAL_DMA_Init(&hdma_spi2_tx) != HAL_OK)
+    {
+      Error_Handler();
+    }
+    __HAL_LINKDMA(spiHandle, hdmatx, hdma_spi2_tx);
+
+    HAL_NVIC_SetPriority(DMA1_Channel5_IRQn, SPI2_DMA_IRQ_PRIORITY, 0U);
+    HAL_NVIC_EnableIRQ(DMA1_Channel5_IRQn);
+    HAL_NVIC_SetPriority(SPI2_IRQn, SPI2_DMA_IRQ_PRIORITY, 0U);
+    HAL_NVIC_EnableIRQ(SPI2_IRQn);
+
   /* USER CODE END SPI2_MspInit 1 */
   }
 }
@@ -185,6 +211,10 @@ void HAL_SPI_MspDeInit(SPI_HandleTypeDef* spiHandle)
   else if(spiHandle->Instance==SPI2)
   {
   /* USER CODE BEGIN SPI2_MspDeInit 0 */
+
+    HAL_NVIC_DisableIRQ(SPI2_IRQn);
+    HAL_NVIC_DisableIRQ(DMA1_Channel5_IRQn);
+    (void)HAL_DMA_DeInit(spiHandle->hdmatx);
 
   /* USER CODE END SPI2_MspDeInit 0 */
     /* Peripheral clock disable */

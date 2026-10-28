@@ -78,6 +78,7 @@ bool display_publish_weather(const weather_data_t *p_data, uint32_t now_tick)
     taskENTER_CRITICAL();
     published = weather_publish(p_data, now_tick);
     if (published) {
+        clock_service_note_sync_success();
         s_select_page_locked(DISPLAY_PAGE_WEATHER);
         s_restart_cycle_locked(now_tick);
     }

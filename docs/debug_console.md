@@ -20,9 +20,9 @@ USART2 使用 H10，PA2 TX / PA3 RX，115200、8N1、3.3V TTL。默认发送现�
 | `FORMAT 12` / `FORMAT 24` | 异步请求保存格式；验证持久化成功后回复 `OK FORMAT 12` / `OK FORMAT 24` |
 | `ERRORS` | 输出活动类别数、故障修订号、保留 EPD 状态；各来源输出当前原因、初次原因、首次完整时间和 tick |
 | `CONSOLE OFF` | 回复 `OK CONSOLE OFF` 成功后清空旧队列，恢复二进制输出 |
-| `WEATHER <record>` | 控制台回复 `OK WEATHER`；完整记录校验成功后原子替换 RAM 天气缓存、选择天气页并重启三分钟轮换计时 |
+| `WEATHER <record>` | 控制台回复 `OK WEATHER`；完整记录校验成功后原子替换 RAM 天气缓存、选择天气页、重启三分钟轮换计时并记录同步成功 |
 | `PAGE WEATHER` / `PAGE CLOCK` | 控制台分别回复 `OK PAGE WEATHER` / `OK PAGE CLOCK`；手动选择目标页面并重启三分钟计时，状态仅保存在 RAM |
-| `TIME YYYY-MM-DDTHH:MM:SS` | 北京时间直接校时；RTC 写入并读回验证成功后，控制台回复 `OK TIME` |
+| `TIME YYYY-MM-DDTHH:MM:SS` | 北京时间直接校时；RTC 写入、同步和读回验证成功后发布模型并记录同步成功，控制台回复 `OK TIME` |
 | `FS STATUS` / `FS LIST /` | 查询文件系统快照或目录；STATUS 的 FLASH 字段保留文件故障的底层原因，文件检查中返回未就绪 |
 | `FS MKDIR /name` / `FS REMOVE /name` / `FS RENAME /old /new` | 异步文件维护 |
 | `FS FORMAT CONFIRM` / `FS SELFTEST CONFIRM` | 分别格式化文件分区或擦写专用自检扇区，上传期间拒绝 |
@@ -39,6 +39,18 @@ USART2 使用 H10，PA2 TX / PA3 RX，115200、8N1、3.3V TTL。默认发送现�
 不改变周期。故障覆盖期间继续更新最终目标，BUSY 期间合并最新画面。详细规则见[天气协议](weather_protocol.md)。
 `OK WEATHER` 和 `OK PAGE ...` 表示缓存或页面选择已接受；`OK FORMAT ...` 表示格式已验证保存；`OK TIME` 表示 RTC
 写入、同步及读回验证已完成。这些应答均不表示屏幕刷新已经完成。
+
+完整有效 WEATHER（包括重复包）和已验证成功的 TIME 都会把时钟页 `WIFI` 同步时间重置为 `0h ago`。启动无记录为 `N/A`，满一小时为 `1h ago`，达到100小时后保持 `99h+` 到下一次成功。记录仅存RAM，重启清空，失败保留此前记录；由单调tick计时，RTC或天气来源时间不改变经过时长。默认静默模式也记录成功，应答发送失败不撤销记录。仅接受TIME请求、参数错误、忙拒绝、RTC失败、PAGE、FORMAT、文件维护和普通串口流量不计入。
+
+串口助手用UTF-8并添加实际CRLF；逐行发送并分别等待 `OK CONSOLE ON`、`OK WEATHER`、`OK PAGE CLOCK`，待时钟画面完成后检查 `WIFI` 为 `0h ago`：
+
+```text
+CONSOLE ON
+WEATHER 深圳,2,235,180,270,65,2,35,2026-10-28T14:30
+PAGE CLOCK
+```
+
+天气提交会先选择天气页，返回时钟页后才显示该格；故障页也会隐藏它。`WIFI` 表示距上次成功同步的时间，不增加联网、信号强度或断线判断。独立TIME验收、整小时边界及刷新规则见[天气协议的同步记录说明](weather_protocol.md#wifi-同步记录与验收示例)与[校时协议](time_protocol.md#wifi-同步记录)。
 
 `ERRORS` 的 active/first 是十六进制位掩码，依次为 IO=001、CONFIG=002、
 TIMEOUT=004、ID=008、VERIFY=010、START=020、TX=040、RX=080、OVERFLOW=100。

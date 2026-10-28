@@ -16,6 +16,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
+if ([Console]::IsOutputRedirected) {
+    [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+}
 if (-not $PSBoundParameters.ContainsKey('Root')) {
     # Windows PowerShell 5.1 may not populate PSScriptRoot during parameter defaults.
     $Root = Split-Path -Parent $PSScriptRoot
@@ -304,7 +307,7 @@ function Invoke-KeilCleanup {
             Remove-Item -LiteralPath $current.FullName -ErrorAction Stop
             $deletedCount++
             $deletedBytes += $file.Length
-            if ($Details) { Write-Host ('已删除：' + $file.FullName) }
+            Write-Host ('已删除：' + $file.FullName)
         } catch {
             $failureCount++
             Write-Host ('清理失败：' + $file.FullName + ': ' + $_.Exception.Message) -ForegroundColor Yellow
@@ -316,10 +319,20 @@ function Invoke-KeilCleanup {
     return 0
 }
 
+$runStartedAt = [DateTimeOffset]::UtcNow.ToOffset([TimeSpan]::FromHours(8))
+$runTimer = [Diagnostics.Stopwatch]::StartNew()
+$runLabel = if ($Preview) { '预览' } else { '清理' }
+Write-Host ('{0}开始时间：{1}' -f $runLabel, $runStartedAt.ToString('yyyy-MM-dd HH:mm:ss zzz'))
+$result = 1
 try {
     $result = Invoke-KeilCleanup
-    exit $result
 } catch {
     Write-Host ('清理中止：' + $_.Exception.Message) -ForegroundColor Red
-    exit 1
+    $result = 1
+} finally {
+    $runTimer.Stop()
+    $runEndedAt = [DateTimeOffset]::UtcNow.ToOffset([TimeSpan]::FromHours(8))
+    Write-Host ('{0}结束时间：{1}' -f $runLabel, $runEndedAt.ToString('yyyy-MM-dd HH:mm:ss zzz'))
+    Write-Host ('{0}总耗时：{1:F3} 秒' -f $runLabel, $runTimer.Elapsed.TotalSeconds)
 }
+exit $result

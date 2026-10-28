@@ -109,6 +109,7 @@ DeskClock.ioc      # CubeMX 工程配置
 - USART2 默认 JustFloat；WEATHER、PAGE 和 TIME 命令在两种串口模式下均可接收，JustFloat 模式静默处理；显式 `CONSOLE ON` 后暂停遥测并启用控制台应答，支持 FORMAT、ERRORS、WEATHER、PAGE 和 TIME。TIME 使用北京时间整秒，RTC 写入及读回验证完成后才应答，详见 `docs/time_protocol.md`；板载 ESP32 的 USART1 尚未接入该业务。weather 数据只缓存在 RAM；storageTask 独占配置事务，预留 W25Q 最后两个独立扇区，不可与启动测试区混用。
 - `Debug_Log()` 当前为空实现，不能期待文字启动日志。EPD 自身状态通过控制台 `ERRORS` 或调试器查看。DBG TX故障及恢复只影响遥测和完整诊断；显示使用独立故障快照过滤该位，不能因发送超时触发全刷或覆盖时钟/天气页。RX、溢出及其他业务故障沿用原上屏规则。
 - USART2 TX 使用 DMA1 Channel7 / Request2 普通模式，DMA与USART2 IRQ均为优先级5。debugTask独占发送，平台用独立静态信号量等待UART TC（15 ms参数），同步返回前完成或中止TX，缓冲区不可提前复用；RX继续使用单字节中断和1024字节环形缓冲。CubeMX重新生成时核对DMA句柄关联、初始化顺序和两个中断入口。
+- SPI2 TX 使用 DMA1 Channel5 / Request1 普通模式，DMA与SPI2 IRQ均为优先级5。displayTask独占，平台用屏幕专用静态信号量同步等待SPI线传输完成；栈命令及灰阶编码块只能在完成或确认DMA停止后复用。错误回调唤醒等待，超时/错误仅清理本DMA通道并恢复SPI2，长轮询留在临界区外以保留USART2 RX。SPI完成后仍须等待屏幕BUSY，再提交刷新和休眠。CubeMX再生成须核对USER兼容块与生成定义，详见显示移植文档。
 - `STORAGE_BOOT_TEST_ENABLE` 默认0，正常启动不擦写自检区。`FS SELFTEST CONFIRM` 仅擦写 `0x0000F000..0x0000FFFF`；配置在 `0x00FFE000`、`0x00FFF000`，littlefs在 `0x00400000..0x00FFDFFF`，前4MiB预留OTA/维护。首屏等待时钟轮询和配置ready，不等待文件空白检查；不自动格式化，使用 `FS FORMAT CONFIRM`。USART2文件维护和Python工具见 `docs/filesystem.md`；屏幕按littlefs分配块显示容量，物理小时扫描保留为独立诊断。
 
 ## 分层边界（必须严格遵守）

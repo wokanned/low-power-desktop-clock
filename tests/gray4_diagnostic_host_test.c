@@ -89,6 +89,23 @@ void clock_service_get_model(clock_view_model_t *p_model)
     CHECK(0);
 }
 
+void clock_service_note_sync_success(void) { CHECK(0); }
+
+bool weather_publish(const weather_data_t *p_data, uint32_t now_tick)
+{
+    (void)p_data;
+    (void)now_tick;
+    CHECK(0);
+    return false;
+}
+
+void weather_get_snapshot(uint32_t now_tick, weather_snapshot_t *p_snapshot)
+{
+    (void)now_tick;
+    (void)p_snapshot;
+    CHECK(0);
+}
+
 static int32_t fake_write(void *p_handle, const uint8_t *p_data,
                           uint32_t length, uint32_t timeout_ms)
 {

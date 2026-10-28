@@ -476,7 +476,6 @@ static uint8_t s_draw(weather_canvas_t *p_canvas,
     uint8_t hour;
     uint8_t source_month;
     uint8_t source_day;
-    uint8_t text_length;
 
     if ((p_weather->available != 0U) && (p_weather->data.condition > 13U)) { return 0U; }
     if (p_weather->available != 0U && p_weather->data.city == WEATHER_CITY_ZHANJIANG) {
@@ -531,9 +530,6 @@ static uint8_t s_draw(weather_canvas_t *p_canvas,
         (void)s_draw_text(p_canvas, 8U, 94U, 44U,
                          "\xE6\xB9\xBF\xE5\xBA\xA6");
         s_format_unsigned(text, p_weather->data.humidity);
-        text_length = (uint8_t)strlen(text);
-        text[text_length] = '%';
-        text[text_length + 1U] = '\0';
         (void)s_draw_text(p_canvas, 48U, 94U, 100U, text);
         (void)s_draw_text(p_canvas, 100U, 94U, 136U,
                          "\xE9\xA3\x8E\xE5\x90\x91");
@@ -575,7 +571,7 @@ static uint8_t s_draw(weather_canvas_t *p_canvas,
         (void)s_draw_text(p_canvas, 198U, 72U, 288U, "--.-");
         (void)s_draw_text(p_canvas, 8U, 94U, 44U,
                          "\xE6\xB9\xBF\xE5\xBA\xA6");
-        (void)s_draw_text(p_canvas, 48U, 94U, 92U, "--%");
+        (void)s_draw_text(p_canvas, 48U, 94U, 92U, "--");
         (void)s_draw_text(p_canvas, 100U, 94U, 136U,
                          "\xE9\xA3\x8E\xE5\x90\x91");
         (void)s_draw_text(p_canvas, 140U, 94U, 184U, "--");

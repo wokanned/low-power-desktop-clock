@@ -65,7 +65,9 @@ typedef struct {
 } epd_gdey029t94_refresh_stats_t;
 
 typedef struct {
-    /* 硬件操作由平台适配层注入，使控制器协议不依赖 STM32 HAL 和具体引脚名。 */
+    /* 硬件操作由平台适配层注入，使控制器协议不依赖 STM32 HAL 和具体引脚名。
+       spi_write 必须等发送完成或确认中止后才返回，调用方可能传入栈缓冲区。
+       SPI 发送完成不代表屏幕刷新完成，后者仍由 read_busy 确认。 */
     int32_t (*spi_write)(void *handle,
                          const uint8_t *data,
                          uint32_t length,

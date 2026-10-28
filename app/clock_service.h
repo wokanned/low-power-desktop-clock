@@ -10,6 +10,9 @@ void clock_service_mark_unavailable(void);
 void clock_service_run(void);
 /* One owner-task iteration; also available to host tests. */
 void clock_service_poll(void);
+/* Task-context successful synchronization event. Atomically records the
+ * monotonic tick and publishes WIFI ready/0h; RAM only, cleared by init. */
+void clock_service_note_sync_success(void);
 /* One task-context request at a time, retained until its result is consumed.
  * Returns 0 accepted, -1 busy, -2 owner unavailable, or -3 invalid calendar.
  * Weekday is calculated from the date. The result token must be nonzero. */

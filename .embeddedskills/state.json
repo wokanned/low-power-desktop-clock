@@ -2,9 +2,73 @@
   "last_serial_send": {
     "port": "COM6",
     "baudrate": 115200,
-    "test": "Zhanjiang weather and Beijing TIME",
-    "result": "OK TIME; OK WEATHER; OK PAGE WEATHER; OK CONSOLE OFF",
-    "log": "build/serial-weather-20261028/serial-test.jsonl",
-    "timestamp": "2026-10-28T15:16:28+08:00"
+    "test": "Zhanjiang weather from weather.com.cn and Beijing TIME",
+    "result": "OK TIME; OK WEATHER; OK PAGE WEATHER; OK CONSOLE OFF; ERRORS 0 REV 0 EPD 0",
+    "source": "https://www.weather.com.cn/weather1d/101281001.shtml",
+    "log": "build/serial-weather-cn-20261028/serial-test.jsonl",
+    "timestamp": "2026-10-28T15:54:42+08:00"
+  },
+  "last_serial_diagnostics": {
+    "port": "COM6",
+    "baudrate": 115200,
+    "purpose": "Diagnose W25Q filesystem N/A",
+    "log": "build/serial-fs-com6-20261028-160442/capture.jsonl",
+    "report": "build/serial-fs-com6-20261028-160442/diagnosis.md",
+    "result": "FS STATE 2 RESULT 0 BLOCKS 0/3070 UPLOAD 0 BUSY 0 FLASH 0; ERRORS 0 REV 0 EPD 0",
+    "telemetry_restored": true,
+    "port_closed": true,
+    "firmware_identity": "unknown",
+    "timestamp": "2026-10-28T16:05:27+08:00"
+  },
+  "last_serial_filesystem_format": {
+    "started": "2026-10-28T16:08:27.376789+08:00",
+    "port": "COM6",
+    "baudrate": 115200,
+    "bytesize": 8,
+    "parity": "none",
+    "stopbits": 1,
+    "firmware_identity": "not reported by protocol",
+    "format_sent": true,
+    "format_acknowledged": true,
+    "verified_ready": true,
+    "telemetry_restored": true,
+    "port_closed": true,
+    "initial_telemetry_tails": 39,
+    "before": {
+      "state": 2,
+      "result": 0,
+      "used_blocks": 0,
+      "total_blocks": 3070,
+      "upload": 0,
+      "busy": 0,
+      "flash": 0
+    },
+    "after": {
+      "state": 3,
+      "result": 0,
+      "used_blocks": 2,
+      "total_blocks": 3070,
+      "upload": 0,
+      "busy": 0,
+      "flash": 0
+    },
+    "root_listing": "OK FS\r\n",
+    "errors": "ERRORS 0 REV 0 EPD 0\r\n",
+    "after_recheck": {
+      "state": 3,
+      "result": 0,
+      "used_blocks": 2,
+      "total_blocks": 3070,
+      "upload": 0,
+      "busy": 0,
+      "flash": 0
+    },
+    "display_percent": 1,
+    "restore_acknowledged": true,
+    "restored_telemetry_tails": 38,
+    "finished": "2026-10-28T16:08:29.614549+08:00",
+    "log": "build/serial-fs-format-com6-20261028-160827/capture.jsonl",
+    "summary": "build/serial-fs-format-com6-20261028-160827/summary.json",
+    "timestamp": "2026-10-28T16:08:29+08:00"
   }
 }

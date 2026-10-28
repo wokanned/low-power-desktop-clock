@@ -3,12 +3,47 @@
 #include "main.h"
 #include "spi.h"
 #include "cmsis_os2.h"
+#include "FreeRTOS.h"
+#include "task.h"
+#include "semphr.h"
 
 #include <stddef.h>
 
 #define STM32_EPD_SPI_MAX_TRANSFER       0xFFFFU
 #define STM32_EPD_MS_PER_SECOND          1000U
 #define STM32_EPD_MAX_DELAY_TICKS        0xFFFFFFFEU
+
+static StaticSemaphore_t s_tx_semaphore_control;
+static SemaphoreHandle_t s_tx_semaphore;
+static volatile uint8_t s_tx_active;
+static volatile uint8_t s_tx_waiting;
+static volatile uint8_t s_tx_complete;
+static volatile uint8_t s_tx_failed;
+
+static void stm32_epd_spi_recover(SPI_HandleTypeDef *p_spi)
+{
+    /* Only the SPI2/DMA1 Channel5 IRQs are masked by the caller. HAL abort
+       may poll FIFO/BSY; keep the RTOS tick and USART2 RX interrupts running. */
+    (void)HAL_SPI_Abort(p_spi);
+
+    /* SPI_DMAError clears TXDMAEN before calling ErrorCallback, so SPI abort
+       alone can skip the DMA channel. Stop it even if HAL already says READY. */
+    CLEAR_BIT(p_spi->Instance->CR2, SPI_CR2_TXDMAEN);
+    __HAL_DMA_DISABLE_IT(p_spi->hdmatx, DMA_IT_TC | DMA_IT_HT | DMA_IT_TE);
+    __HAL_DMA_DISABLE(p_spi->hdmatx);
+    (void)HAL_DMA_Abort(p_spi->hdmatx);
+    __HAL_DMA_CLEAR_FLAG(p_spi->hdmatx,
+                         __HAL_DMA_GET_GI_FLAG_INDEX(p_spi->hdmatx));
+    __HAL_SPI_DISABLE(p_spi);
+
+    /* Flush any partially shifted byte/FIFO after a failed transaction.
+       Reset only SPI2: DMA1 Channel7 and USART2 RX remain independent. */
+    __HAL_RCC_SPI2_FORCE_RESET();
+    __HAL_RCC_SPI2_RELEASE_RESET();
+    (void)HAL_SPI_Init(p_spi);
+    HAL_NVIC_ClearPendingIRQ(DMA1_Channel5_IRQn);
+    HAL_NVIC_ClearPendingIRQ(SPI2_IRQn);
+}
 
 static void stm32_epd_write_pin(const stm32_gdey029t94_pin_t *p_pin,
                                 uint8_t level)
@@ -24,24 +59,102 @@ static int32_t stm32_epd_spi_write(void *handle,
 {
     stm32_gdey029t94_context_t *p_context;
     SPI_HandleTypeDef *p_spi;
+    HAL_StatusTypeDef result;
+    BaseType_t completed;
+    uint64_t ticks;
+    uint8_t success;
 
     if ((handle == NULL) || (data == NULL) || (length == 0U) ||
         (length > STM32_EPD_SPI_MAX_TRANSFER) ||
-        (timeout_ms == HAL_MAX_DELAY)) {
+        (timeout_ms == 0U) || (timeout_ms == HAL_MAX_DELAY) ||
+        (__get_IPSR() != 0U) || (__get_PRIMASK() != 0U) ||
+        (__get_BASEPRI() != 0U) ||
+        (xTaskGetSchedulerState() != taskSCHEDULER_RUNNING)) {
         return -1;
     }
     p_context = (stm32_gdey029t94_context_t *)handle;
     p_spi = (SPI_HandleTypeDef *)p_context->spi_handle;
-    if (p_spi == NULL) {
+    if ((p_spi != &hspi2) || (p_spi->hdmatx == NULL)) {
         return -1;
     }
-    /* Synchronous transfer: the driver also passes stack-resident commands.
-       Only the display task owns SPI2 and the controller transaction state. */
-    if (HAL_SPI_Transmit(p_spi, (uint8_t *)data, (uint16_t)length,
-                         timeout_ms) != HAL_OK) {
+
+    ticks = (((uint64_t)timeout_ms * configTICK_RATE_HZ) +
+             STM32_EPD_MS_PER_SECOND - 1U) / STM32_EPD_MS_PER_SECOND;
+    if (ticks > STM32_EPD_MAX_DELAY_TICKS) {
+        ticks = STM32_EPD_MAX_DELAY_TICKS;
+    }
+
+    /* Single owner: displayTask. This synchronous contract retains stack
+       commands and gray4 encoding blocks until wire completion or stop.
+       A private semaphore never consumes RX/page/queue task notifications. */
+    taskENTER_CRITICAL();
+    if (s_tx_active != 0U) {
+        taskEXIT_CRITICAL();
         return -1;
     }
-    return 0;
+    if (s_tx_semaphore == NULL) {
+        s_tx_semaphore = xSemaphoreCreateBinaryStatic(&s_tx_semaphore_control);
+    }
+    if (s_tx_semaphore == NULL) {
+        taskEXIT_CRITICAL();
+        return -1;
+    }
+    (void)xSemaphoreTake(s_tx_semaphore, 0U);
+    s_tx_complete = 0U;
+    s_tx_failed = 0U;
+    s_tx_active = 1U;
+    s_tx_waiting = 1U;
+    result = HAL_SPI_Transmit_DMA(p_spi, (uint8_t *)data, (uint16_t)length);
+    taskEXIT_CRITICAL();
+
+    completed = pdFALSE;
+    if (result == HAL_OK) {
+        completed = xSemaphoreTake(s_tx_semaphore, (TickType_t)ticks);
+    }
+    taskENTER_CRITICAL();
+    success = (uint8_t)((completed == pdTRUE) && (s_tx_complete != 0U) &&
+                        (s_tx_failed == 0U));
+    s_tx_waiting = 0U;
+    if (success == 0U) {
+        /* Freeze only this peripheral's callbacks while aborting outside
+           the critical section. Keep ownership until recovery has finished. */
+        HAL_NVIC_DisableIRQ(DMA1_Channel5_IRQn);
+        HAL_NVIC_DisableIRQ(SPI2_IRQn);
+    }
+    taskEXIT_CRITICAL();
+
+    if (success == 0U) {
+        stm32_epd_spi_recover(p_spi);
+    }
+    taskENTER_CRITICAL();
+    s_tx_active = 0U;
+    if (success == 0U) {
+        HAL_NVIC_EnableIRQ(SPI2_IRQn);
+        HAL_NVIC_EnableIRQ(DMA1_Channel5_IRQn);
+    }
+    taskEXIT_CRITICAL();
+    return (success != 0U) ? 0 : -1;
+}
+
+void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *p_spi)
+{
+    BaseType_t higher_priority = pdFALSE;
+    if ((p_spi != &hspi2) || (s_tx_waiting == 0U)) { return; }
+    /* Normal-mode HAL completion has drained TX FIFO and waited for BSY=0.
+       Panel refresh completion is still the device driver's BUSY wait. */
+    s_tx_complete = 1U;
+    (void)xSemaphoreGiveFromISR(s_tx_semaphore, &higher_priority);
+    portYIELD_FROM_ISR(higher_priority);
+}
+
+void HAL_SPI_ErrorCallback(SPI_HandleTypeDef *p_spi)
+{
+    BaseType_t higher_priority = pdFALSE;
+    if ((p_spi != &hspi2) || (s_tx_waiting == 0U)) { return; }
+    /* Failure stays latched even if a completion was already pending. */
+    s_tx_failed = 1U;
+    (void)xSemaphoreGiveFromISR(s_tx_semaphore, &higher_priority);
+    portYIELD_FROM_ISR(higher_priority);
 }
 
 static int32_t stm32_epd_read_busy(void *handle, uint8_t *busy_level)

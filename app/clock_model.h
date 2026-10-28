@@ -77,7 +77,7 @@ typedef struct {
     clock_memory_mode_t memory_mode;
     clock_field_t temperature; /* tenths of degrees Celsius */
     clock_field_t battery;     /* percent */
-    clock_field_t wifi;        /* elapsed whole hours */
+    clock_field_t wifi;        /* since last sync: whole hours, 100 means 99h+ */
     clock_field_t memory[CLOCK_MEMORY_COUNT]; /* percent */
     clock_fault_snapshot_t faults;
     uint32_t format_revision;

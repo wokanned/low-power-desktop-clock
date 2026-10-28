@@ -43,8 +43,17 @@ static TickType_t s_write_delay;
 static clock_calendar_t s_requested;
 static clock_calendar_t s_injected_calendar;
 static TickType_t s_loop_origin;
+static uint8_t s_sync_on_image;
+static uint8_t s_sync_before_enter;
+static uint8_t s_require_locked_ticks;
 
-TickType_t xTaskGetTickCount(void) { return s_ticks; }
+#define TEST_SYNC_HOUR_TICKS (3600UL * configTICK_RATE_HZ)
+
+TickType_t xTaskGetTickCount(void)
+{
+    if (s_require_locked_ticks != 0U) { assert(s_critical != 0U); }
+    return s_ticks;
+}
 TaskHandle_t xTaskGetCurrentTaskHandle(void) { return &s_task_marker; }
 BaseType_t xTaskNotifyGive(TaskHandle_t task)
 {
@@ -72,6 +81,12 @@ uint32_t ulTaskNotifyTake(BaseType_t clear, TickType_t timeout)
 size_t xPortGetFreeHeapSize(void) { return s_free_heap; }
 void clock_test_enter(void)
 {
+    if (s_critical == 0U && s_sync_before_enter != 0U) {
+        /* A newer success preempts the owner immediately before its lock. */
+        s_sync_before_enter = 0U;
+        s_ticks += 1000U;
+        clock_service_note_sync_success();
+    }
     s_critical++;
     /* Model a task switch immediately before this critical section begins. */
     if (s_preempt_anchor != 0U) {
@@ -139,6 +154,10 @@ int32_t stm32_clock_image_sizes(uint32_t *p_sram, uint32_t *p_flash)
                (model.faults.source[CLOCK_FAULT_RTC].active_mask != 0U));
     }
     *p_sram = s_linked_sram; *p_flash = s_image_flash;
+    if (s_sync_on_image != 0U) {
+        s_sync_on_image = 0U;
+        s_sync_before_enter = 1U;
+    }
     return s_image_result;
 }
 void storage_get_config_snapshot(storage_config_snapshot_t *p_config)
@@ -520,10 +539,128 @@ static void s_time_reset(TickType_t ticks)
     s_notify_calls = 0U;
     s_wait_count = 0U;
     s_wait_hook = NULL;
+    s_sync_on_image = 0U;
+    s_sync_before_enter = 0U;
+    s_require_locked_ticks = 0U;
     s_calendar = (clock_calendar_t){2026U, 10U, 27U, 2U, 9U, 0U, 0U};
     s_config.ready = 1U;
     s_config.format = CLOCK_FORMAT_24;
     clock_service_init();
+}
+
+static void s_assert_sync(clock_data_state_t state, int32_t hours)
+{
+    clock_view_model_t model;
+    clock_service_get_model(&model);
+    assert(model.wifi.state == state && model.wifi.value == hours);
+}
+
+static void s_test_sync_age(void)
+{
+    TickType_t origin;
+    s_time_reset(123U);
+    s_assert_sync(CLOCK_DATA_UNAVAILABLE, 0);
+    s_ticks += TEST_SYNC_HOUR_TICKS * 100U;
+    clock_service_poll();
+    s_assert_sync(CLOCK_DATA_UNAVAILABLE, 0);
+    s_require_locked_ticks = 1U;
+    clock_service_note_sync_success();
+    s_require_locked_ticks = 0U;
+    s_assert_sync(CLOCK_DATA_READY, 0);
+    s_ticks += TEST_SYNC_HOUR_TICKS - 1U;
+    clock_service_poll();
+    s_assert_sync(CLOCK_DATA_READY, 0);
+    s_ticks++;
+    clock_service_poll();
+    s_assert_sync(CLOCK_DATA_READY, 1);
+    s_ticks += TEST_SYNC_HOUR_TICKS;
+    clock_service_poll();
+    s_assert_sync(CLOCK_DATA_READY, 2);
+    /* Every valid success, including a duplicate, starts a new full hour. */
+    clock_service_note_sync_success();
+    s_assert_sync(CLOCK_DATA_READY, 0);
+    s_ticks += TEST_SYNC_HOUR_TICKS - 1U;
+    clock_service_poll();
+    s_assert_sync(CLOCK_DATA_READY, 0);
+    s_ticks++;
+    clock_service_poll();
+    s_assert_sync(CLOCK_DATA_READY, 1);
+    /* RTC jumps and read failures cannot move the monotonic success anchor. */
+    s_calendar = (clock_calendar_t){2000U, 1U, 1U, 6U, 0U, 0U, 0U};
+    clock_service_poll();
+    s_assert_sync(CLOCK_DATA_READY, 1);
+    s_calendar = (clock_calendar_t){2099U, 12U, 31U, 4U, 23U, 59U, 59U};
+    clock_service_poll();
+    s_assert_sync(CLOCK_DATA_READY, 1);
+    s_rtc_result = -1;
+    s_ticks += TEST_SYNC_HOUR_TICKS;
+    clock_service_poll();
+    s_assert_sync(CLOCK_DATA_READY, 2);
+    s_rtc_result = 0;
+    clock_service_poll();
+    s_assert_sync(CLOCK_DATA_READY, 2);
+
+    s_time_reset(UINT32_MAX - 500U);
+    origin = s_ticks;
+    clock_service_note_sync_success();
+    s_ticks = origin + TEST_SYNC_HOUR_TICKS - 1U;
+    clock_service_poll();
+    s_assert_sync(CLOCK_DATA_READY, 0);
+    s_ticks++;
+    clock_service_poll();
+    s_assert_sync(CLOCK_DATA_READY, 1);
+    s_ticks = origin + TEST_SYNC_HOUR_TICKS * 99U;
+    clock_service_poll();
+    s_assert_sync(CLOCK_DATA_READY, 99);
+    s_ticks = origin + TEST_SYNC_HOUR_TICKS * 100U - 1U;
+    clock_service_poll();
+    s_assert_sync(CLOCK_DATA_READY, 99);
+    s_ticks++;
+    clock_service_poll();
+    s_assert_sync(CLOCK_DATA_READY, 100);
+    /* Many later polls and a whole additional tick wrap keep 99h+ latched. */
+    s_ticks += TEST_SYNC_HOUR_TICKS;
+    clock_service_poll();
+    s_assert_sync(CLOCK_DATA_READY, 100);
+    s_ticks = origin + 10U;
+    clock_service_poll();
+    s_assert_sync(CLOCK_DATA_READY, 100);
+    clock_service_note_sync_success();
+    s_assert_sync(CLOCK_DATA_READY, 0);
+    clock_service_init();
+    clock_service_poll();
+    s_assert_sync(CLOCK_DATA_UNAVAILABLE, 0);
+}
+
+static void s_test_sync_concurrency(void)
+{
+    TickType_t origin;
+    s_time_reset(100U);
+    /* Sampling outside the API's critical section would store an old tick. */
+    s_sync_before_enter = 1U;
+    clock_service_note_sync_success();
+    origin = s_ticks;
+    s_ticks = origin + TEST_SYNC_HOUR_TICKS - 1U;
+    clock_service_poll();
+    s_assert_sync(CLOCK_DATA_READY, 0);
+    s_ticks++;
+    clock_service_poll();
+    s_assert_sync(CLOCK_DATA_READY, 1);
+
+    /* The owner sampled its memory tick, then another task records success.
+     * Reusing that old tick for age would underflow and incorrectly saturate. */
+    s_ticks += 10000U;
+    s_sync_on_image = 1U;
+    clock_service_poll();
+    assert(s_sync_on_image == 0U && s_sync_before_enter == 0U);
+    origin = s_ticks;
+    s_assert_sync(CLOCK_DATA_READY, 0);
+    s_ticks = origin + TEST_SYNC_HOUR_TICKS - 1U;
+    clock_service_poll();
+    s_assert_sync(CLOCK_DATA_READY, 0);
+    s_ticks++;
+    clock_service_poll();
+    s_assert_sync(CLOCK_DATA_READY, 1);
 }
 
 static void s_test_debug_tx_isolation(void)
@@ -683,6 +820,78 @@ static void s_bind_time_owner(void)
 {
     s_run_until_stop();
     assert(s_critical == 0U && s_wait_count == 1U);
+}
+
+static void s_test_sync_time(void)
+{
+    clock_calendar_t requested = {2028U, 2U, 29U, 0U, 10U, 0U, 0U};
+    TickType_t origin;
+    int32_t result;
+    s_time_reset(500U);
+    s_bind_time_owner();
+    s_assert_sync(CLOCK_DATA_UNAVAILABLE, 0);
+    assert(clock_service_request_time(NULL, 1U) == -3);
+    assert(clock_service_request_time(&requested, 0U) == -3);
+    assert(clock_service_request_time(&requested, 1U) == 0);
+    s_assert_sync(CLOCK_DATA_UNAVAILABLE, 0);
+    assert(clock_service_request_time(&requested, 2U) == -1);
+    s_write_result = -7;
+    clock_service_poll();
+    assert(clock_service_take_time_result(1U, &result) == 1U && result == -7);
+    s_assert_sync(CLOCK_DATA_UNAVAILABLE, 0);
+    s_write_result = 0;
+    s_bad_verified = 1U;
+    assert(clock_service_request_time(&requested, 2U) == 0);
+    clock_service_poll();
+    assert(clock_service_take_time_result(2U, &result) == 1U && result == -2);
+    s_assert_sync(CLOCK_DATA_UNAVAILABLE, 0);
+    s_bad_verified = 0U;
+    s_write_delay = 2500U;
+    assert(clock_service_request_time(&requested, 3U) == 0);
+    clock_service_poll();
+    assert(clock_service_take_time_result(3U, &result) == 1U && result == 0);
+    s_assert_sync(CLOCK_DATA_READY, 0);
+    origin = s_ticks;
+    s_ticks = origin + TEST_SYNC_HOUR_TICKS - 1U;
+    clock_service_poll();
+    s_assert_sync(CLOCK_DATA_READY, 0);
+    s_ticks++;
+    clock_service_poll();
+    s_assert_sync(CLOCK_DATA_READY, 1);
+    s_write_delay = 0U;
+    requested.year = 2000U;
+    assert(clock_service_request_time(&requested, 4U) == 0);
+    s_assert_sync(CLOCK_DATA_READY, 1);
+    assert(clock_service_request_time(&requested, 5U) == -1);
+    s_assert_sync(CLOCK_DATA_READY, 1);
+    s_write_result = -1;
+    clock_service_poll();
+    assert(clock_service_take_time_result(4U, &result) == 1U && result == -1);
+    s_assert_sync(CLOCK_DATA_READY, 1);
+    s_ticks += TEST_SYNC_HOUR_TICKS;
+    clock_service_poll();
+    s_assert_sync(CLOCK_DATA_READY, 2);
+    s_write_result = 0;
+    assert(clock_service_request_time(&requested, 5U) == 0);
+    clock_service_poll();
+    assert(clock_service_take_time_result(5U, &result) == 1U && result == 0);
+    s_assert_sync(CLOCK_DATA_READY, 0);
+    s_ticks += TEST_SYNC_HOUR_TICKS;
+    clock_service_poll();
+    s_assert_sync(CLOCK_DATA_READY, 1);
+    requested.year = 2096U;
+    assert(clock_service_request_time(&requested, 6U) == 0);
+    clock_service_poll();
+    assert(clock_service_take_time_result(6U, &result) == 1U && result == 0);
+    s_assert_sync(CLOCK_DATA_READY, 0);
+    s_ticks += TEST_SYNC_HOUR_TICKS;
+    clock_service_poll();
+    s_assert_sync(CLOCK_DATA_READY, 1);
+    assert(clock_service_request_time(&requested, 7U) == 0);
+    clock_service_mark_unavailable();
+    assert(clock_service_take_time_result(7U, &result) == 1U && result == -1);
+    assert(clock_service_request_time(&requested, 8U) == -2);
+    s_assert_sync(CLOCK_DATA_READY, 1);
 }
 
 static void s_test_time_requests(void)
@@ -899,10 +1108,13 @@ int main(void)
     s_test_schedule();
     s_test_service();
     s_test_usage_snapshot();
+    s_test_sync_age();
+    s_test_sync_concurrency();
     s_test_debug_tx_isolation();
+    s_test_sync_time();
     s_test_time_requests();
     s_test_time_loop();
     assert(s_critical == 0U);
-    (void)puts("clock runtime: dates, faults, schedule, cached service, W25Q snapshots, diagnostic-only TX, TIME mailbox/ownership, fault latch/recovery and notify/deadline/wrap passed");
+    (void)puts("clock runtime: dates, faults, schedule, cached service, W25Q snapshots, diagnostic-only TX, TIME mailbox/ownership, fault latch/recovery, notify/deadline/wrap and sync age/boundaries/saturation/atomicity/reset passed");
     return 0;
 }

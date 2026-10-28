@@ -29,7 +29,9 @@ $scenarios = @('startup', 'minute', 'time-jump', 'weather-time-jump', 'rtc-error
     'memory-phase-weather', 'fault-page-hidden', 'page-revert', 'weather-revert',
     'weather-coalesce', 'weather-retry', 'weather-expiry', 'debug-tx', 'debug-tx-weather',
     'cycle-default', 'cycle-weather', 'cycle-manual', 'cycle-wrap', 'cycle-time',
-    'cycle-expired', 'cycle-late', 'cycle-busy', 'cycle-fault')
+    'cycle-expired', 'cycle-late', 'cycle-busy', 'cycle-fault',
+    'wifi-visible', 'wifi-saturated', 'wifi-weather-hidden', 'wifi-fault-hidden',
+    'wifi-coalesce', 'wifi-revert', 'weather-sync-contract')
 foreach ($gray4 in @(0, 1)) {
     & $Compiler '-std=c99' '-Wall' '-Wextra' '-Werror' '-pedantic' '-O2' `
         '-DEPD_VENDOR_DEMO_MODE=0' "-DEPD_CLOCK_USE_GRAY4=$gray4" `

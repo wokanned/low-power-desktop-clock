@@ -8,6 +8,7 @@ typedef struct {
     uint32_t fault_revision;
     uint32_t format_revision;
     uint32_t completed_ms;
+    int32_t wifi_hours;
     clock_memory_mode_t next_memory;
     uint8_t has_frame;
     uint8_t calendar_ready;

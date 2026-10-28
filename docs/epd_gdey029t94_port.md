@@ -2,7 +2,7 @@
 
 更新时间：2026-10-28。返回[文档导航](README.md)。工程总进度见 [totalPLAN.md 的“当前开发状态”](totalPLAN.md#当前开发状态2026-10-27)。本文件维护显示接口、默认行为和分版本验证记录；界面和刷新契约见 [clock_gray4_ui.md](clock_gray4_ui.md)，串口接入分别见[天气协议](weather_protocol.md)和[校时协议](time_protocol.md)。
 
-当前源码已接入黑白时钟、串口注入天气页、三分钟页面轮换和 USART2 秒级校时；默认 `EPD_VENDOR_DEMO_MODE=0`、`EPD_CLOCK_USE_GRAY4=0`。10月27日集成后的主机测试与完整Keil构建保留在下文分版本记录；本轮轮换的最新构建及身份统一见[验证记录](测试数据.md)。轮换版本尚未烧录，整机板测仍待完成。下文历史构建和实屏记录保留各自日期，不代替当前镜像的板上验证。
+当前源码已接入黑白时钟、串口注入天气页、三分钟页面轮换、USART2 秒级校时和WIFI同步记录；默认 `EPD_VENDOR_DEMO_MODE=0`、`EPD_CLOCK_USE_GRAY4=0`。本轮改用SPI2 TX DMA，独立信号量等待及异常恢复、真实设备驱动BUSY语义和UART接收隔离的主机验证通过，默认/模式7完整Keil重建均0错误/0警告；最新镜像身份统一见[验证记录](测试数据.md)。尚未烧录，整机板测仍待完成。下文历史构建和实屏记录保留各自日期，不代替当前镜像的板上验证。
 
 ## 范围与来源
 
@@ -78,7 +78,11 @@ PC2 的 SPI2 MISO 仍保留既有配置，但主板显示接口未接该信号�
 ## SPI、延时与 RTC
 
 - SPI2 使用 PC3 MOSI、PB10 SCK，AF5。预分频设为 32，当前 80MHz 外设时钟得到 2.5MHz；`DeskClock.ioc` 和 `Core/Src/spi.c` 保持同步。
-- 平台使用同步 `HAL_SPI_Transmit`，当前未使用 DMA。调用期间由显示任务持有总线与命令状态，传输长度和超时有界。
+- SPI2 TX 使用 DMA1 Channel5 / Request1、普通模式、字节传输与内存递增，DMA 和 SPI2 IRQ 均为优先级5。`spi_write()` 仍同步返回，显示任务在独立静态二值信号量上等待 `HAL_SPI_TxCpltCallback`，等待期间让出 CPU，不消费任务通知，也不使用 USART2 的发送信号量。
+- 命令和四灰阶编码块可来自栈。普通模式下 HAL 会先等待 TX FIFO 空、SPI BSY 清除，再调用发送完成回调，此时才允许返回并切换 CS/DC。SPI 发送完成之后，驱动仍执行屏幕 BUSY 等待；只有 BUSY 成功结束才更新背景、刷新计数和已显示快照，并继续休眠。
+- 启动失败、发送超时或 DMA/SPI 错误均返回 IO 错误；错误回调唤醒等待任务，失败状态不被迟到完成覆盖。恢复期间只屏蔽 SPI2 和 DMA1 Channel5 IRQ，在任务上下文同步中止发送、显式关闭并清理本 DMA 通道，再单独复位并初始化 SPI2。返回前 DMA 已停止，栈缓冲区可释放。USART2 TX/RX、DMA1 Channel7 和接收通知继续运行；不重放可能已到达屏幕的部分事务，由显示任务沿用复位与有限重试。
+- DMA 发送仅允许在调度器运行、非 ISR 且中断未屏蔽的任务上下文调用。超时沿用驱动的有限毫秒参数；不增加任务、动态分配或帧缓冲副本。
+- 本次 Core 配置和 IRQ 分发只添加在 USER CODE 区域，`.ioc` 同步记录 SPI2_TX 拓扑。下一次 CubeMX 生成后，应将 `hdma_spi2_tx`、MSP DMA 初始化/反初始化及 `DMA1_Channel5_IRQHandler`、`SPI2_IRQHandler` 统一到生成实现，删除重复的 USER 实现；保留平台 HAL 回调和独立信号量。核对 DMA 先于 SPI 初始化、Channel5/Request1、普通模式、IRQ优先级5及 USART2 Channel7，然后完整重建，避免重复 IRQ 定义。
 - 调度器运行且处于任务上下文时，平台毫秒延时转换为 RTOS tick 并调用 `osDelay`，BUSY 轮询不会持续占用 CPU。调度器启动前使用 HAL 延时。显示接口不允许从 ISR 调用。
 - HAL 毫秒时间来自 TIM17，FreeRTOS 内核 tick 使用 SysTick，沿用基础工程的时基分工。
 - RTC 读时间后继续读日期以释放影子寄存器锁，并校验时分秒范围。
