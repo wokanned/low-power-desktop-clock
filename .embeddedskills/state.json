@@ -1,0 +1,10 @@
+{
+  "last_serial_send": {
+    "port": "COM6",
+    "baudrate": 115200,
+    "test": "Zhanjiang weather and Beijing TIME",
+    "result": "OK TIME; OK WEATHER; OK PAGE WEATHER; OK CONSOLE OFF",
+    "log": "build/serial-weather-20261028/serial-test.jsonl",
+    "timestamp": "2026-10-28T15:16:28+08:00"
+  }
+}

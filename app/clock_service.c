@@ -223,6 +223,6 @@ void clock_service_get_model(clock_view_model_t *p_model)
             p_model->memory[CLOCK_MEMORY_W25Q].state = CLOCK_DATA_ERROR;
         }
     }
-    clock_faults_get_snapshot(&p_model->faults);
+    clock_faults_get_display_snapshot(&p_model->faults);
     taskEXIT_CRITICAL();
 }

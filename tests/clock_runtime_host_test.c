@@ -526,6 +526,154 @@ static void s_time_reset(TickType_t ticks)
     clock_service_init();
 }
 
+static void s_test_debug_tx_isolation(void)
+{
+    clock_fault_snapshot_t diagnostic;
+    clock_fault_snapshot_t displayed;
+    clock_fault_snapshot_t before;
+    clock_view_model_t model;
+    clock_schedule_t schedule;
+
+    s_time_reset(0U);
+    clock_service_poll();
+    clock_service_get_model(&model);
+    assert(model.startup_ready != 0U && model.faults.active_categories == 0U);
+    clock_schedule_init(&schedule);
+    clock_schedule_commit(&schedule, &model, s_ticks);
+    clock_faults_get_display_snapshot(NULL);
+    clock_faults_get_display_snapshot(&before);
+
+    /* TX failure and recovery remain diagnostic even between display polls. */
+    s_ticks = 100U;
+    clock_fault_report(CLOCK_FAULT_DEBUG, CLOCK_FAULT_TX);
+    clock_faults_get_snapshot(&diagnostic);
+    assert(diagnostic.revision == 1U && diagnostic.active_categories == 1U);
+    assert(diagnostic.source[CLOCK_FAULT_DEBUG].active_mask == CLOCK_FAULT_TX);
+    assert(diagnostic.source[CLOCK_FAULT_DEBUG].first_mask == CLOCK_FAULT_TX);
+    assert(diagnostic.source[CLOCK_FAULT_DEBUG].first_tick == 100U);
+    clock_service_get_model(&model);
+    assert(memcmp(&model.faults, &before, sizeof(before)) == 0);
+    assert(clock_schedule_due(&schedule, &model, s_ticks) == 0U);
+    s_ticks = 200U;
+    clock_fault_report(CLOCK_FAULT_DEBUG, CLOCK_FAULT_TX);
+    clock_faults_get_snapshot(&diagnostic);
+    assert(diagnostic.revision == 1U);
+    s_ticks = 300U;
+    clock_fault_report(CLOCK_FAULT_DEBUG, 0U);
+    clock_faults_get_snapshot(&diagnostic);
+    assert(diagnostic.revision == 2U && diagnostic.active_categories == 0U);
+    assert(diagnostic.source[CLOCK_FAULT_DEBUG].active_mask == 0U);
+    assert(diagnostic.source[CLOCK_FAULT_DEBUG].first_mask == CLOCK_FAULT_TX);
+    assert(diagnostic.source[CLOCK_FAULT_DEBUG].first_tick == 100U);
+    clock_faults_get_display_snapshot(&displayed);
+    assert(memcmp(&displayed, &before, sizeof(before)) == 0);
+    clock_service_get_model(&model);
+    assert(clock_schedule_due(&schedule, &model, s_ticks) == 0U);
+
+    /* A TX fault still present at the minute boundary cannot select ERRORS. */
+    s_ticks = 400U;
+    clock_fault_report(CLOCK_FAULT_DEBUG, CLOCK_FAULT_TX);
+    s_ticks = 1000U;
+    s_calendar.minute++;
+    clock_service_poll();
+    clock_service_get_model(&model);
+    assert(memcmp(&model.faults, &before, sizeof(before)) == 0);
+    assert(clock_schedule_due(&schedule, &model, s_ticks) != 0U);
+    clock_schedule_commit(&schedule, &model, s_ticks);
+    assert(clock_schedule_due(&schedule, &model, s_ticks) == 0U);
+
+    /* RX starts a separate visible episode, with its own reason and time. */
+    s_ticks = 1500U;
+    clock_fault_report(CLOCK_FAULT_DEBUG, CLOCK_FAULT_TX | CLOCK_FAULT_RX);
+    clock_faults_get_snapshot(&diagnostic);
+    clock_service_get_model(&model);
+    assert(diagnostic.source[CLOCK_FAULT_DEBUG].first_tick == 400U);
+    assert(diagnostic.source[CLOCK_FAULT_DEBUG].first_mask == CLOCK_FAULT_TX);
+    assert(model.faults.source[CLOCK_FAULT_DEBUG].active_mask == CLOCK_FAULT_RX);
+    assert(model.faults.source[CLOCK_FAULT_DEBUG].first_mask == CLOCK_FAULT_RX);
+    assert(model.faults.source[CLOCK_FAULT_DEBUG].first_tick == 1500U);
+    assert(model.faults.source[CLOCK_FAULT_DEBUG].time_valid != 0U);
+    assert(model.faults.source[CLOCK_FAULT_DEBUG].first_time.minute == s_calendar.minute);
+    assert(model.faults.category[CLOCK_CATEGORY_SYSTEM].first_tick == 1500U);
+    assert(model.faults.active_categories == 1U);
+    assert(clock_schedule_due(&schedule, &model, s_ticks) != 0U);
+    clock_schedule_commit(&schedule, &model, s_ticks);
+    before = model.faults;
+    s_ticks = 1600U;
+    clock_fault_report(CLOCK_FAULT_DEBUG, CLOCK_FAULT_RX);
+    s_ticks = 1700U;
+    clock_fault_report(CLOCK_FAULT_DEBUG, CLOCK_FAULT_RX | CLOCK_FAULT_TX);
+    clock_service_get_model(&model);
+    assert(memcmp(&model.faults, &before, sizeof(before)) == 0);
+    assert(clock_schedule_due(&schedule, &model, s_ticks) == 0U);
+
+    s_ticks = 1800U;
+    clock_fault_report(CLOCK_FAULT_DEBUG,
+        CLOCK_FAULT_TX | CLOCK_FAULT_RX | CLOCK_FAULT_OVERFLOW);
+    clock_service_get_model(&model);
+    assert(model.faults.source[CLOCK_FAULT_DEBUG].active_mask ==
+        (CLOCK_FAULT_RX | CLOCK_FAULT_OVERFLOW));
+    assert(model.faults.source[CLOCK_FAULT_DEBUG].first_mask == CLOCK_FAULT_RX);
+    assert(model.faults.source[CLOCK_FAULT_DEBUG].first_tick == 1500U);
+    assert(clock_schedule_due(&schedule, &model, s_ticks) != 0U);
+    clock_schedule_commit(&schedule, &model, s_ticks);
+
+    /* Other SYSTEM faults retain their aggregation and first-episode time. */
+    s_ticks = 1900U;
+    clock_fault_report(CLOCK_FAULT_TASK, CLOCK_FAULT_START);
+    clock_service_get_model(&model);
+    assert(model.faults.category[CLOCK_CATEGORY_SYSTEM].source_bits ==
+        ((1UL << CLOCK_FAULT_TASK) | (1UL << CLOCK_FAULT_DEBUG)));
+    assert(model.faults.active_categories == 1U);
+    assert(model.faults.category[CLOCK_CATEGORY_SYSTEM].first_tick == 1500U);
+    assert(clock_schedule_due(&schedule, &model, s_ticks) != 0U);
+    clock_schedule_commit(&schedule, &model, s_ticks);
+    s_ticks = 2000U;
+    clock_fault_report(CLOCK_FAULT_DEBUG, 0U);
+    clock_service_get_model(&model);
+    assert(model.faults.category[CLOCK_CATEGORY_SYSTEM].source_bits ==
+        (1UL << CLOCK_FAULT_TASK));
+    assert(model.faults.category[CLOCK_CATEGORY_SYSTEM].first_tick == 1500U);
+    assert(model.faults.source[CLOCK_FAULT_DEBUG].first_mask == CLOCK_FAULT_RX);
+    assert(clock_schedule_due(&schedule, &model, s_ticks) != 0U);
+    clock_schedule_commit(&schedule, &model, s_ticks);
+    before = model.faults;
+    s_ticks = 2100U;
+    clock_fault_report(CLOCK_FAULT_DEBUG, CLOCK_FAULT_TX);
+    clock_service_get_model(&model);
+    assert(memcmp(&model.faults, &before, sizeof(before)) == 0);
+    assert(clock_schedule_due(&schedule, &model, s_ticks) == 0U);
+    s_ticks = 2200U;
+    clock_fault_report(CLOCK_FAULT_RTC, CLOCK_FAULT_IO);
+    clock_service_get_model(&model);
+    assert(model.faults.active_categories == 2U);
+    assert(model.faults.source[CLOCK_FAULT_RTC].active_mask == CLOCK_FAULT_IO);
+    assert(clock_schedule_due(&schedule, &model, s_ticks) != 0U);
+    clock_schedule_commit(&schedule, &model, s_ticks);
+    before = model.faults;
+    s_ticks = 2300U;
+    clock_fault_report(CLOCK_FAULT_DEBUG, 0U);
+    clock_service_get_model(&model);
+    assert(memcmp(&model.faults, &before, sizeof(before)) == 0);
+    assert(clock_schedule_due(&schedule, &model, s_ticks) == 0U);
+    s_ticks = 2400U;
+    clock_fault_report(CLOCK_FAULT_TASK, 0U);
+    s_ticks = 2500U;
+    clock_fault_report(CLOCK_FAULT_RTC, 0U);
+    clock_service_get_model(&model);
+    assert(model.faults.active_categories == 0U);
+    assert(clock_schedule_due(&schedule, &model, s_ticks) != 0U);
+    clock_schedule_commit(&schedule, &model, s_ticks);
+
+    s_ticks = 2600U;
+    clock_fault_report(CLOCK_FAULT_DEBUG, CLOCK_FAULT_OVERFLOW);
+    clock_service_get_model(&model);
+    assert(model.faults.source[CLOCK_FAULT_DEBUG].first_mask == CLOCK_FAULT_OVERFLOW);
+    assert(model.faults.source[CLOCK_FAULT_DEBUG].first_tick == 2600U);
+    assert(model.faults.category[CLOCK_CATEGORY_SYSTEM].first_tick == 2600U);
+    assert(clock_schedule_due(&schedule, &model, s_ticks) != 0U);
+}
+
 static void s_run_until_stop(void)
 {
     if (setjmp(s_run_exit) == 0) { clock_service_run(); }
@@ -751,9 +899,10 @@ int main(void)
     s_test_schedule();
     s_test_service();
     s_test_usage_snapshot();
+    s_test_debug_tx_isolation();
     s_test_time_requests();
     s_test_time_loop();
     assert(s_critical == 0U);
-    (void)puts("clock runtime: dates, faults, schedule, cached service, W25Q snapshots, TIME mailbox/ownership, fault latch/recovery and notify/deadline/wrap passed");
+    (void)puts("clock runtime: dates, faults, schedule, cached service, W25Q snapshots, diagnostic-only TX, TIME mailbox/ownership, fault latch/recovery and notify/deadline/wrap passed");
     return 0;
 }

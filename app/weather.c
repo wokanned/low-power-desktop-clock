@@ -6,6 +6,7 @@
 #include <string.h>
 
 #define WEATHER_EXPIRY_TICKS ((uint32_t)configTICK_RATE_HZ * 10800UL)
+#define WEATHER_TICK_HALF_RANGE 0x80000000UL
 
 static weather_snapshot_t s_weather;
 static uint32_t s_last_valid_tick;
@@ -168,8 +169,11 @@ static void s_revision_bump(void)
 
 static uint8_t s_expire_locked(uint32_t now_tick)
 {
+    uint32_t elapsed = (uint32_t)(now_tick - s_last_valid_tick);
+    /* A reader may sample its tick just before another task publishes.
+       Ignore that older sample instead of expiring the new record. */
     if ((s_weather.available == 0U) || (s_weather.expired != 0U) ||
-        ((uint32_t)(now_tick - s_last_valid_tick) < WEATHER_EXPIRY_TICKS)) {
+        (elapsed < WEATHER_EXPIRY_TICKS) || (elapsed >= WEATHER_TICK_HALF_RANGE)) {
         return 0U;
     }
     s_weather.expired = 1U;

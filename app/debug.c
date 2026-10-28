@@ -155,7 +155,7 @@ static void debug_command(debug_command_t command)
             if (s_console_active != 0U) { (void)debug_send_text("ERR WEATHER\r\n"); }
             return;
         }
-        if (!weather_publish(&weather, (uint32_t)xTaskGetTickCount())) {
+        if (!display_publish_weather(&weather, (uint32_t)xTaskGetTickCount())) {
             if (s_console_active != 0U) { (void)debug_send_text("ERR WEATHER\r\n"); }
             return;
         }
@@ -177,7 +177,7 @@ static void debug_command(debug_command_t command)
     }
     if (s_console_active == 0U) {
         if (command != DEBUG_COMMAND_ON) { return; }
-        /* This task parses only between complete blocking TX operations. */
+        /* This task parses only after DMA TX reaches UART TC (or is aborted). */
         taskENTER_CRITICAL();
         s_console_active = 1U;
         (void)xQueueReset(s_debug_queue);

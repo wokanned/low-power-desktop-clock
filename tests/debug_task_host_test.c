@@ -26,6 +26,8 @@ static uint32_t s_storage_requests;
 static uint32_t s_fault_mask;
 static uint32_t s_send_failure;
 static display_page_t s_selected_page = DISPLAY_PAGE_CLOCK;
+static uint32_t s_weather_publications;
+static uint32_t s_last_weather_tick;
 static char s_boundary_input[256];
 static uint32_t s_time_token;
 static uint32_t s_time_requests;
@@ -188,7 +190,7 @@ static void make_boundary_input(void)
     static const char s_before[] = "FORMAT 12\nERRORS\n";
     static const char s_prefix[] = "WEATHER \xE6\xB7\xB1\xE5\x9C\xB3,";
     static const char s_suffix[] = "2,235,180,270,65,2,35,2026-10-26T10:30";
-    static const char s_after[] = "\nPAGE WEATHER\n";
+    static const char s_after[] = "\n";
     uint32_t offset = (uint32_t)strlen(s_before);
     uint32_t prefix_length = (uint32_t)strlen(s_prefix);
     uint32_t suffix_length = (uint32_t)strlen(s_suffix);
@@ -250,6 +252,7 @@ uint32_t ulTaskNotifyTake(BaseType_t clear, TickType_t wait)
             assert(snapshot.available == 1U && snapshot.fresh == 1U);
             assert(snapshot.data.temperature_tenths == 235);
             assert(s_selected_page == DISPLAY_PAGE_WEATHER);
+            assert(s_weather_publications == 1U && s_last_weather_tick == 20U);
         }
         s_input = "CONSOLE ON\r\n";
         break;
@@ -270,6 +273,7 @@ uint32_t ulTaskNotifyTake(BaseType_t clear, TickType_t wait)
         assert(strstr(s_output, "ERR WEATHER\r\nOK WEATHER\r\nOK PAGE CLOCK\r\n") != NULL);
         assert(strstr(s_output, "ERR BUSY\r\nERR BUSY\r\n") != NULL);
         assert(s_selected_page == DISPLAY_PAGE_CLOCK);
+        assert(s_weather_publications == 2U && s_last_weather_tick == 60U);
         {
             weather_snapshot_t snapshot;
             weather_get_snapshot(xTaskGetTickCount(), &snapshot);
@@ -281,15 +285,21 @@ uint32_t ulTaskNotifyTake(BaseType_t clear, TickType_t wait)
         break;
     case 5U:
         assert(strstr(s_output, "OK FORMAT 12\r\n") != NULL);
-        s_input = "ERRORS\n";
+        s_input = "ERRORS\nWEATHER invalid\n";
         break;
     case 6U:
         assert(strstr(s_output, "ERRORS 1 REV 3 EPD -2\r\n") != NULL);
         assert(strstr(s_output, "RTC active=001 first=001 2026-10-18 12:34:56 tick=42") != NULL);
-        s_input = "FORMAT 24\n";
+        assert(strstr(s_output, "ERR WEATHER\r\n") != NULL);
+        assert(s_weather_publications == 2U && s_selected_page == DISPLAY_PAGE_CLOCK);
+        s_input = "FORMAT 24\nWEATHER "
+            "\xE6\xB7\xB1\xE5\x9C\xB3,2,236,180,270,65,2,35,2026-10-26T10:31\n";
         break;
     case 7U:
         assert(s_storage_requests == 2U && strstr(s_output, "OK FORMAT 24") == NULL);
+        /* Even an identical valid packet selects weather again while FORMAT is pending. */
+        assert(s_weather_publications == 3U && s_last_weather_tick == 120U);
+        assert(s_selected_page == DISPLAY_PAGE_WEATHER);
         s_config.completed_token = s_requested_token;
         s_config.completed_result = -5;
         break;
@@ -406,6 +416,15 @@ uint8_t clock_service_take_time_result(uint32_t token, int32_t *p_result)
 }
 epd_gdey029t94_status_t display_get_last_status(void)
 { return (epd_gdey029t94_status_t)-2; }
+bool display_publish_weather(const weather_data_t *p_data, uint32_t now_tick)
+{
+    assert(now_tick == xTaskGetTickCount());
+    if (!weather_publish(p_data, now_tick)) { return false; }
+    s_selected_page = DISPLAY_PAGE_WEATHER;
+    s_last_weather_tick = now_tick;
+    s_weather_publications++;
+    return true;
+}
 bool display_select_page(display_page_t page)
 {
     if (s_step == 3U) {

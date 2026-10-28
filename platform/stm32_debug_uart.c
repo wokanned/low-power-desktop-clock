@@ -1,10 +1,22 @@
 #include "stm32_debug_uart.h"
 #include "usart.h"
+#include "FreeRTOS.h"
+#include "task.h"
+#include "semphr.h"
 
 #define DEBUG_UART_TIMEOUT_MS 15U
 #define DEBUG_UART_RING_SIZE 1024U
 #define DEBUG_UART_RING_MASK (DEBUG_UART_RING_SIZE - 1U)
 #define DEBUG_UART_IRQ_PRIORITY 5U
+#define DEBUG_UART_RX_ERROR_MASK (HAL_UART_ERROR_PE | HAL_UART_ERROR_NE | \
+                                  HAL_UART_ERROR_FE | HAL_UART_ERROR_ORE | \
+                                  HAL_UART_ERROR_RTO)
+
+static StaticSemaphore_t s_tx_semaphore_control;
+static SemaphoreHandle_t s_tx_semaphore;
+static volatile uint8_t s_tx_active;
+static volatile uint8_t s_tx_complete;
+static volatile uint8_t s_tx_failed;
 
 static uint8_t s_rx_ring[DEBUG_UART_RING_SIZE];
 static uint8_t s_rx_byte;
@@ -18,11 +30,61 @@ static stm32_debug_uart_notify_t s_notify;
 
 bool stm32_debug_uart_send(void *p_handle, const uint8_t *p_data, uint16_t len)
 {
+    HAL_StatusTypeDef result;
+    BaseType_t completed;
+    bool success;
     (void)p_handle;
-    if (p_data == NULL || len == 0U) { return false; }
-    /* Single UART owner: the debug task. No replay after a partial transfer. */
-    return HAL_UART_Transmit(&huart2, (uint8_t *)p_data, len,
-                             DEBUG_UART_TIMEOUT_MS) == HAL_OK;
+    if (p_data == NULL || len == 0U || huart2.hdmatx == NULL ||
+        __get_IPSR() != 0U || __get_PRIMASK() != 0U || __get_BASEPRI() != 0U ||
+        xTaskGetSchedulerState() != taskSCHEDULER_RUNNING) { return false; }
+
+    /* Single owner: debugTask. Retain the caller's buffer until UART TC or abort.
+       A separate semaphore leaves RX/queue task notifications untouched. */
+    taskENTER_CRITICAL();
+    if (s_tx_active != 0U) {
+        taskEXIT_CRITICAL();
+        return false;
+    }
+    if (s_tx_semaphore == NULL) {
+        s_tx_semaphore = xSemaphoreCreateBinaryStatic(&s_tx_semaphore_control);
+    }
+    if (s_tx_semaphore == NULL) {
+        taskEXIT_CRITICAL();
+        return false;
+    }
+    (void)xSemaphoreTake(s_tx_semaphore, 0U);
+    s_tx_complete = 0U;
+    s_tx_failed = 0U;
+    s_tx_active = 1U;
+    result = HAL_UART_Transmit_DMA(&huart2, p_data, len);
+    taskEXIT_CRITICAL();
+
+    completed = pdFALSE;
+    if (result == HAL_OK) {
+        completed = xSemaphoreTake(s_tx_semaphore,
+                                   pdMS_TO_TICKS(DEBUG_UART_TIMEOUT_MS));
+    }
+    taskENTER_CRITICAL();
+    success = completed == pdTRUE && s_tx_complete != 0U && s_tx_failed == 0U;
+    if (!success) {
+        /* TX-only abort stops DMA before the caller can reuse its buffer.
+           This L4 HAL abort has no polling wait. Mask both UART/DMA IRQs so
+           DMA completion cannot re-enable TCIE midway through the abort. */
+        (void)HAL_UART_AbortTransmit(&huart2);
+    }
+    s_tx_active = 0U;
+    taskEXIT_CRITICAL();
+    return success;
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *p_uart)
+{
+    BaseType_t higher_priority = pdFALSE;
+    if (p_uart != &huart2 || s_tx_active == 0U) { return; }
+    /* Normal DMA completion only enables TC IRQ; this callback is wire-complete. */
+    s_tx_complete = 1U;
+    (void)xSemaphoreGiveFromISR(s_tx_semaphore, &higher_priority);
+    portYIELD_FROM_ISR(higher_priority);
 }
 
 bool stm32_debug_uart_rx_start(stm32_debug_uart_notify_t notify)
@@ -57,7 +119,7 @@ bool stm32_debug_uart_rx_recover(void)
     if (s_rx_restart == 0U) { return true; }
     irq_state = __get_PRIMASK();
     __disable_irq();
-    /* Receive-only abort preserves an unrelated blocking transmit. */
+    /* Receive-only abort preserves an unrelated DMA transmit. */
     (void)HAL_UART_AbortReceive(&huart2);
     __HAL_UART_CLEAR_FLAG(&huart2, UART_CLEAR_PEF | UART_CLEAR_FEF |
                          UART_CLEAR_NEF | UART_CLEAR_OREF);
@@ -90,7 +152,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *p_uart)
 {
     if (p_uart != &huart2) { return; }
     /* HAL may invoke RxCplt before ErrorCallback for the same damaged byte. */
-    if (p_uart->ErrorCode == HAL_UART_ERROR_NONE) {
+    if ((p_uart->ErrorCode & DEBUG_UART_RX_ERROR_MASK) == 0U) {
         if (s_rx_discard != 0U) {
             if (s_rx_byte == '\n' || s_rx_byte == '\r') { s_rx_discard = 0U; }
         } else if ((uint16_t)(s_rx_head - s_rx_tail) >= DEBUG_UART_RING_SIZE) {
@@ -113,7 +175,17 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *p_uart)
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *p_uart)
 {
+    BaseType_t higher_priority = pdFALSE;
+    uint32_t errors;
     if (p_uart != &huart2) { return; }
+    errors = p_uart->ErrorCode;
+    /* USART2 RX is interrupt-driven, so a DMA error belongs to TX only. */
+    if ((errors & HAL_UART_ERROR_DMA) != 0U && s_tx_active != 0U) {
+        s_tx_failed = 1U;
+        (void)xSemaphoreGiveFromISR(s_tx_semaphore, &higher_priority);
+        portYIELD_FROM_ISR(higher_priority);
+    }
+    if ((errors & DEBUG_UART_RX_ERROR_MASK) == 0U) { return; }
     /* Save the error before HAL clears ErrorCode or any receive rearm. */
     s_rx_errors |= STM32_DEBUG_UART_RX_ERROR;
     s_rx_tail = s_rx_head;

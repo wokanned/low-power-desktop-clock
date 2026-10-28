@@ -11,6 +11,8 @@
 #define DISPLAY_TASK_STACK_WORDS (DISPLAY_TASK_STACK_BYTES / sizeof(StackType_t))
 #define DISPLAY_START_ATTEMPTS   3U
 #define DISPLAY_RETRY_DELAY_MS   1000U
+#define DISPLAY_PAGE_INTERVAL_TICKS ((uint32_t)configTICK_RATE_HZ * 180UL)
+#define DISPLAY_TICK_HALF_RANGE 0x80000000UL
 
 /* One owner for the controller, canvas, frame buffers and refresh policy. */
 static StackType_t s_display_stack[DISPLAY_TASK_STACK_WORDS];
@@ -21,6 +23,42 @@ static volatile epd_gdey029t94_status_t s_display_last_status =
 static volatile bool s_display_stopped;
 static display_page_t s_selected_page = DISPLAY_PAGE_CLOCK;
 static uint32_t s_page_revision;
+static uint32_t s_page_since_tick;
+static bool s_page_cycle_started;
+
+static void s_select_page_locked(display_page_t page)
+{
+    if (s_selected_page != page) {
+        s_selected_page = page;
+        s_page_revision++;
+        if (s_page_revision == 0U) { s_page_revision = 1U; }
+    }
+}
+
+static void s_restart_cycle_locked(uint32_t now_tick)
+{
+    s_page_since_tick = now_tick;
+    s_page_cycle_started = true;
+}
+
+static void s_poll_page_locked(uint32_t now_tick)
+{
+    uint32_t elapsed;
+    if (!s_page_cycle_started) {
+        s_restart_cycle_locked(now_tick);
+        return;
+    }
+    elapsed = (uint32_t)(now_tick - s_page_since_tick);
+    /* A snapshot tick sampled before a concurrent request is stale. */
+    if ((elapsed < DISPLAY_PAGE_INTERVAL_TICKS) ||
+        (elapsed >= DISPLAY_TICK_HALF_RANGE)) {
+        return;
+    }
+    s_select_page_locked(s_selected_page == DISPLAY_PAGE_CLOCK ?
+                         DISPLAY_PAGE_WEATHER : DISPLAY_PAGE_CLOCK);
+    /* Skip missed turns after a blocking refresh; never replay old pages. */
+    s_restart_cycle_locked(now_tick);
+}
 
 bool display_select_page(display_page_t page)
 {
@@ -28,19 +66,30 @@ bool display_select_page(display_page_t page)
         return false;
     }
     taskENTER_CRITICAL();
-    if (s_selected_page != page) {
-        s_selected_page = page;
-        s_page_revision++;
-        if (s_page_revision == 0U) { s_page_revision = 1U; }
-    }
+    s_select_page_locked(page);
+    s_restart_cycle_locked((uint32_t)xTaskGetTickCount());
     taskEXIT_CRITICAL();
     return true;
+}
+
+bool display_publish_weather(const weather_data_t *p_data, uint32_t now_tick)
+{
+    bool published;
+    taskENTER_CRITICAL();
+    published = weather_publish(p_data, now_tick);
+    if (published) {
+        s_select_page_locked(DISPLAY_PAGE_WEATHER);
+        s_restart_cycle_locked(now_tick);
+    }
+    taskEXIT_CRITICAL();
+    return published;
 }
 
 void display_get_snapshot(uint32_t now_tick, display_snapshot_t *p_snapshot)
 {
     if (p_snapshot == NULL) { return; }
     taskENTER_CRITICAL();
+    s_poll_page_locked(now_tick);
     p_snapshot->page = s_selected_page;
     p_snapshot->page_revision = s_page_revision;
     clock_service_get_model(&p_snapshot->clock);
@@ -138,6 +187,11 @@ bool display_start(void)
     if (s_display_task != NULL) {
         return true;
     }
+    taskENTER_CRITICAL();
+    if (!s_page_cycle_started) {
+        s_restart_cycle_locked((uint32_t)xTaskGetTickCount());
+    }
+    taskEXIT_CRITICAL();
     s_display_task = osThreadNew(s_display_run, NULL, &attributes);
     if (s_display_task == NULL) {
         s_display_last_status = EPD_GDEY029T94_ERROR_STATE;

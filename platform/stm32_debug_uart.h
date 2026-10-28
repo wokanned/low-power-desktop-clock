@@ -5,6 +5,9 @@
 #define STM32_DEBUG_UART_RX_ERROR 1UL
 #define STM32_DEBUG_UART_RX_OVERFLOW 2UL
 typedef void (*stm32_debug_uart_notify_t)(void);
+/* debugTask only, with scheduler/interrupts enabled. Waits for DMA + UART TC
+   (15 ms timeout); failure aborts TX before return, without replay or RX abort.
+   The caller retains the buffer and may reuse it only after this call returns. */
 bool stm32_debug_uart_send(void *p_handle, const uint8_t *p_data, uint16_t len);
 /* Call from the debug task; the callback is invoked only in USART2 IRQ. */
 bool stm32_debug_uart_rx_start(stm32_debug_uart_notify_t notify);

@@ -22,7 +22,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Debug task build failed' }
 & $taskExe
 if ($LASTEXITCODE -ne 0) { throw 'Debug task tests failed' }
 $uartExe = Join-Path $OutputDirectory 'debug_uart_host_test.exe'
-& $Compiler '-std=c99' '-Wall' '-Wextra' '-Werror' '-pedantic' '-O2' `
+& $Compiler '-std=c99' '-Wall' '-Wextra' '-Werror' '-pedantic' '-O2' '-DTEST_DEBUG_UART_CRITICAL' `
     "-I$root/tests/stubs/debug" "-I$root/platform" `
     (Join-Path $root 'tests/debug_uart_host_test.c') `
     (Join-Path $root 'platform/stm32_debug_uart.c') '-o' $uartExe

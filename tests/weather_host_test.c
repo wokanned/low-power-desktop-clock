@@ -17,6 +17,37 @@ static void reject(const char *p_line)
     assert(memcmp(&data, &before, sizeof(data)) == 0);
 }
 
+static void check_stale_snapshot_ticks(const weather_data_t *p_data)
+{
+    /* The second sample was taken before tick wrap, but publication was after. */
+    static const uint32_t starts[] = { 1000U, 32U };
+    weather_snapshot_t snapshot;
+    uint32_t revision;
+    uint32_t i;
+    for (i = 0U; i < (uint32_t)(sizeof(starts) / sizeof(starts[0])); i++) {
+        uint32_t start = starts[i];
+        uint32_t stale_tick = start - 40U;
+        weather_init();
+        assert(weather_publish(p_data, start));
+        weather_get_snapshot(start, &snapshot);
+        revision = snapshot.revision;
+        assert(!weather_poll_expiry(stale_tick));
+        weather_get_snapshot(stale_tick, &snapshot);
+        assert(snapshot.available == 1U && snapshot.fresh == 1U);
+        assert(snapshot.expired == 0U && snapshot.revision == revision);
+        assert(snapshot.data.city == p_data->city);
+
+        /* Stale reads must neither expire the record nor move its deadline. */
+        weather_get_snapshot(start + EXPIRY_TICKS - 1U, &snapshot);
+        assert(snapshot.fresh == 1U && snapshot.revision == revision);
+        assert(weather_poll_expiry(start + EXPIRY_TICKS));
+        weather_get_snapshot(start + EXPIRY_TICKS, &snapshot);
+        assert(snapshot.fresh == 0U && snapshot.expired == 1U);
+        assert(snapshot.revision == revision + 1U);
+        assert(!weather_poll_expiry(start + EXPIRY_TICKS + 1U));
+    }
+}
+
 int main(void)
 {
     static const char *const invalid[] = {
@@ -85,6 +116,8 @@ int main(void)
     assert(snapshot.revision == revision + 2U);
     assert(snapshot.data.city == WEATHER_CITY_ZHANJIANG);
 
+    check_stale_snapshot_ticks(&shenzhen);
+
     weather_init();
     start = 0xFFFFFFFFUL - 500U;
     assert(weather_publish(&shenzhen, start));
@@ -96,6 +129,6 @@ int main(void)
     shenzhen.wind_direction = 9U;
     assert(!weather_publish(&shenzhen, start + EXPIRY_TICKS + 1U));
 
-    puts("PASS: weather protocol validation, atomic replacement, duplicate timer reset and tick wrap");
+    puts("PASS: weather protocol, atomic replacement, duplicate reset, stale ticks and expiry across wrap");
     return 0;
 }
