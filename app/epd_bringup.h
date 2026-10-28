@@ -41,6 +41,9 @@ epd_gdey029t94_status_t epd_bringup_run_once(void);
 epd_gdey029t94_status_t epd_bringup_run_clock(void);
 epd_gdey029t94_status_t epd_bringup_get_last_status(void);
 uint32_t epd_bringup_get_completed_frames(void);
+/* Counts physical activations, including driver cleanup; two successful
+ * windows are two partial refreshes but one completed application frame. */
+void epd_bringup_get_refresh_stats(epd_gdey029t94_refresh_stats_t *p_stats);
 
 #ifdef __cplusplus
 }

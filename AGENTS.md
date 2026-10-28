@@ -99,7 +99,7 @@ DeskClock.ioc      # CubeMX 工程配置
 - 复用远端 `EinKTest` 的设备驱动、GUI、字库和资源，不得随意重构协议或资源。`device/` 保持不依赖 HAL；`platform/stm32_gdey029t94` 负责绑定 SPI2、控制引脚和延时。
 - `app/display` 独占显示控制器、帧缓冲区和全局 `Paint` 画布。在 RTOS 初始化阶段通过 `display_start()` 启动。禁止从其他任务或 ISR 调用绘制、演示或刷新函数。
 - `app/weather` 只在 RAM 中缓存经校验的完整天气消息并跟踪单调 tick 过期状态；`app/display` 合并选中页面、天气与时钟为一致快照，天气渲染由 `app/epd_weather_view` 完成。启动默认时钟页，此后每三分钟切换时钟/天气页；每个有效 `WEATHER`（含重复包）原子更新缓存、选择天气页并重启轮换计时，非法包不影响计时。手动 `PAGE`（含同页）也重计三分钟；周期使用单调 tick，不受 RTC 校时影响。切页或天气页可见内容变化触发全刷，相同天气页画面仅重计时不追加全刷；BUSY 和故障覆盖沿用最新目标合并。串口协议见 `docs/weather_protocol.md`。
-- `app/epd_bringup` 的生产时钟默认黑白分钟全刷：每帧复位、黑白初始化、完整图像写入并同步旧图 RAM、F7 激活、BUSY 完成后提交和休眠。字模边缘按半覆盖阈值二值化，结构线保持实黑。`EPD_CLOCK_USE_GRAY4=1` 可选择原四灰阶路径；默认0。错误集合或持久化格式变化申请额外全刷；快刷/局刷仅保留在演示与诊断路径。
+- `app/epd_bringup` 的生产黑白连续显示按分钟更新：正常时钟分别局刷时间区和内存格，天气页只局刷页头时间，保留 `HH:MM` 与内存轮换。首帧、切页、日期/时制/天气内容/故障变化和异常恢复全刷；允许区域外有像素变化也回退全刷。完整渲染后与最后成功背景比较，窗口按控制器坐标8像素对齐，时间与内存分别激活，全部BUSY成功后才提交和推进内存轮换。正常同页期间保持控制器唤醒，切页结束旧会话后重新初始化并全刷；三分钟切页是正常残影清理，驱动120次局刷计数只是长期停留同页的兜底。字模仍按半覆盖阈值二值化；`EPD_CLOCK_USE_GRAY4=1`、模式7和单次显示入口保留原全刷/休眠行为。真实刷新统计通过 `epd_bringup_get_refresh_stats()` 只读查询。
 - 正式时钟使用 `EPD_VENDOR_DEMO_MODE=0`，头文件及 Keil 当前默认均为0，并统一设置 `EPD_CLOCK_USE_GRAY4=0`。模式7仍保留专用四灰阶诊断页，刷新和休眠成功后保留画面，仅挂起显示任务，不进入时钟；模式1–6为原厂演示，完成后进入所选格式的时钟。两个宏独立，必须在整个工程统一设置，编号见显示移植文档。当前实屏四灰阶验收未通过，不将其解释为面板确定不支持。
 - 显示启动/恢复最多尝试三次，失败后间隔一秒再尝试。尝试耗尽后记录保留的状态，并仅挂起显示任务。调度器启动后，平台延时通过 RTOS 让出执行权。
 - 墨水屏持续供电，初始化、错误恢复和休眠策略均不控制显示供电开关。前光独立控制方式仍待确认。
@@ -109,7 +109,7 @@ DeskClock.ioc      # CubeMX 工程配置
 - USART2 默认 JustFloat；WEATHER、PAGE 和 TIME 命令在两种串口模式下均可接收，JustFloat 模式静默处理；显式 `CONSOLE ON` 后暂停遥测并启用控制台应答，支持 FORMAT、ERRORS、WEATHER、PAGE 和 TIME。TIME 使用北京时间整秒，RTC 写入及读回验证完成后才应答，详见 `docs/time_protocol.md`；板载 ESP32 的 USART1 尚未接入该业务。weather 数据只缓存在 RAM；storageTask 独占配置事务，预留 W25Q 最后两个独立扇区，不可与启动测试区混用。
 - `Debug_Log()` 当前为空实现，不能期待文字启动日志。EPD 自身状态通过控制台 `ERRORS` 或调试器查看。DBG TX故障及恢复只影响遥测和完整诊断；显示使用独立故障快照过滤该位，不能因发送超时触发全刷或覆盖时钟/天气页。RX、溢出及其他业务故障沿用原上屏规则。
 - USART2 TX 使用 DMA1 Channel7 / Request2 普通模式，DMA与USART2 IRQ均为优先级5。debugTask独占发送，平台用独立静态信号量等待UART TC（15 ms参数），同步返回前完成或中止TX，缓冲区不可提前复用；RX继续使用单字节中断和1024字节环形缓冲。CubeMX重新生成时核对DMA句柄关联、初始化顺序和两个中断入口。
-- SPI2 TX 使用 DMA1 Channel5 / Request1 普通模式，DMA与SPI2 IRQ均为优先级5。displayTask独占，平台用屏幕专用静态信号量同步等待SPI线传输完成；栈命令及灰阶编码块只能在完成或确认DMA停止后复用。错误回调唤醒等待，超时/错误仅清理本DMA通道并恢复SPI2，长轮询留在临界区外以保留USART2 RX。SPI完成后仍须等待屏幕BUSY，再提交刷新和休眠。CubeMX再生成须核对USER兼容块与生成定义，详见显示移植文档。
+- SPI2 TX 使用 DMA1 Channel5 / Request1 普通模式，DMA与SPI2 IRQ均为优先级5。displayTask独占，平台用屏幕专用静态信号量同步等待SPI线传输完成；栈命令及灰阶编码块只能在完成或确认DMA停止后复用。错误回调唤醒等待，超时/错误仅清理本DMA通道并恢复SPI2，长轮询留在临界区外以保留USART2 RX。SPI完成后仍须等待屏幕BUSY，再提交；是否休眠由对应显示会话决定。CubeMX再生成须核对USER兼容块与生成定义，详见显示移植文档。
 - `STORAGE_BOOT_TEST_ENABLE` 默认0，正常启动不擦写自检区。`FS SELFTEST CONFIRM` 仅擦写 `0x0000F000..0x0000FFFF`；配置在 `0x00FFE000`、`0x00FFF000`，littlefs在 `0x00400000..0x00FFDFFF`，前4MiB预留OTA/维护。首屏等待时钟轮询和配置ready，不等待文件空白检查；不自动格式化，使用 `FS FORMAT CONFIRM`。USART2文件维护和Python工具见 `docs/filesystem.md`；屏幕按littlefs分配块显示容量，物理小时扫描保留为独立诊断。
 
 ## 分层边界（必须严格遵守）

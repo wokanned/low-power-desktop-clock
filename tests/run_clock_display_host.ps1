@@ -9,7 +9,6 @@ if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
 }
 $testOutput = [IO.Path]::GetFullPath($OutputDirectory)
 New-Item -ItemType Directory -Path $testOutput -Force | Out-Null
-$testExecutable = Join-Path $testOutput 'clock_display_host_test.exe'
 $testSources = @(
     (Join-Path $projectRoot 'tests\clock_display_host_test.c'),
     (Join-Path $projectRoot 'app\epd_bringup.c'),
@@ -33,6 +32,7 @@ $scenarios = @('startup', 'minute', 'time-jump', 'weather-time-jump', 'rtc-error
     'wifi-visible', 'wifi-saturated', 'wifi-weather-hidden', 'wifi-fault-hidden',
     'wifi-coalesce', 'wifi-revert', 'weather-sync-contract')
 foreach ($gray4 in @(0, 1)) {
+    $testExecutable = Join-Path $testOutput "clock_display_host_test_gray4_$gray4.exe"
     & $Compiler '-std=c99' '-Wall' '-Wextra' '-Werror' '-pedantic' '-O2' `
         '-DEPD_VENDOR_DEMO_MODE=0' "-DEPD_CLOCK_USE_GRAY4=$gray4" `
         '-I' $stubDirectory @testSources '-o' $testExecutable

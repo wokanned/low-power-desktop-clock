@@ -24,11 +24,13 @@
 #define TEST_PROFILE EPD_PROFILE_GRAY4
 #define TEST_DRAW epd_clock_view_draw_gray4
 #define TEST_REFRESH epd_gdey029t94_gray4_refresh
+#define COMPLETED_SEQUENCE_SLEEPS(count) (count)
 #else
 #define TEST_FRAME_BYTES EPD_CLOCK_VIEW_BW_BYTES
 #define TEST_PROFILE EPD_PROFILE_BW_296
 #define TEST_DRAW epd_clock_view_draw_bw
 #define TEST_REFRESH epd_gdey029t94_full_refresh
+#define COMPLETED_SEQUENCE_SLEEPS(count) ((count)-1U)
 #endif
 #define CHECK(condition) do { \
     s_checks++; \
@@ -161,16 +163,23 @@ epd_gdey029t94_status_t epd_gdey029t94_init_profile(
     CHECK(p_device!=NULL && p_io!=NULL);
     CHECK(profile==TEST_PROFILE);
     CHECK(s_live.startup_ready==1U);
+    CHECK(p_device->initialized==0U || p_device->sleeping!=0U);
     s_init_calls++;
-    if(scenario("init-retry") && s_init_calls<3U) { return EPD_GDEY029T94_ERROR_IO; }
+    p_device->io=*p_io;
     p_device->profile=profile;
-    p_device->initialized=1U;
+    p_device->initialized=0U;
     p_device->sleeping=0U;
+    p_device->background_valid=0U;
+    p_device->fast_initialized=0U;
+    p_device->refreshes_since_full=0U;
+    if(scenario("init-retry") && s_init_calls<3U) { return EPD_GDEY029T94_ERROR_IO; }
+    p_device->initialized=1U;
     return EPD_GDEY029T94_OK;
 }
 
-epd_gdey029t94_status_t TEST_REFRESH(
-    epd_gdey029t94_t *p_device,const uint8_t *p_frame,uint32_t length)
+static epd_gdey029t94_status_t mock_refresh(
+    epd_gdey029t94_t *p_device,const uint8_t *p_frame,uint32_t length,
+    uint8_t partial)
 {
     uint8_t fail=0U;
     uint32_t before=epd_bringup_get_completed_frames();
@@ -263,22 +272,82 @@ epd_gdey029t94_status_t TEST_REFRESH(
         if(fail!=0U) { publish_weather(s_tick, (uint8_t)(s_refreshes+3U)); }
     }
     CHECK(epd_bringup_get_completed_frames()==before);
-    if(fail) { return EPD_GDEY029T94_ERROR_BUSY_TIMEOUT; }
+    if(fail) {
+        p_device->initialized=0U;
+        p_device->background_valid=0U;
+        p_device->fast_initialized=0U;
+        return EPD_GDEY029T94_ERROR_BUSY_TIMEOUT;
+    }
     if(s_renders!=0U) {
         s_committed_models[s_committed]=s_render_models[s_renders-1U];
     }
     s_committed++;
-    p_device->full_refreshes++;
+    if(partial!=0U) {
+        p_device->partial_refreshes++;
+        p_device->refreshes_since_full++;
+    } else {
+        p_device->full_refreshes++;
+        p_device->refreshes_since_full=0U;
+    }
+#if !EPD_CLOCK_USE_GRAY4
+    memcpy(p_device->background_image,p_frame,length);
+    p_device->background_valid=1U;
+#endif
+    return EPD_GDEY029T94_OK;
+}
+
+epd_gdey029t94_status_t TEST_REFRESH(
+    epd_gdey029t94_t *p_device,const uint8_t *p_frame,uint32_t length)
+{
+    return mock_refresh(p_device,p_frame,length,0U);
+}
+
+epd_gdey029t94_status_t epd_gdey029t94_partial_refresh(
+    epd_gdey029t94_t *p_device,const epd_gdey029t94_rect_t *p_window,
+    const uint8_t *p_image,uint32_t image_length)
+{
+    uint8_t frame[EPD_GDEY029T94_FRAME_BUFFER_SIZE];
+    uint32_t row;
+    uint32_t row_bytes;
+    CHECK(p_device!=NULL && p_window!=NULL && p_image!=NULL);
+    CHECK(p_device->profile==EPD_PROFILE_BW_296);
+    CHECK(p_device->initialized==1U && p_device->sleeping==0U);
+    CHECK(p_device->background_valid==1U);
+    CHECK(p_window->width!=0U && p_window->height!=0U);
+    CHECK(p_window->x%8U==0U && p_window->width%8U==0U);
+    CHECK((uint32_t)p_window->x+p_window->width<=EPD_GDEY029T94_WIDTH_PIXELS);
+    CHECK((uint32_t)p_window->y+p_window->height<=EPD_GDEY029T94_HEIGHT_PIXELS);
+    row_bytes=p_window->width/8U;
+    CHECK(image_length==row_bytes*p_window->height);
+    memcpy(frame,p_device->background_image,sizeof(frame));
+    for(row=0U;row<p_window->height;row++) {
+        memcpy(frame+((uint32_t)p_window->y+row)*EPD_GDEY029T94_BYTES_PER_ROW+
+                   p_window->x/8U,p_image+row*row_bytes,row_bytes);
+    }
+    return mock_refresh(p_device,frame,sizeof(frame),1U);
+}
+
+epd_gdey029t94_status_t epd_gdey029t94_get_refresh_stats(
+    const epd_gdey029t94_t *p_device,epd_gdey029t94_refresh_stats_t *p_stats)
+{
+    CHECK(p_device!=NULL && p_stats!=NULL);
+    p_stats->full_refreshes=p_device->full_refreshes;
+    p_stats->fast_refreshes=p_device->fast_refreshes;
+    p_stats->partial_refreshes=p_device->partial_refreshes;
+    p_stats->refreshes_since_full=p_device->refreshes_since_full;
     return EPD_GDEY029T94_OK;
 }
 
 epd_gdey029t94_status_t epd_gdey029t94_sleep(epd_gdey029t94_t *p_device)
 {
     CHECK(p_device!=NULL);
+    CHECK(p_device->initialized==1U && p_device->sleeping==0U);
     s_sleeps++;
     CHECK(epd_bringup_get_completed_frames()==s_committed);
     CHECK(s_sleeps==s_committed);
     if(scenario("sleep-failure") && s_sleeps==1U) {
+        p_device->initialized=0U;
+        p_device->background_valid=0U;
         return EPD_GDEY029T94_ERROR_IO;
     }
     p_device->sleeping=1U;
@@ -707,7 +776,9 @@ static void verify(int stopped)
         check_retry_intervals(2U);
     } else if(scenario("failed-fault-coalesce") || scenario("failed-recovery-coalesce")) {
         CHECK(stopped==STOP_COMPLETE);CHECK(s_refreshes==3U && s_renders==3U);
-        CHECK(s_committed==1U && s_sleeps==1U);
+        CHECK(s_committed==1U);
+        CHECK(s_sleeps==(scenario("failed-fault-coalesce") ? 1U :
+            COMPLETED_SEQUENCE_SLEEPS(1U)));
         CHECK(s_frame_hashes[0]!=s_frame_hashes[1] && s_frame_hashes[1]!=s_frame_hashes[2]);
         CHECK(s_render_models[1].faults.revision==3U);
         if(scenario("failed-fault-coalesce")) {
@@ -746,7 +817,7 @@ static void verify(int stopped)
         CHECK(s_frame_ticks[0]==0U && s_frame_ticks[1]==200U);check_retry_intervals(0U);
     } else if(scenario("coalesce")) {
         CHECK(stopped==STOP_COMPLETE);CHECK(s_refreshes==3U && s_renders==3U);
-        CHECK(s_committed==3U && s_sleeps==3U);
+        CHECK(s_committed==3U && s_sleeps==COMPLETED_SEQUENCE_SLEEPS(3U));
         CHECK(s_render_models[0].faults.revision==0U);
         CHECK(s_render_models[1].faults.revision==2U && s_render_models[1].format_revision==2U);
         CHECK(s_render_models[2].faults.revision==3U && s_render_models[2].format_revision==3U);
@@ -980,6 +1051,29 @@ static void verify_weather_sync_contract(void)
         (unsigned int)EPD_CLOCK_USE_GRAY4,s_checks);
 }
 
+#if !EPD_CLOCK_USE_GRAY4
+static void verify_run_once_sleep_failure(void)
+{
+    CHECK(epd_bringup_run_once()==EPD_GDEY029T94_OK);
+    CHECK(epd_bringup_get_completed_frames()==1U);
+    CHECK(epd_bringup_get_last_status()==EPD_GDEY029T94_ERROR_IO);
+    CHECK(s_refreshes==1U && s_committed==1U && s_sleeps==1U);
+    CHECK(s_render_models[0].memory_mode==CLOCK_MEMORY_SRAM);
+    s_tick=200U;
+    s_live.calendar.minute=31U;
+    CHECK(epd_bringup_run_once()==EPD_GDEY029T94_OK);
+    CHECK(epd_bringup_get_completed_frames()==2U);
+    CHECK(epd_bringup_get_last_status()==EPD_GDEY029T94_OK);
+    CHECK(s_refreshes==2U && s_committed==2U && s_sleeps==2U);
+    CHECK(s_init_calls==2U && s_bind_calls==2U && s_prepare_calls==2U);
+    CHECK(s_renders==2U && s_retry_delays==0U && s_poll_delays==0U);
+    CHECK(s_render_models[1].memory_mode==CLOCK_MEMORY_IFLASH);
+    CHECK(s_frame_ticks[0]==0U && s_frame_ticks[1]==200U);
+    printf("PASS: BW run_once commits before sleep failure and recovers (%lu checks)\n",
+        s_checks);
+}
+#endif
+
 int main(int argc,char **argv)
 {
     int stopped;
@@ -989,6 +1083,9 @@ int main(int argc,char **argv)
     init_model();
     CHECK(display_start());CHECK(display_start());
     CHECK(s_thread_function!=NULL);
+#if !EPD_CLOCK_USE_GRAY4
+    if(scenario("sleep-failure")) { verify_run_once_sleep_failure();return 0; }
+#endif
     if(scenario("weather-sync-contract")) { verify_weather_sync_contract();return 0; }
     if(cycle_contract_scenario()) { verify_cycle_contract();return 0; }
     stopped=setjmp(s_stop);
