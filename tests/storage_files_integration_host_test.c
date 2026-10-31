@@ -1,5 +1,6 @@
 #include "storage.h"
 #include "storage_files.h"
+#include "storage_forecast.h"
 #include "clock_config.h"
 #include "clock_faults.h"
 #include "cmsis_os.h"
@@ -55,6 +56,29 @@ static w25q128_status_t s_read_result;
 static w25q128_status_t s_program_result;
 static w25q128_status_t s_erase_result;
 static jmp_buf s_finished;
+static uint8_t s_forecast_mode;
+static uint8_t s_restore_mode;
+static uint8_t s_bad_restore;
+static uint8_t s_blank_forecast;
+static forecast_batch_t s_forecast_batch;
+static forecast_batch_t s_forecast_expected;
+
+static void s_make_forecast(uint32_t id)
+{
+    memset(&s_forecast_batch, 0, sizeof(s_forecast_batch));
+    s_forecast_batch.id = id;
+    s_forecast_batch.city = WEATHER_CITY_SHENZHEN;
+    s_forecast_batch.count = 2U;
+    s_forecast_batch.days[0].date.year = 2026U;
+    s_forecast_batch.days[0].date.month = 10U;
+    s_forecast_batch.days[0].date.day = 29U;
+    s_forecast_batch.days[0].condition = 2U;
+    s_forecast_batch.days[0].minimum_tenths = 180;
+    s_forecast_batch.days[0].maximum_tenths = 270;
+    s_forecast_batch.days[1] = s_forecast_batch.days[0];
+    s_forecast_batch.days[1].date.day++;
+    s_forecast_expected = s_forecast_batch;
+}
 
 void storage_test_enter(void) { s_critical++; }
 void storage_test_exit(void) { assert(s_critical != 0U); s_critical--; }
@@ -222,6 +246,112 @@ static uint32_t s_physical_used(void)
         }
     }
     return used;
+}
+
+static void s_drive_forecast(void)
+{
+    storage_forecast_snapshot_t status;
+    file_store_snapshot_t files;
+    forecast_batch_t current;
+    int32_t result;
+    storage_forecast_get_snapshot(&status);
+    storage_get_files_snapshot(&files);
+    if (s_restore_mode != 0U) {
+        if (status.ready == 0U) { return; }
+        assert(files.state == FILE_STORE_READY && !status.busy);
+        assert(status.result == (s_bad_restore != 0U ? FILE_STORE_ERROR_FORMAT : FILE_STORE_OK));
+        if (s_bad_restore != 0U) { assert(!forecast_get_batch(&current)); }
+        else {
+            assert(forecast_get_batch(&current));
+            assert(forecast_equal(&current, &s_forecast_expected));
+        }
+        assert(s_faults[CLOCK_FAULT_W25Q] == 0U);
+        longjmp(s_finished, 1);
+    }
+    if (s_blank_forecast != 0U) {
+        if (files.state != FILE_STORE_UNFORMATTED || status.ready == 0U) { return; }
+        assert(status.result == FILE_STORE_ERROR_NOT_READY && !forecast_get_batch(&current));
+        assert(storage_forecast_request(&s_forecast_expected, 1U) == FILE_STORE_ERROR_NOT_READY);
+        longjmp(s_finished, 1);
+    }
+    switch (s_stage) {
+    case 0U:
+        if (status.ready == 0U) {
+            assert(storage_forecast_request(&s_forecast_batch, 1U) == FILE_STORE_ERROR_NOT_READY);
+            return;
+        }
+        assert(!forecast_get_batch(&current));
+        assert(storage_maintenance_acquire() == FILE_STORE_OK);
+        storage_forecast_get_snapshot(&status);
+        assert(status.busy);
+        assert(storage_forecast_request(&s_forecast_batch, 1U) == FILE_STORE_ERROR_BUSY);
+        storage_maintenance_release();
+        assert(storage_forecast_request(&s_forecast_batch, 1U) == FILE_STORE_OK);
+        memset(&s_forecast_batch, 0xA5, sizeof(s_forecast_batch));
+        assert(storage_maintenance_acquire() == FILE_STORE_ERROR_BUSY);
+        s_submit(FILE_STORE_OP_UPLOAD_CANCEL, NULL);
+        assert(storage_file_request(&s_request) == FILE_STORE_ERROR_BUSY);
+        assert(!storage_forecast_take_result(999U, &result));
+        s_stage = 1U;
+        break;
+    case 1U:
+        if (!storage_forecast_take_result(1U, &result)) {
+            assert(!forecast_get_batch(&current));
+            return;
+        }
+        assert(result == FILE_STORE_OK && forecast_get_batch(&current));
+        assert(forecast_equal(&current, &s_forecast_expected));
+        s_submit(FILE_STORE_OP_REMOVE, FORECAST_FILE_PATH);
+        assert(storage_file_request(&s_request) == FILE_STORE_ERROR_ARGUMENT);
+        s_submit(FILE_STORE_OP_UPLOAD_BEGIN, FORECAST_FILE_PATH);
+        assert(storage_file_request(&s_request) == FILE_STORE_ERROR_ARGUMENT);
+        s_submit(FILE_STORE_OP_RENAME, "/other");
+        strcpy(s_request.path2, FORECAST_FILE_PATH);
+        assert(storage_file_request(&s_request) == FILE_STORE_ERROR_ARGUMENT);
+        s_forecast_batch = s_forecast_expected;
+        s_forecast_batch.id = 2U;
+        s_forecast_batch.days[0].condition = 3U;
+        assert(storage_forecast_request(&s_forecast_batch, 2U) == FILE_STORE_OK);
+        s_stage = 2U;
+        break;
+    case 2U:
+        assert(forecast_get_batch(&current) && forecast_equal(&current, &s_forecast_expected));
+        /* Begin succeeds first; fail the candidate's write/sync rather than
+         * merely rejecting creation of the temporary file. */
+        if (files.upload_active != 0U) { s_program_result = W25Q128_ERROR_TIMEOUT; }
+        if (!storage_forecast_take_result(2U, &result)) { return; }
+        assert(result != FILE_STORE_OK);
+        assert(files.upload_active == 0U);
+        s_program_result = W25Q128_OK;
+        s_tick += STORAGE_USAGE_INTERVAL_MS;
+        s_stage = 3U;
+        break;
+    case 3U:
+        if (files.state != FILE_STORE_READY || status.ready == 0U) { return; }
+        assert(forecast_get_batch(&current) && forecast_equal(&current, &s_forecast_expected));
+        s_submit(FILE_STORE_OP_READ, FORECAST_FILE_PATH);
+        s_request.length = FILE_STORE_DATA_MAX;
+        s_send();
+        s_stage = 4U;
+        break;
+    case 4U:
+        if (!s_take(FILE_STORE_OK)) { return; }
+        assert(forecast_decode(s_response.data, s_response.length, &current));
+        assert(forecast_equal(&current, &s_forecast_expected));
+        s_submit(FILE_STORE_OP_FORMAT, NULL);
+        s_request.confirm = 1U;
+        s_send();
+        s_stage = 5U;
+        break;
+    case 5U:
+        if (!s_take(FILE_STORE_OK)) { return; }
+        storage_forecast_get_snapshot(&status);
+        assert(status.clear_generation == 1U && status.ready && !status.busy);
+        assert(!forecast_get_batch(&current));
+        longjmp(s_finished, 1);
+        break;
+    default: assert(!"invalid forecast stage"); break;
+    }
 }
 
 static void s_drive(void)
@@ -440,7 +570,8 @@ int xQueueReceive(QueueHandle_t queue, void *p_item, uint32_t wait)
 {
     assert(queue != NULL && p_item != NULL && s_critical == 0U);
     assert(++s_queue_calls < 100000U);
-    s_drive();
+    if (s_forecast_mode != 0U) { s_drive_forecast(); }
+    else { s_drive(); }
     if (s_queued != 0U) {
         memcpy(p_item, s_queued_bytes, s_queue_size);
         s_queued = 0U;
@@ -456,9 +587,19 @@ int main(int argc, char **argv)
     uint32_t steps;
     file_store_snapshot_t files;
     w25q128_ctx_t fixture;
+    uint8_t encoded[FORECAST_ENCODED_MAX];
+    size_t encoded_length;
     assert(argc == 2);
+    s_forecast_mode = (uint8_t)(strncmp(argv[1], "forecast", 8U) == 0);
+    s_restore_mode = (uint8_t)(strcmp(argv[1], "forecast-restore") == 0 ||
+                             strcmp(argv[1], "forecast-corrupt") == 0);
+    s_bad_restore = (uint8_t)(strcmp(argv[1], "forecast-corrupt") == 0);
+    s_blank_forecast = (uint8_t)(strcmp(argv[1], "forecast-unformatted") == 0);
+    forecast_init();
+    s_make_forecast(1U);
     s_diagnostic_mode = (uint8_t)(strcmp(argv[1], "diagnostics") == 0);
-    s_formatted_start = (uint8_t)(strcmp(argv[1], "formatted") == 0 || s_diagnostic_mode != 0U);
+    s_formatted_start = (uint8_t)(strcmp(argv[1], "formatted") == 0 || s_diagnostic_mode != 0U ||
+                                 (s_forecast_mode != 0U && s_blank_forecast == 0U));
     memset(s_flash, 0xFF, sizeof(s_flash));
     for (i = 0U; i < sizeof(s_payload); i++) { s_payload[i] = (uint8_t)(i * 37U); }
     if (s_formatted_start != 0U) {
@@ -474,6 +615,25 @@ int main(int argc, char **argv)
         s_request.confirm = 1U;
         assert(file_store_execute(&s_request, &s_response) == 0U);
         assert(s_response.result == 0);
+        if (s_restore_mode != 0U) {
+            assert(forecast_encode(&s_forecast_batch, encoded, sizeof(encoded), &encoded_length));
+            if (s_bad_restore != 0U) { encoded[encoded_length - 1U] ^= 1U; }
+            s_submit(FILE_STORE_OP_UPLOAD_BEGIN, FORECAST_FILE_PATH);
+            s_request.size = (uint32_t)encoded_length;
+            s_request.crc32 = file_store_crc32(0U, encoded, (uint32_t)encoded_length);
+            assert(file_store_execute(&s_request, &s_response) == 0U && s_response.result == 0);
+            s_submit(FILE_STORE_OP_UPLOAD_WRITE, NULL);
+            s_request.length = (uint16_t)encoded_length;
+            memcpy(s_request.data, encoded, encoded_length);
+            assert(file_store_execute(&s_request, &s_response) == 0U && s_response.result == 0);
+            s_submit(FILE_STORE_OP_UPLOAD_COMMIT, NULL);
+            assert(file_store_execute(&s_request, &s_response) == 1U);
+            for (steps = 0U; steps < 10U; steps++) {
+                file_store_step();
+                if (file_store_poll(&s_response)) { break; }
+            }
+            assert(steps < 10U && s_response.result == 0);
+        }
     }
     assert(storage_start() == 0);
     assert(s_entry != NULL && s_queue_bytes != NULL);

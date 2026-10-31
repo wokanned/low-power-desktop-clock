@@ -32,6 +32,7 @@ typedef enum {
 #define FILE_STORE_ERROR_CRC (-1004)
 #define FILE_STORE_ERROR_SEQUENCE (-1005)
 #define FILE_STORE_ERROR_CONFIRM (-1006)
+#define FILE_STORE_ERROR_FORMAT (-1007)
 
 typedef struct {
     uint32_t token;

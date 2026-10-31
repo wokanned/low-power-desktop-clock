@@ -316,6 +316,8 @@ uint8_t file_transfer_busy(void) { return (uint8_t)(s_pending != 0U || s_cleanup
 
 static void s_enter(uint32_t now)
 {
+    int32_t result = storage_maintenance_acquire();
+    if (result != FILE_STORE_OK) { s_text_submit_error(result); return; }
     s_active = 1U;
     s_session = 0U;
     s_sequence = 1U;
@@ -395,8 +397,14 @@ uint8_t file_transfer_console(const char *p_line, uint32_t now)
             return 1U;
         }
     }
+    result = storage_maintenance_acquire();
+    if (result != FILE_STORE_OK) { s_listing = 0U; s_text_submit_error(result); return 1U; }
     result = s_submit();
-    if (result != FILE_STORE_OK) { s_listing = 0U; s_text_submit_error(result); }
+    if (result != FILE_STORE_OK) {
+        s_listing = 0U;
+        storage_maintenance_release();
+        s_text_submit_error(result);
+    }
     return 1U;
 }
 
@@ -454,10 +462,15 @@ static void s_complete_text(void)
         s_text_send(s_text);
         s_request.offset = s_response.offset;
         result = s_submit();
-        if (result != FILE_STORE_OK) { s_listing = 0U; s_text_submit_error(result); }
+        if (result != FILE_STORE_OK) {
+            s_listing = 0U;
+            storage_maintenance_release();
+            s_text_submit_error(result);
+        }
         return;
     }
     s_listing = 0U;
+    storage_maintenance_release();
     if (s_response.result == FILE_STORE_OK) { s_text_send("OK FS\r\n"); }
     else {
         (void)snprintf(s_text, sizeof(s_text), "ERR FS %ld\r\n", (long)s_response.result);
@@ -483,6 +496,7 @@ static void s_finish_cleanup(int32_t result, uint32_t now)
         s_session = 0U;
     }
     s_cleanup = 0U;
+    storage_maintenance_release();
     s_exit_reply = 0U;
     s_pending_binary = 0U;
     file_transfer_rx_error();

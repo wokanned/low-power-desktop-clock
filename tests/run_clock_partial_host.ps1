@@ -13,7 +13,7 @@ $testExecutable = Join-Path $testOutput 'clock_partial_host_test.exe'
 $testSources = @(
     'tests/clock_partial_host_test.c', 'app/epd_bringup.c',
     'app/epd_clock_view.c', 'app/epd_weather_view.c', 'app/display.c',
-    'app/weather.c', 'app/clock_schedule.c', 'app/clock_model.c',
+    'app/weather.c', 'app/forecast.c', 'app/clock_schedule.c', 'app/clock_model.c',
     'app/clock_faults.c', 'device/epd_gdey029t94.c',
     'resources/clock_gray_assets.c', 'resources/weather_glyphs.c',
     'gui/GUI_Paint.c', 'fonts/font8.c', 'fonts/font12.c', 'fonts/font16.c',
@@ -27,7 +27,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Real raster/controller partial integration com
 $scenarios = @('clock-minute', 'weather-minute', 'clock-ampm', 'weather-ampm',
     'narrow-digits', 'date-full', 'format-full', 'weather-full', 'page-full',
     'fault-full', 'outside-full', 'duplicate', 'second-window-failure', 'second-window-timeout',
-    'busy-coalesce', 'cleanup-120')
+    'busy-coalesce', 'cleanup-120', 'forecast-minute', 'forecast-day',
+    'forecast-missing', 'forecast-restore')
 foreach ($scenario in $scenarios) {
     & $testExecutable $scenario
     if ($LASTEXITCODE -ne 0) { throw "Real raster/controller partial integration failed: $scenario" }

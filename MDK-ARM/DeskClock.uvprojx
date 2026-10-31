@@ -2188,6 +2188,31 @@
               <FileType>5</FileType>
               <FilePath>../app/weather.h</FilePath>
             </File>
+            <File>
+              <FileName>forecast.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../app/forecast.c</FilePath>
+            </File>
+            <File>
+              <FileName>forecast.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../app/forecast.h</FilePath>
+            </File>
+            <File>
+              <FileName>forecast_protocol.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../app/forecast_protocol.c</FilePath>
+            </File>
+            <File>
+              <FileName>forecast_protocol.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../app/forecast_protocol.h</FilePath>
+            </File>
+            <File>
+              <FileName>storage_forecast.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../app/storage_forecast.h</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>

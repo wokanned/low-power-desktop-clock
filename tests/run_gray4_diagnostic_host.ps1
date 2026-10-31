@@ -21,7 +21,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Gray4 diagnostic pixel compilation failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Gray4 diagnostic pixel tests failed.' }
 
 $testExecutable = Join-Path $testOutput 'gray4_diagnostic_host_test.exe'
-$testSources = @('tests/gray4_diagnostic_host_test.c', 'app/display.c',
+$testSources = @('tests/gray4_diagnostic_host_test.c', 'app/display.c', 'app/forecast.c',
     'app/epd_bringup.c', 'app/epd_vendor_demo.c', 'app/clock_schedule.c',
     'device/epd_gdey029t94.c', 'resources/epd_vendor_assets.c',
     'fonts/font12CN.c', 'fonts/font24CN.c') | ForEach-Object { Join-Path $projectRoot $_ }

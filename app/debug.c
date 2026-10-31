@@ -2,6 +2,8 @@
 #include "debug_console.h"
 #include "file_transfer.h"
 #include "weather.h"
+#include "forecast.h"
+#include "forecast_protocol.h"
 #include "clock_faults.h"
 #include "clock_service.h"
 #include "display.h"
@@ -127,6 +129,11 @@ static void debug_command(debug_command_t command)
     int32_t result;
     if (command == DEBUG_COMMAND_NONE) { return; }
     if (command == DEBUG_COMMAND_TIME) {
+        if (forecast_protocol_busy() != 0U) {
+            if (s_console_active != 0U) { (void)debug_send_text("ERR BUSY\r\n"); }
+            return;
+        }
+        forecast_protocol_time_result(0U);
         if (!debug_console_parse_time(s_parser.line, &calendar)) {
             if (s_console_active != 0U) { (void)debug_send_text("ERR TIME\r\n"); }
             return;
@@ -182,6 +189,7 @@ static void debug_command(debug_command_t command)
         s_console_active = 1U;
         (void)xQueueReset(s_debug_queue);
         taskEXIT_CRITICAL();
+        forecast_protocol_reset_session();
         debug_fault_update(0U, CLOCK_FAULT_RX | CLOCK_FAULT_OVERFLOW);
         (void)debug_send_text("OK CONSOLE ON\r\n");
         return;
@@ -203,7 +211,15 @@ static void debug_command(debug_command_t command)
         (void)debug_send_text("OK CONSOLE ON\r\n");
         return;
     }
+    if (command == DEBUG_COMMAND_FORECAST) {
+        (void)forecast_protocol_command(s_parser.line, (uint32_t)xTaskGetTickCount());
+        return;
+    }
     if (command == DEBUG_COMMAND_FILES) {
+        if (forecast_protocol_busy() != 0U && strcmp(s_parser.line, "FS STATUS") != 0) {
+            (void)debug_send_text("ERR BUSY\r\n");
+            return;
+        }
         if (strcmp(s_parser.line, "FS TRANSFER") == 0 &&
             (s_pending_token != 0U || s_pending_time_token != 0U)) {
             (void)debug_send_text("ERR BUSY\r\n");
@@ -218,11 +234,13 @@ static void debug_command(debug_command_t command)
         return;
     }
     if (command == DEBUG_COMMAND_OFF) {
-        if (s_pending_time_token != 0U || file_transfer_busy() != 0U) {
+        if (s_pending_time_token != 0U || file_transfer_busy() != 0U ||
+            forecast_protocol_busy() != 0U) {
             (void)debug_send_text("ERR BUSY\r\n");
             return;
         }
         if (debug_send_text("OK CONSOLE OFF\r\n")) {
+            forecast_protocol_reset_session();
             taskENTER_CRITICAL();
             (void)xQueueReset(s_debug_queue);
             s_console_active = 0U;
@@ -252,6 +270,9 @@ static void debug_poll_time(void)
     reply = s_pending_time_reply;
     s_pending_time_token = 0U;
     s_pending_time_reply = 0U;
+    /* A TIME accepted before CONSOLE ON belongs to the silent session, even
+     * if its asynchronous completion arrives after the console was opened. */
+    forecast_protocol_time_result((uint8_t)(result == 0 && reply != 0U));
     if (reply != 0U) {
         (void)debug_send_text(result == 0 ? "OK TIME\r\n" : "ERR RTC\r\n");
     }
@@ -289,6 +310,8 @@ void Debug_Init(void)
     debug_console_parser_reset(&s_parser);
     file_transfer_init(debug_send_bytes);
     weather_init();
+    forecast_init();
+    forecast_protocol_init(debug_send_bytes);
     s_debug_queue = xQueueCreateStatic(DEBUG_QUEUE_DEPTH,
         VOFA_MAX_CHANNELS * sizeof(float), s_queue_storage, &s_queue_control);
 }
@@ -389,6 +412,7 @@ void StartDebugTask(void *p_argument)
         (void)weather_poll_expiry((uint32_t)xTaskGetTickCount());
         debug_poll_config();
         debug_poll_time();
+        forecast_protocol_poll((uint32_t)xTaskGetTickCount());
         if (s_console_active == 0U &&
             xQueueReceive(s_debug_queue, frame, 0U) == pdPASS) {
             /* Capture current transmit counters, not their old queued values. */

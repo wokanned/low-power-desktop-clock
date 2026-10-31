@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "clock_model.h"
 
 #define WEATHER_LINE_MAX 127U
 #define WEATHER_SOURCE_TIME_LENGTH 16U
@@ -24,12 +25,22 @@ typedef struct {
     char source_time[WEATHER_SOURCE_TIME_LENGTH + 1U];
 } weather_data_t;
 
+typedef enum {
+    WEATHER_VIEW_LIVE = 0,
+    WEATHER_VIEW_FORECAST,
+    WEATHER_VIEW_NO_TODAY,
+    WEATHER_VIEW_CLOCK_UNAVAILABLE
+} weather_view_kind_t;
+
 typedef struct {
     weather_data_t data;
     uint32_t revision;
     uint8_t available;
     uint8_t fresh;
     uint8_t expired;
+    /* Display selection only; WEATHER continues to publish a live record. */
+    weather_view_kind_t kind;
+    clock_calendar_t forecast_date;
 } weather_snapshot_t;
 
 /* Parses one complete WEATHER line. No state is changed on failure. */

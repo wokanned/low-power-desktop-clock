@@ -102,6 +102,8 @@ void storage_get_files_snapshot(file_store_snapshot_t *p_snapshot)
 }
 
 void storage_set_scan_paused(uint8_t paused) { (void)paused; }
+int32_t storage_maintenance_acquire(void) { return FILE_STORE_OK; }
+void storage_maintenance_release(void) { }
 
 static uint8_t s_send(const uint8_t *p_bytes, uint16_t length)
 {

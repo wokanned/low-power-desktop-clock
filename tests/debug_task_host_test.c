@@ -4,6 +4,7 @@
 #include "display.h"
 #include "storage.h"
 #include "storage_files.h"
+#include "storage_forecast.h"
 #include "stm32_debug_uart.h"
 #include "weather.h"
 #include "queue.h"
@@ -373,6 +374,14 @@ uint8_t storage_file_take_result(uint32_t token, file_store_response_t *p_respon
 { (void)token; (void)p_response; assert(0); return 0U; }
 void storage_get_files_snapshot(file_store_snapshot_t *p_snapshot)
 { memset(p_snapshot, 0, sizeof(*p_snapshot)); }
+int32_t storage_maintenance_acquire(void) { return FILE_STORE_OK; }
+void storage_maintenance_release(void) { }
+int32_t storage_forecast_request(const forecast_batch_t *p_batch, uint32_t token)
+{ (void)p_batch; (void)token; assert(0); return FILE_STORE_ERROR_BUSY; }
+uint8_t storage_forecast_take_result(uint32_t token, int32_t *p_result)
+{ (void)token; (void)p_result; assert(0); return 0U; }
+void storage_forecast_get_snapshot(storage_forecast_snapshot_t *p_snapshot)
+{ memset(p_snapshot, 0, sizeof(*p_snapshot)); p_snapshot->ready = 1U; }
 void clock_fault_report(clock_fault_source_t source, uint32_t mask)
 { assert(source == CLOCK_FAULT_DEBUG); s_fault_mask = mask; }
 void clock_faults_get_snapshot(clock_fault_snapshot_t *p_snapshot)
@@ -414,6 +423,13 @@ uint8_t clock_service_take_time_result(uint32_t token, int32_t *p_result)
     s_time_takes++;
     return 1U;
 }
+void clock_service_get_model(clock_view_model_t *p_model)
+{
+    memset(p_model, 0, sizeof(*p_model));
+    p_model->calendar = s_requested_time;
+    p_model->calendar_state = CLOCK_DATA_READY;
+}
+void display_forecast_committed(void) { assert(0); }
 epd_gdey029t94_status_t display_get_last_status(void)
 { return (epd_gdey029t94_status_t)-2; }
 bool display_publish_weather(const weather_data_t *p_data, uint32_t now_tick)

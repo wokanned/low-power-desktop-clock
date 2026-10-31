@@ -96,6 +96,8 @@ DeskClock.ioc      # CubeMX 工程配置
 
 ## 显示模块集成
 
+- `app/forecast`保存当前城市1～7天每日预报，与旧WEATHER实况模型隔离；`app/forecast_protocol`通过send回调处理BEGIN/DAY/COMMIT/CANCEL/STATUS，不绑定UART/HAL。每个新批次先用TIME成功获得一次许可，DAY含完整日期，校验连续且新提交不早于RTC当天；预报无来源更新时间和三小时过期。`storageTask`将`/forecast.bin`原子替换并发布后才最终应答；启动恢复不校时、不切页、不记同步。既有WEATHER的来源时间与三小时tick规则只用于实况。天气页集中选择同城当天有效实况或当天预报，缺字段用占位。协议及切换串口的分层边界见`docs/forecast_protocol.md`。
+
 - 复用远端 `EinKTest` 的设备驱动、GUI、字库和资源，不得随意重构协议或资源。`device/` 保持不依赖 HAL；`platform/stm32_gdey029t94` 负责绑定 SPI2、控制引脚和延时。
 - `app/display` 独占显示控制器、帧缓冲区和全局 `Paint` 画布。在 RTOS 初始化阶段通过 `display_start()` 启动。禁止从其他任务或 ISR 调用绘制、演示或刷新函数。
 - `app/weather` 只在 RAM 中缓存经校验的完整天气消息并跟踪单调 tick 过期状态；`app/display` 合并选中页面、天气与时钟为一致快照，天气渲染由 `app/epd_weather_view` 完成。启动默认时钟页，此后每三分钟切换时钟/天气页；每个有效 `WEATHER`（含重复包）原子更新缓存、选择天气页并重启轮换计时，非法包不影响计时。手动 `PAGE`（含同页）也重计三分钟；周期使用单调 tick，不受 RTC 校时影响。切页或天气页可见内容变化触发全刷，相同天气页画面仅重计时不追加全刷；BUSY 和故障覆盖沿用最新目标合并。串口协议见 `docs/weather_protocol.md`。

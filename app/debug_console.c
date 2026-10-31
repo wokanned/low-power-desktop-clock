@@ -63,6 +63,8 @@ static debug_command_t debug_console_command(const char *p_line)
         (p_line[2] == '\0' || p_line[2] == ' ')) { return DEBUG_COMMAND_FILES; }
     if (strncmp(p_line, "TIME", 4U) == 0 &&
         (p_line[4] == '\0' || p_line[4] == ' ')) { return DEBUG_COMMAND_TIME; }
+    if (strncmp(p_line, "FORECAST", 8U) == 0 &&
+        (p_line[8] == '\0' || p_line[8] == ' ')) { return DEBUG_COMMAND_FORECAST; }
     if ((strncmp(p_line, "WEATHER", 7U) == 0) &&
         ((p_line[7] == '\0') || (p_line[7] == ' ') || (p_line[7] == ','))) {
         return DEBUG_COMMAND_WEATHER;
@@ -150,6 +152,9 @@ debug_command_t debug_console_parser_feed(debug_console_parser_t *p_parser,
     if (p_parser->discard != 0U) { return DEBUG_COMMAND_NONE; }
     line_max = debug_console_weather_line(p_parser->line, p_parser->length) != 0U ?
         DEBUG_CONSOLE_WEATHER_LINE_MAX : DEBUG_CONSOLE_LINE_MAX;
+    if (p_parser->length >= 9U && memcmp(p_parser->line, "FORECAST ", 9U) == 0) {
+        line_max = DEBUG_CONSOLE_WEATHER_LINE_MAX;
+    }
     if (p_parser->length >= 3U && memcmp(p_parser->line, "FS ", 3U) == 0) {
         line_max = DEBUG_CONSOLE_FILES_LINE_MAX;
     }

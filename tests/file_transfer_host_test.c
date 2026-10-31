@@ -16,6 +16,11 @@ static int32_t s_submit_result;
 static w25q128_status_t s_flash_result;
 static uint8_t s_done;
 static uint32_t s_now;
+static int32_t s_acquire_result;
+static uint32_t s_releases;
+
+int32_t storage_maintenance_acquire(void) { return s_acquire_result; }
+void storage_maintenance_release(void) { s_releases++; }
 
 static uint32_t read32(const uint8_t *p)
 {
@@ -285,6 +290,15 @@ int main(void)
     uint16_t i;
     assert(crc32((const uint8_t *)"123456789", 9U) == 0xCBF43926UL);
     file_transfer_init(send_bytes);
+    s_acquire_result = FILE_STORE_ERROR_BUSY;
+    clear_output();
+    assert(file_transfer_console("FS TRANSFER", 0U));
+    assert(!file_transfer_active() && strcmp((const char *)s_output, "ERR BUSY\r\n") == 0);
+    clear_output();
+    assert(file_transfer_console("FS MKDIR /new", 0U));
+    assert(s_calls == 0U && strcmp((const char *)s_output, "ERR BUSY\r\n") == 0);
+    s_acquire_result = FILE_STORE_OK;
+    clear_output();
     assert(!file_transfer_console("FORMAT 24", 0U));
     assert(file_transfer_console("FS FORMAT", 0U));
     assert(s_calls == 0U);
@@ -395,6 +409,7 @@ int main(void)
     test_rejected_request();
     test_rejected_cleanup();
     test_busy_retry();
+    assert(s_releases != 0U);
     puts("PASS: framed CRC, replay, 256-byte data, safe timeout, rejected requests and recoverable cleanup");
     return 0;
 }

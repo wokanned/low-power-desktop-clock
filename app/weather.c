@@ -5,11 +5,11 @@
 #include <stddef.h>
 #include <string.h>
 
-#define WEATHER_EXPIRY_TICKS ((uint32_t)configTICK_RATE_HZ * 10800UL)
+#define WEATHER_LIVE_EXPIRY_TICKS ((uint32_t)configTICK_RATE_HZ * 10800UL)
 #define WEATHER_TICK_HALF_RANGE 0x80000000UL
 
-static weather_snapshot_t s_weather;
-static uint32_t s_last_valid_tick;
+static weather_snapshot_t s_live_weather;
+static uint32_t s_live_last_valid_tick;
 
 static uint8_t s_digits(const char *p_text, uint8_t length, uint16_t *p_value)
 {
@@ -163,21 +163,21 @@ static uint8_t s_data_equal(const weather_data_t *p_left,
 
 static void s_revision_bump(void)
 {
-    s_weather.revision++;
-    if (s_weather.revision == 0U) { s_weather.revision = 1U; }
+    s_live_weather.revision++;
+    if (s_live_weather.revision == 0U) { s_live_weather.revision = 1U; }
 }
 
 static uint8_t s_expire_locked(uint32_t now_tick)
 {
-    uint32_t elapsed = (uint32_t)(now_tick - s_last_valid_tick);
+    uint32_t elapsed = (uint32_t)(now_tick - s_live_last_valid_tick);
     /* A reader may sample its tick just before another task publishes.
        Ignore that older sample instead of expiring the new record. */
-    if ((s_weather.available == 0U) || (s_weather.expired != 0U) ||
-        (elapsed < WEATHER_EXPIRY_TICKS) || (elapsed >= WEATHER_TICK_HALF_RANGE)) {
+    if ((s_live_weather.available == 0U) || (s_live_weather.expired != 0U) ||
+        (elapsed < WEATHER_LIVE_EXPIRY_TICKS) || (elapsed >= WEATHER_TICK_HALF_RANGE)) {
         return 0U;
     }
-    s_weather.expired = 1U;
-    s_weather.fresh = 0U;
+    s_live_weather.expired = 1U;
+    s_live_weather.fresh = 0U;
     s_revision_bump();
     return 1U;
 }
@@ -208,8 +208,8 @@ static uint8_t s_data_valid(const weather_data_t *p_data)
 void weather_init(void)
 {
     taskENTER_CRITICAL();
-    memset(&s_weather, 0, sizeof(s_weather));
-    s_last_valid_tick = 0U;
+    memset(&s_live_weather, 0, sizeof(s_live_weather));
+    s_live_last_valid_tick = 0U;
     taskEXIT_CRITICAL();
 }
 
@@ -218,13 +218,13 @@ bool weather_publish(const weather_data_t *p_data, uint32_t now_tick)
     uint8_t changed;
     if (!s_data_valid(p_data)) { return false; }
     taskENTER_CRITICAL();
-    changed = (uint8_t)(s_weather.available == 0U || s_weather.expired != 0U ||
-                        s_data_equal(&s_weather.data, p_data) == 0U);
-    s_weather.data = *p_data;
-    s_weather.available = 1U;
-    s_weather.expired = 0U;
-    s_weather.fresh = 1U;
-    s_last_valid_tick = now_tick;
+    changed = (uint8_t)(s_live_weather.available == 0U || s_live_weather.expired != 0U ||
+                        s_data_equal(&s_live_weather.data, p_data) == 0U);
+    s_live_weather.data = *p_data;
+    s_live_weather.available = 1U;
+    s_live_weather.expired = 0U;
+    s_live_weather.fresh = 1U;
+    s_live_last_valid_tick = now_tick;
     if (changed != 0U) { s_revision_bump(); }
     taskEXIT_CRITICAL();
     return true;
@@ -244,6 +244,6 @@ void weather_get_snapshot(uint32_t now_tick, weather_snapshot_t *p_snapshot)
     if (p_snapshot == NULL) { return; }
     taskENTER_CRITICAL();
     (void)s_expire_locked(now_tick);
-    *p_snapshot = s_weather;
+    *p_snapshot = s_live_weather;
     taskEXIT_CRITICAL();
 }

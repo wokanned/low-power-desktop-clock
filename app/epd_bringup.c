@@ -129,8 +129,21 @@ static uint8_t s_weather_content_equal(void)
 {
     const weather_data_t *p_displayed = &s_displayed_weather.data;
     const weather_data_t *p_current = &s_snapshot.weather.data;
+    if (s_displayed_weather.kind != s_snapshot.weather.kind) { return 0U; }
+    if (s_snapshot.weather.kind != WEATHER_VIEW_LIVE &&
+        (p_displayed->city != p_current->city ||
+         s_displayed_weather.forecast_date.year != s_snapshot.weather.forecast_date.year ||
+         s_displayed_weather.forecast_date.month != s_snapshot.weather.forecast_date.month ||
+         s_displayed_weather.forecast_date.day != s_snapshot.weather.forecast_date.day)) {
+        return 0U;
+    }
     if (s_displayed_weather.available != s_snapshot.weather.available) { return 0U; }
     if (s_snapshot.weather.available == 0U) { return 1U; }
+    if (s_snapshot.weather.kind == WEATHER_VIEW_FORECAST) {
+        return (uint8_t)(p_displayed->condition == p_current->condition &&
+            p_displayed->minimum_tenths == p_current->minimum_tenths &&
+            p_displayed->maximum_tenths == p_current->maximum_tenths);
+    }
     /* Revisions record intermediate requests, including A -> B -> A while
        BUSY. Compare the final fields against the last completed frame. */
     return (uint8_t)(s_displayed_weather.expired == s_snapshot.weather.expired &&

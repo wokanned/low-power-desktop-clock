@@ -73,6 +73,7 @@ int main(void)
 {
     struct { uint32_t before; debug_console_parser_t parser; uint32_t after; } guarded;
     char weather_line[129];
+    char forecast_line[130];
     char files_line[226];
     uint32_t i;
     guarded.before = 0x12345678U;
@@ -108,6 +109,25 @@ int main(void)
     assert(feed(&guarded.parser, "PAGE WEATHER\n") == DEBUG_COMMAND_PAGE_WEATHER);
     assert(feed(&guarded.parser, "PAGE CLOCK\n") == DEBUG_COMMAND_PAGE_CLOCK);
     assert(feed(&guarded.parser, "FS STATUS\n") == DEBUG_COMMAND_FILES);
+    assert(feed(&guarded.parser, "FORECAST BEGIN 42,") == DEBUG_COMMAND_NONE);
+    assert(feed(&guarded.parser, "\xE6\xB7\xB1\xE5\x9C\xB3,7\r\n") == DEBUG_COMMAND_FORECAST);
+    assert(feed(&guarded.parser, "FORECAST DAY 42,2026-10-29,2,180,270\n") ==
+        DEBUG_COMMAND_FORECAST);
+    assert(feed(&guarded.parser, "FORECAST STATUS\n") == DEBUG_COMMAND_FORECAST);
+    assert(feed(&guarded.parser, "FORECAST\n") == DEBUG_COMMAND_FORECAST);
+    assert(feed(&guarded.parser, "FORECAST \xED\xA0\x80\n") == DEBUG_COMMAND_RX_ERROR);
+    memcpy(forecast_line, "FORECAST ", 9U);
+    memset(forecast_line + 9U, 'x', 118U);
+    forecast_line[127] = '\n';
+    forecast_line[128] = '\0';
+    assert(feed(&guarded.parser, forecast_line) == DEBUG_COMMAND_FORECAST);
+    forecast_line[127] = 'x';
+    forecast_line[128] = '\n';
+    forecast_line[129] = '\0';
+    assert(feed(&guarded.parser, forecast_line) == DEBUG_COMMAND_RX_OVERFLOW);
+    memcpy(forecast_line, "FORECASTX", 9U);
+    assert(feed(&guarded.parser, forecast_line) == DEBUG_COMMAND_RX_OVERFLOW);
+    assert(feed(&guarded.parser, "FORECAST STATUS\n") == DEBUG_COMMAND_FORECAST);
     memcpy(files_line, "FS RENAME ", 10U);
     memset(files_line + 10U, 'x', 213U);
     files_line[223] = '\n';
@@ -152,6 +172,6 @@ int main(void)
     assert(feed(&guarded.parser, "12\n") == DEBUG_COMMAND_UNKNOWN);
     assert(guarded.before == 0x12345678U && guarded.after == 0xABCDEF12U);
     test_time_parser();
-    puts("PASS: strict TIME calendar, legacy 31/32 and WEATHER 127/128 limits, UTF-8 and recovery");
+    puts("PASS: strict TIME calendar, legacy 31/32, WEATHER/FORECAST 127/128 limits, UTF-8 and recovery");
     return 0;
 }

@@ -2,6 +2,8 @@
 #include "debug.h"
 #include "epd_bringup.h"
 #include "clock_service.h"
+#include "forecast.h"
+#include <string.h>
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -86,6 +88,66 @@ bool display_publish_weather(const weather_data_t *p_data, uint32_t now_tick)
     return published;
 }
 
+void display_forecast_committed(void)
+{
+    taskENTER_CRITICAL();
+    clock_service_note_sync_success();
+    s_select_page_locked(DISPLAY_PAGE_WEATHER);
+    s_restart_cycle_locked((uint32_t)xTaskGetTickCount());
+    taskEXIT_CRITICAL();
+}
+
+static uint8_t s_live_date_matches(const weather_data_t *p_live,
+                                   const clock_calendar_t *p_date)
+{
+    uint16_t year = (uint16_t)((p_live->source_time[0] - '0') * 1000 +
+        (p_live->source_time[1] - '0') * 100 + (p_live->source_time[2] - '0') * 10 +
+        p_live->source_time[3] - '0');
+    uint8_t month = (uint8_t)((p_live->source_time[5] - '0') * 10 +
+        p_live->source_time[6] - '0');
+    uint8_t day = (uint8_t)((p_live->source_time[8] - '0') * 10 +
+        p_live->source_time[9] - '0');
+    return (uint8_t)(year == p_date->year && month == p_date->month && day == p_date->day);
+}
+
+/* Called under the snapshot lock. All inputs are RAM; no storage work occurs. */
+static void s_select_weather_locked(const clock_view_model_t *p_clock,
+                                    weather_snapshot_t *p_weather)
+{
+    forecast_batch_t batch;
+    uint8_t i;
+    if (!forecast_get_batch(&batch)) { return; }
+    if (p_clock->calendar_state == CLOCK_DATA_READY &&
+        clock_calendar_valid(&p_clock->calendar)) {
+        if (p_weather->available != 0U && p_weather->fresh != 0U &&
+            p_weather->data.city == batch.city &&
+            s_live_date_matches(&p_weather->data, &p_clock->calendar)) { return; }
+        memset(p_weather, 0, sizeof(*p_weather));
+        p_weather->kind = WEATHER_VIEW_NO_TODAY;
+        p_weather->data.city = batch.city;
+        p_weather->forecast_date = p_clock->calendar;
+        for (i = 0U; i < batch.count; i++) {
+            if (batch.days[i].date.year == p_clock->calendar.year &&
+                batch.days[i].date.month == p_clock->calendar.month &&
+                batch.days[i].date.day == p_clock->calendar.day) {
+                p_weather->kind = WEATHER_VIEW_FORECAST;
+                p_weather->available = 1U;
+                p_weather->fresh = 1U;
+                p_weather->revision = batch.id;
+                p_weather->forecast_date = batch.days[i].date;
+                p_weather->data.condition = batch.days[i].condition;
+                p_weather->data.minimum_tenths = batch.days[i].minimum_tenths;
+                p_weather->data.maximum_tenths = batch.days[i].maximum_tenths;
+                return;
+            }
+        }
+    } else {
+        memset(p_weather, 0, sizeof(*p_weather));
+        p_weather->kind = WEATHER_VIEW_CLOCK_UNAVAILABLE;
+        p_weather->data.city = batch.city;
+    }
+}
+
 void display_get_snapshot(uint32_t now_tick, display_snapshot_t *p_snapshot)
 {
     if (p_snapshot == NULL) { return; }
@@ -95,6 +157,7 @@ void display_get_snapshot(uint32_t now_tick, display_snapshot_t *p_snapshot)
     p_snapshot->page_revision = s_page_revision;
     clock_service_get_model(&p_snapshot->clock);
     weather_get_snapshot(now_tick, &p_snapshot->weather);
+    s_select_weather_locked(&p_snapshot->clock, &p_snapshot->weather);
     taskEXIT_CRITICAL();
 }
 

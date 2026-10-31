@@ -8,6 +8,7 @@
 
 - [文档导航](docs/README.md)：按使用场景查找说明。
 - [天气串口格式](docs/weather_protocol.md)：九个字段、天气与风向编码、发送示例、切页和过期规则。
+- [多天预报与断电保存](docs/forecast_protocol.md)：先校时、按完整日期接收1～7天预报、批次查询和外部Flash恢复。
 - [串口校时格式](docs/time_protocol.md)：北京时间 TIME 命令、结果应答和故障恢复。
 - [调试控制台](docs/debug_console.md)：JustFloat、CONSOLE、FORMAT 和 ERRORS。
 - [当前进度与后续计划](docs/totalPLAN.md#当前开发状态2026-10-27)：已实现功能、验证状态和待办。

@@ -7,6 +7,7 @@
 #include "epd_bringup.h"
 #include "storage.h"
 #include "storage_files.h"
+#include "storage_forecast.h"
 #include "stm32_clock.h"
 #include "stm32_debug_uart.h"
 #include "queue.h"
@@ -37,6 +38,12 @@ static char s_output[2048];
 static size_t s_output_length;
 static clock_calendar_t s_rtc = {2026U, 10U, 28U, 3U, 14U, 29U, 0U};
 static storage_config_snapshot_t s_config;
+static storage_forecast_snapshot_t s_forecast_storage;
+static forecast_batch_t s_forecast_pending;
+static uint32_t s_forecast_token;
+static uint32_t s_forecast_requests;
+static uint8_t s_forecast_done;
+static int32_t s_forecast_result;
 
 static clock_view_model_t model(void)
 {
@@ -152,6 +159,31 @@ int32_t storage_file_request(const file_store_request_t *p_request)
 { assert(p_request != NULL); s_file_requests++; return FILE_STORE_ERROR_BUSY; }
 uint8_t storage_file_take_result(uint32_t token, file_store_response_t *p_response)
 { (void)token; (void)p_response; assert(0); return 0U; }
+int32_t storage_maintenance_acquire(void) { return FILE_STORE_OK; }
+void storage_maintenance_release(void) { }
+int32_t storage_forecast_request(const forecast_batch_t *p_batch, uint32_t token)
+{
+    assert(s_forecast_token == 0U && token != 0U);
+    assert(forecast_validate(p_batch, NULL));
+    s_forecast_pending = *p_batch;
+    s_forecast_token = token;
+    s_forecast_requests++;
+    s_forecast_storage.busy = 1U;
+    return FILE_STORE_OK;
+}
+uint8_t storage_forecast_take_result(uint32_t token, int32_t *p_result)
+{
+    assert(token == s_forecast_token && token != 0U);
+    if (s_forecast_done == 0U) { return 0U; }
+    if (s_forecast_result == 0) { assert(forecast_publish(&s_forecast_pending)); }
+    *p_result = s_forecast_result;
+    s_forecast_token = 0U;
+    s_forecast_done = 0U;
+    s_forecast_storage.busy = 0U;
+    return 1U;
+}
+void storage_forecast_get_snapshot(storage_forecast_snapshot_t *p_snapshot)
+{ *p_snapshot = s_forecast_storage; }
 
 osThreadId_t osThreadNew(osThreadFunc_t function, void *p_argument,
                          const osThreadAttr_t *p_attributes)
@@ -293,6 +325,117 @@ static void test_time(void)
     expect_wifi(CLOCK_DATA_UNAVAILABLE, 0);
 }
 
+static void test_forecast(void)
+{
+    static const char s_begin[] = "FORECAST BEGIN 900,\xE6\xB7\xB1\xE5\x9C\xB3,2\n";
+    static const char s_days[] =
+        "FORECAST DAY 900,2026-10-29,3,190,280\n"
+        "FORECAST DAY 900,2026-10-28,2,180,270\n";
+    display_snapshot_t snapshot;
+    forecast_batch_t stored;
+    uint32_t writes;
+    s_write_result = 0;
+    s_forecast_storage.ready = 1U;
+    command("CONSOLE ON\n");
+    assert(strcmp(s_output, "OK CONSOLE ON\r\n") == 0);
+    command(s_begin);
+    assert(strstr(s_output, "ERR FORECAST TIME") != NULL);
+    command(TEST_TIME);
+    assert(s_output_length == 0U);
+    /* Before the RTC owner verifies the write there is no permit. */
+    command(s_begin);
+    assert(strstr(s_output, "ERR BUSY") != NULL ||
+        strstr(s_output, "ERR FORECAST TIME") != NULL);
+    clock_service_poll();
+    command("");
+    assert(strcmp(s_output, "OK TIME\r\n") == 0);
+    writes = s_writes;
+    command(s_begin);
+    assert(strstr(s_output, "OK FORECAST BEGIN 900") != NULL);
+    command("TIME 2026-10-28T14:31:00\nCONSOLE OFF\nFS LIST /\n");
+    assert(Debug_IsConsoleActive() && s_writes == writes);
+    assert(strstr(s_output, "ERR BUSY") != NULL);
+    command(s_days);
+    assert(strstr(s_output, "OK FORECAST DAY 900") != NULL);
+    command("PAGE CLOCK\nFORECAST COMMIT 900\n");
+    assert(s_forecast_requests == 1U && s_forecast_token != 0U);
+    assert(strstr(s_output, "OK FORECAST COMMIT") == NULL);
+    assert(!forecast_get_batch(&stored));
+    display_get_snapshot(s_tick, &snapshot);
+    assert(snapshot.page == DISPLAY_PAGE_CLOCK);
+    command("CONSOLE OFF\n");
+    assert(Debug_IsConsoleActive() && strstr(s_output, "ERR BUSY") != NULL);
+    /* Storage completion is durable even if the final UART ACK fails. */
+    s_forecast_done = 1U;
+    s_forecast_result = 0;
+    s_fail_send = 1U;
+    command("");
+    assert(s_output_length == 0U && s_forecast_token == 0U);
+    assert(forecast_get_batch(&stored) && stored.id == 900U);
+    display_get_snapshot(s_tick, &snapshot);
+    assert(snapshot.page == DISPLAY_PAGE_WEATHER);
+    command("PAGE CLOCK\nFORECAST COMMIT 900\n");
+    assert(strstr(s_output, "OK FORECAST COMMIT 900") != NULL);
+    assert(s_forecast_requests == 1U && s_writes == writes);
+    display_get_snapshot(s_tick, &snapshot);
+    assert(snapshot.page == DISPLAY_PAGE_CLOCK); /* Replay has no page side effect. */
+    command("FORECAST BEGIN 901,\xE6\xB7\xB1\xE5\x9C\xB3,1\n");
+    assert(strstr(s_output, "ERR FORECAST TIME") != NULL);
+    command("FORECAST STATUS\n");
+    assert(strstr(s_output, "FORECAST SAVED") != NULL && strstr(s_output, "900") != NULL);
+    command("CONSOLE OFF\n");
+    assert(!Debug_IsConsoleActive());
+    command("FORECAST COMMIT 900\n");
+    assert(s_output_length == 0U && s_forecast_requests == 1U);
+}
+
+static void test_forecast_time_session_boundary(void)
+{
+    static const char s_begin[] = "FORECAST BEGIN 850,\xE6\xB7\xB1\xE5\x9C\xB3,1\n";
+    uint8_t completes_before_console;
+    uint32_t writes = s_writes;
+    s_write_result = 0;
+    s_forecast_storage.ready = 1U;
+    assert(!Debug_IsConsoleActive());
+    for (completes_before_console = 0U; completes_before_console < 2U;
+         completes_before_console++) {
+        command(TEST_TIME);
+        assert(s_output_length == 0U && !Debug_IsConsoleActive());
+        if (completes_before_console != 0U) { clock_service_poll(); }
+        /* ON is parsed before debugTask consumes any completed TIME result.
+         * Exercise RTC completion on either side of that session boundary. */
+        command("CONSOLE ON\n");
+        assert(Debug_IsConsoleActive());
+        assert(strcmp(s_output, "OK CONSOLE ON\r\n") == 0);
+        if (completes_before_console == 0U) {
+            clock_service_poll();
+            command("");
+            assert(s_output_length == 0U); /* The old result stays silent. */
+        }
+        command(s_begin);
+        assert(strstr(s_output, "ERR FORECAST TIME") != NULL);
+        assert(s_forecast_requests == 0U);
+        command("CONSOLE OFF\n");
+        assert(!Debug_IsConsoleActive());
+    }
+    assert(s_writes == writes + 2U);
+    command("CONSOLE ON\n");
+    command(TEST_TIME);
+    assert(s_output_length == 0U);
+    command(s_begin);
+    assert(strstr(s_output, "ERR FORECAST TIME") != NULL ||
+        strstr(s_output, "ERR BUSY") != NULL);
+    clock_service_poll();
+    command("");
+    assert(strcmp(s_output, "OK TIME\r\n") == 0);
+    assert(s_writes == writes + 3U);
+    command(s_begin);
+    assert(strstr(s_output, "OK FORECAST BEGIN 850") != NULL);
+    command("FORECAST CANCEL 850\nCONSOLE OFF\n");
+    assert(strstr(s_output, "OK FORECAST CANCEL 850") != NULL);
+    assert(!Debug_IsConsoleActive() && s_forecast_requests == 0U);
+}
+
 int main(void)
 {
     s_config.ready = 1U;
@@ -304,6 +447,8 @@ int main(void)
     expect_wifi(CLOCK_DATA_UNAVAILABLE, 0);
     test_weather();
     test_time();
-    puts("PASS: real USART2/weather/clock sync, duplicates, rejects, async TIME, silent mode, failed TX and RAM reset");
+    test_forecast_time_session_boundary();
+    test_forecast();
+    puts("PASS: real USART2/weather/clock and forecast TIME session gate, durable publish, failed ACK replay, silent mode and RAM reset");
     return 0;
 }

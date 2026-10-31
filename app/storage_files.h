@@ -10,6 +10,11 @@
 int32_t storage_file_request(const file_store_request_t *p_request);
 uint8_t storage_file_take_result(uint32_t token, file_store_response_t *p_response);
 void storage_get_files_snapshot(file_store_snapshot_t *p_snapshot);
+/* debugTask owns maintenance. Reserve before entering a binary session; retain
+ * through EXIT/timeout upload cleanup. Individual text requests reserve their
+ * own transaction automatically. No IO and no wait in these functions. */
+int32_t storage_maintenance_acquire(void);
+void storage_maintenance_release(void);
 /* Asynchronous scan-only pause at a sector boundary. This does not acknowledge
  * quiescence and does not make suspending this task or powering down Flash safe.
  * A future PowerMgr must obtain an owner-side quiescent handshake. */

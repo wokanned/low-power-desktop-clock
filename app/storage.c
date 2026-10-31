@@ -1,5 +1,6 @@
 #include "storage.h"
 #include "storage_files.h"
+#include "storage_forecast.h"
 #include "clock_config.h"
 #include "clock_faults.h"
 #include "stm32_w25q128.h"
@@ -20,6 +21,10 @@
 #define STORAGE_ERASED_BYTE       0xFFU
 #define STORAGE_SCAN_YIELD_TICKS  ((TickType_t)1U)
 #define STORAGE_BITMAP_BYTES (W25Q128_TOTAL_SIZE / W25Q128_SECTOR_SIZE / 8U)
+#define STORAGE_FILE_NO_ENTRY (-2) /* littlefs LFS_ERR_NOENT */
+#if FORECAST_ENCODED_MAX > FILE_STORE_DATA_MAX
+#error Forecast_file_must_fit_one_storage_data_block
+#endif
 
 typedef enum { STORAGE_FILE_IDLE, STORAGE_FILE_PENDING, STORAGE_FILE_RUNNING,
                STORAGE_FILE_COMPLETE } storage_file_state_t;
@@ -30,6 +35,22 @@ static file_store_snapshot_t s_files = {
     W25Q128_OK
 };
 static volatile storage_file_state_t s_file_state;
+typedef enum { STORAGE_OWNER_NONE, STORAGE_OWNER_MAINTENANCE,
+               STORAGE_OWNER_FORECAST } storage_owner_t;
+typedef enum { STORAGE_FORECAST_RESTORE, STORAGE_FORECAST_IDLE,
+               STORAGE_FORECAST_PENDING, STORAGE_FORECAST_WRITE,
+               STORAGE_FORECAST_COMMIT, STORAGE_FORECAST_VERIFY,
+               STORAGE_FORECAST_CLEANUP,
+               STORAGE_FORECAST_COMPLETE } storage_forecast_state_t;
+static volatile storage_owner_t s_file_owner;
+static uint8_t s_maintenance_session;
+static volatile storage_forecast_state_t s_forecast_state = STORAGE_FORECAST_RESTORE;
+static storage_forecast_snapshot_t s_forecast = {0U, 0U, FILE_STORE_ERROR_NOT_READY, 0U};
+static forecast_batch_t s_forecast_candidate;
+static uint8_t s_forecast_encoded[FORECAST_ENCODED_MAX];
+static uint16_t s_forecast_length;
+static uint32_t s_forecast_token;
+static int32_t s_forecast_error;
 static uint8_t s_scan_occupied[STORAGE_BITMAP_BYTES];
 static uint8_t s_scan_dirty[STORAGE_BITMAP_BYTES];
 static volatile uint8_t s_scan_paused;
@@ -59,6 +80,35 @@ static uint8_t s_request_queue_bytes[sizeof(storage_request_t)];
 static QueueHandle_t s_request_queue;
 
 static uint8_t s_update_scratch[W25Q128_SECTOR_SIZE];
+
+static void s_forecast_finish(int32_t result)
+{
+    taskENTER_CRITICAL();
+    s_forecast.result = result;
+    s_forecast_state = STORAGE_FORECAST_COMPLETE;
+    taskEXIT_CRITICAL();
+}
+
+static void s_forecast_restore_finish(int32_t result)
+{
+    taskENTER_CRITICAL();
+    s_forecast.result = result;
+    s_forecast.ready = 1U;
+    s_forecast_state = STORAGE_FORECAST_IDLE;
+    if (s_file_owner == STORAGE_OWNER_FORECAST) { s_file_owner = STORAGE_OWNER_NONE; }
+    taskEXIT_CRITICAL();
+}
+
+static void s_forecast_formatted(void)
+{
+    forecast_clear();
+    taskENTER_CRITICAL();
+    s_forecast.clear_generation++;
+    s_forecast.result = FILE_STORE_OK;
+    s_forecast.ready = 1U;
+    s_forecast_state = STORAGE_FORECAST_IDLE;
+    taskEXIT_CRITICAL();
+}
 
 static void s_mark_dirty(uint32_t address, uint32_t length)
 {
@@ -251,8 +301,86 @@ static void s_files_publish(void)
     taskENTER_CRITICAL();
     s_files = snapshot;
     s_files.busy = (uint8_t)(snapshot.busy != 0U ||
-        s_file_state == STORAGE_FILE_PENDING || s_file_state == STORAGE_FILE_RUNNING);
+        s_file_state == STORAGE_FILE_PENDING || s_file_state == STORAGE_FILE_RUNNING ||
+        s_forecast.busy != 0U || s_file_owner == STORAGE_OWNER_FORECAST);
     taskEXIT_CRITICAL();
+}
+
+static void s_forecast_command(file_store_operation_t operation)
+{
+    memset(&s_file_request, 0, sizeof(s_file_request));
+    s_file_request.operation = operation;
+    s_file_request.token = s_forecast_token != 0U ? s_forecast_token : 1U;
+}
+
+/* Runs only in storageTask with exclusive ownership of the shared engine and
+ * request/response scratch. No internal request ever enters the debug mailbox. */
+static void s_forecast_process(void)
+{
+    size_t length;
+    uint8_t deferred;
+    int32_t result;
+    if (s_forecast_state == STORAGE_FORECAST_RESTORE) {
+        if (s_files.state == FILE_STORE_INITIALIZING) { return; }
+        if (s_files.state != FILE_STORE_READY) {
+            s_forecast_restore_finish(FILE_STORE_ERROR_NOT_READY);
+            return;
+        }
+        s_forecast_command(FILE_STORE_OP_READ);
+        strcpy(s_file_request.path, FORECAST_FILE_PATH);
+        s_file_request.length = FORECAST_ENCODED_MAX;
+        (void)file_store_execute(&s_file_request, &s_file_response);
+        result = s_file_response.result;
+        if (result == STORAGE_FILE_NO_ENTRY) { result = FILE_STORE_OK; }
+        else if (result == FILE_STORE_OK) {
+            if (s_file_response.size != s_file_response.length ||
+                !forecast_decode(s_file_response.data, s_file_response.length,
+                                 &s_forecast_candidate) ||
+                !forecast_publish(&s_forecast_candidate)) {
+                result = FILE_STORE_ERROR_FORMAT;
+            }
+        }
+        s_forecast_restore_finish(result);
+    } else if (s_forecast_state == STORAGE_FORECAST_PENDING) {
+        if (!forecast_encode(&s_forecast_candidate, s_forecast_encoded,
+                             sizeof(s_forecast_encoded), &length)) {
+            s_forecast_finish(FILE_STORE_ERROR_ARGUMENT);
+            return;
+        }
+        s_forecast_length = (uint16_t)length;
+        s_forecast_command(FILE_STORE_OP_UPLOAD_BEGIN);
+        strcpy(s_file_request.path, FORECAST_FILE_PATH);
+        s_file_request.size = s_forecast_length;
+        s_file_request.crc32 = file_store_crc32(0U, s_forecast_encoded, s_forecast_length);
+        (void)file_store_execute(&s_file_request, &s_file_response);
+        if (s_file_response.result != FILE_STORE_OK) {
+            s_forecast_error = s_file_response.result;
+            s_forecast_state = STORAGE_FORECAST_CLEANUP;
+        } else { s_forecast_state = STORAGE_FORECAST_WRITE; }
+    } else if (s_forecast_state == STORAGE_FORECAST_WRITE) {
+        s_forecast_command(FILE_STORE_OP_UPLOAD_WRITE);
+        s_file_request.length = s_forecast_length;
+        memcpy(s_file_request.data, s_forecast_encoded, s_forecast_length);
+        (void)file_store_execute(&s_file_request, &s_file_response);
+        if (s_file_response.result != FILE_STORE_OK) {
+            s_forecast_error = s_file_response.result;
+            s_forecast_state = STORAGE_FORECAST_CLEANUP;
+        } else { s_forecast_state = STORAGE_FORECAST_COMMIT; }
+    } else if (s_forecast_state == STORAGE_FORECAST_COMMIT) {
+        s_forecast_command(FILE_STORE_OP_UPLOAD_COMMIT);
+        deferred = file_store_execute(&s_file_request, &s_file_response);
+        if (deferred == 0U) {
+            s_forecast_error = s_file_response.result;
+            s_forecast_state = STORAGE_FORECAST_CLEANUP;
+        }
+        else { s_forecast_state = STORAGE_FORECAST_VERIFY; }
+    } else if (s_forecast_state == STORAGE_FORECAST_CLEANUP) {
+        /* The engine normally aborts on write/IO errors itself. Explicitly end
+         * any remaining transaction before publishing a terminal result. */
+        s_forecast_command(FILE_STORE_OP_UPLOAD_CANCEL);
+        (void)file_store_execute(&s_file_request, &s_file_response);
+        s_forecast_finish(s_forecast_error);
+    }
 }
 
 static void s_files_process(void)
@@ -260,6 +388,32 @@ static void s_files_process(void)
     uint8_t execute;
     uint8_t deferred;
     taskENTER_CRITICAL();
+    if (s_forecast_state == STORAGE_FORECAST_RESTORE &&
+        s_file_owner == STORAGE_OWNER_NONE && s_file_state == STORAGE_FILE_IDLE &&
+        s_files.state != FILE_STORE_INITIALIZING) {
+        s_file_owner = STORAGE_OWNER_FORECAST;
+    }
+    if (s_file_owner == STORAGE_OWNER_FORECAST) {
+        taskEXIT_CRITICAL();
+        s_forecast_process();
+        file_store_step();
+        if (s_forecast_state == STORAGE_FORECAST_VERIFY &&
+            file_store_poll(&s_file_response) != 0U) {
+            if (s_file_response.result == FILE_STORE_OK) {
+                /* Publication follows the durable rename, before final success. */
+                if (!forecast_publish(&s_forecast_candidate)) {
+                    s_file_response.result = FILE_STORE_ERROR_FORMAT;
+                }
+            }
+            if (s_file_response.result == FILE_STORE_OK) { s_forecast_finish(FILE_STORE_OK); }
+            else {
+                s_forecast_error = s_file_response.result;
+                s_forecast_state = STORAGE_FORECAST_CLEANUP;
+            }
+        }
+        s_files_publish();
+        return;
+    }
     execute = (uint8_t)(s_file_state == STORAGE_FILE_PENDING);
     if (execute != 0U) { s_file_state = STORAGE_FILE_RUNNING; }
     taskEXIT_CRITICAL();
@@ -288,6 +442,8 @@ static void s_files_process(void)
             deferred = file_store_execute(&s_file_request, &s_file_response);
         }
         if (deferred == 0U) {
+            if (s_file_response.operation == FILE_STORE_OP_FORMAT &&
+                s_file_response.result == FILE_STORE_OK) { s_forecast_formatted(); }
             taskENTER_CRITICAL();
             s_file_state = STORAGE_FILE_COMPLETE;
             taskEXIT_CRITICAL();
@@ -415,8 +571,13 @@ static void s_storage_task(void *p_argument)
                 memset(s_scan_dirty, 0, sizeof(s_scan_dirty));
                 scan.running = 1U;
                 if ((s_files.state == FILE_STORE_UNAVAILABLE || s_files.state == FILE_STORE_ERROR) &&
-                    s_files.upload_active == 0U && s_file_state == STORAGE_FILE_IDLE) {
+                    s_files.upload_active == 0U && s_file_state == STORAGE_FILE_IDLE &&
+                    s_file_owner == STORAGE_OWNER_NONE) {
                     file_store_init(&s_context, s_mark_dirty);
+                    taskENTER_CRITICAL();
+                    s_forecast.ready = 0U;
+                    s_forecast_state = STORAGE_FORECAST_RESTORE;
+                    taskEXIT_CRITICAL();
                 }
             } else {
                 online = 0U;
@@ -432,7 +593,9 @@ static void s_storage_task(void *p_argument)
         now = xTaskGetTickCount();
         elapsed = (TickType_t)(now - scan.completed_tick);
         wait = ((scan.running != 0U && s_scan_paused == 0U && s_files.upload_active == 0U) ||
-                s_files.state == FILE_STORE_INITIALIZING || s_file_state == STORAGE_FILE_RUNNING) ?
+                s_files.state == FILE_STORE_INITIALIZING || s_file_state == STORAGE_FILE_RUNNING ||
+                (s_forecast_state >= STORAGE_FORECAST_PENDING &&
+                 s_forecast_state <= STORAGE_FORECAST_CLEANUP)) ?
             STORAGE_SCAN_YIELD_TICKS :
             ((scan.running != 0U || s_scan_paused != 0U || s_files.upload_active != 0U) ?
              pdMS_TO_TICKS(STORAGE_USAGE_INTERVAL_MS) :
@@ -597,16 +760,25 @@ int32_t storage_file_request(const file_store_request_t *p_request)
         p_request->operation > FILE_STORE_OP_SELFTEST) {
         return FILE_STORE_ERROR_ARGUMENT;
     }
+    if (((p_request->operation == FILE_STORE_OP_UPLOAD_BEGIN ||
+          p_request->operation == FILE_STORE_OP_REMOVE ||
+          p_request->operation == FILE_STORE_OP_RENAME) &&
+         strncmp(p_request->path, FORECAST_FILE_PATH, sizeof(FORECAST_FILE_PATH)) == 0) ||
+        (p_request->operation == FILE_STORE_OP_RENAME &&
+         strncmp(p_request->path2, FORECAST_FILE_PATH, sizeof(FORECAST_FILE_PATH)) == 0)) {
+        return FILE_STORE_ERROR_ARGUMENT;
+    }
     taskENTER_CRITICAL();
     if (s_storage_task_handle == NULL || s_request_queue == NULL) {
         taskEXIT_CRITICAL();
         return FILE_STORE_ERROR_NOT_READY;
     }
-    if (s_file_state != STORAGE_FILE_IDLE) {
+    if (s_file_state != STORAGE_FILE_IDLE || s_file_owner == STORAGE_OWNER_FORECAST) {
         taskEXIT_CRITICAL();
         return FILE_STORE_ERROR_BUSY;
     }
     s_file_request = *p_request;
+    s_file_owner = STORAGE_OWNER_MAINTENANCE;
     s_file_state = STORAGE_FILE_PENDING;
     s_files.busy = 1U;
     taskEXIT_CRITICAL();
@@ -624,10 +796,98 @@ uint8_t storage_file_take_result(uint32_t token, file_store_response_t *p_respon
     if (s_file_state == STORAGE_FILE_COMPLETE && s_file_response.token == token) {
         *p_response = s_file_response;
         s_file_state = STORAGE_FILE_IDLE;
+        if (s_maintenance_session == 0U && s_files.upload_active == 0U) {
+            s_file_owner = STORAGE_OWNER_NONE;
+        }
         complete = 1U;
     }
     taskEXIT_CRITICAL();
     return complete;
+}
+
+int32_t storage_maintenance_acquire(void)
+{
+    taskENTER_CRITICAL();
+    if (s_storage_task_handle == NULL) {
+        taskEXIT_CRITICAL();
+        return FILE_STORE_ERROR_NOT_READY;
+    }
+    if (s_file_owner != STORAGE_OWNER_NONE || s_file_state != STORAGE_FILE_IDLE) {
+        taskEXIT_CRITICAL();
+        return FILE_STORE_ERROR_BUSY;
+    }
+    s_file_owner = STORAGE_OWNER_MAINTENANCE;
+    s_maintenance_session = 1U;
+    taskEXIT_CRITICAL();
+    return FILE_STORE_OK;
+}
+
+void storage_maintenance_release(void)
+{
+    taskENTER_CRITICAL();
+    if (s_file_owner == STORAGE_OWNER_MAINTENANCE &&
+        s_file_state == STORAGE_FILE_IDLE && s_files.upload_active == 0U) {
+        s_maintenance_session = 0U;
+        s_file_owner = STORAGE_OWNER_NONE;
+    }
+    taskEXIT_CRITICAL();
+}
+
+int32_t storage_forecast_request(const forecast_batch_t *p_batch, uint32_t token)
+{
+    storage_request_t wake = {CLOCK_FORMAT_24, 0U};
+    if (token == 0U || !forecast_validate(p_batch, NULL)) {
+        return FILE_STORE_ERROR_ARGUMENT;
+    }
+    taskENTER_CRITICAL();
+    if (s_storage_task_handle == NULL || s_forecast.ready == 0U) {
+        taskEXIT_CRITICAL();
+        return FILE_STORE_ERROR_NOT_READY;
+    }
+    if (s_file_owner != STORAGE_OWNER_NONE || s_forecast_state != STORAGE_FORECAST_IDLE ||
+        s_file_state != STORAGE_FILE_IDLE) {
+        taskEXIT_CRITICAL();
+        return FILE_STORE_ERROR_BUSY;
+    }
+    if (s_files.state != FILE_STORE_READY) {
+        taskEXIT_CRITICAL();
+        return FILE_STORE_ERROR_NOT_READY;
+    }
+    s_forecast_candidate = *p_batch;
+    s_forecast_token = token;
+    s_forecast_state = STORAGE_FORECAST_PENDING;
+    s_file_owner = STORAGE_OWNER_FORECAST;
+    s_forecast.busy = 1U;
+    taskEXIT_CRITICAL();
+    (void)xQueueSend(s_request_queue, &wake, 0U);
+    return FILE_STORE_OK;
+}
+
+uint8_t storage_forecast_take_result(uint32_t token, int32_t *p_result)
+{
+    uint8_t complete = 0U;
+    if (token == 0U || p_result == NULL) { return 0U; }
+    taskENTER_CRITICAL();
+    if (s_forecast_state == STORAGE_FORECAST_COMPLETE && s_forecast_token == token) {
+        *p_result = s_forecast.result;
+        s_forecast_state = STORAGE_FORECAST_IDLE;
+        s_forecast.busy = 0U;
+        s_file_owner = STORAGE_OWNER_NONE;
+        complete = 1U;
+    }
+    taskEXIT_CRITICAL();
+    return complete;
+}
+
+void storage_forecast_get_snapshot(storage_forecast_snapshot_t *p_snapshot)
+{
+    if (p_snapshot != NULL) {
+        taskENTER_CRITICAL();
+        *p_snapshot = s_forecast;
+        p_snapshot->busy = (uint8_t)(s_forecast.busy != 0U ||
+                                     s_file_owner == STORAGE_OWNER_MAINTENANCE);
+        taskEXIT_CRITICAL();
+    }
 }
 
 void storage_get_files_snapshot(file_store_snapshot_t *p_snapshot)

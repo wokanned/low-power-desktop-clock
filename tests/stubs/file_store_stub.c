@@ -29,3 +29,9 @@ void file_store_get_snapshot(file_store_snapshot_t *p_snapshot)
     p_snapshot->state = FILE_STORE_UNAVAILABLE;
     p_snapshot->total_blocks = FILE_STORE_BLOCK_COUNT;
 }
+uint32_t file_store_crc32(uint32_t crc, const uint8_t *p_data, uint32_t length)
+{
+    (void)p_data;
+    (void)length;
+    return crc;
+}

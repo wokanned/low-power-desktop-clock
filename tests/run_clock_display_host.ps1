@@ -15,6 +15,7 @@ $testSources = @(
     (Join-Path $projectRoot 'app\epd_weather_view.c'),
     (Join-Path $projectRoot 'app\display.c'),
     (Join-Path $projectRoot 'app\weather.c'),
+    (Join-Path $projectRoot 'app\forecast.c'),
     (Join-Path $projectRoot 'app\clock_schedule.c'),
     (Join-Path $projectRoot 'app\clock_model.c'),
     (Join-Path $projectRoot 'app\clock_faults.c'),

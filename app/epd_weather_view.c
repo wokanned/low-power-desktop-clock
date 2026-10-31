@@ -466,6 +466,24 @@ static void s_two_digits(char *p_text, uint8_t value)
     p_text[1] = (char)('0' + value % 10U);
 }
 
+static void s_draw_forecast_date(weather_canvas_t *p_canvas,
+                                  const clock_calendar_t *p_date)
+{
+    char text[11];
+    text[0] = (char)('0' + p_date->year / 1000U);
+    text[1] = (char)('0' + p_date->year / 100U % 10U);
+    text[2] = (char)('0' + p_date->year / 10U % 10U);
+    text[3] = (char)('0' + p_date->year % 10U);
+    text[4] = '-';
+    s_two_digits(&text[5], p_date->month);
+    text[7] = '-';
+    s_two_digits(&text[8], p_date->day);
+    text[10] = '\0';
+    (void)s_draw_text(p_canvas, 8U, 112U, 72U,
+        "\xE9\xA2\x84\xE6\x8A\xA5\xE6\x97\xA5\xE6\x9C\x9F");
+    (void)s_draw_text(p_canvas, 78U, 112U, 220U, text);
+}
+
 static uint8_t s_draw(weather_canvas_t *p_canvas,
                       const weather_snapshot_t *p_weather,
                       const clock_view_model_t *p_clock)
@@ -478,17 +496,21 @@ static uint8_t s_draw(weather_canvas_t *p_canvas,
     uint8_t source_day;
 
     if ((p_weather->available != 0U) && (p_weather->data.condition > 13U)) { return 0U; }
-    if (p_weather->available != 0U && p_weather->data.city == WEATHER_CITY_ZHANJIANG) {
+    if ((p_weather->available != 0U || p_weather->kind != WEATHER_VIEW_LIVE) &&
+        p_weather->data.city == WEATHER_CITY_ZHANJIANG) {
         (void)s_draw_text(p_canvas, 8U, 4U, 56U,
                          "\xE6\xB9\x9B\xE6\xB1\x9F");
-    } else if (p_weather->available != 0U) {
+    } else if (p_weather->available != 0U || p_weather->kind != WEATHER_VIEW_LIVE) {
         (void)s_draw_text(p_canvas, 8U, 4U, 56U,
                          "\xE6\xB7\xB1\xE5\x9C\xB3");
     } else {
         (void)s_draw_text(p_canvas, 8U, 4U, 56U,
                          "\xE5\xA4\xA9\xE6\xB0\x94");
     }
-    if (p_weather->expired != 0U) {
+    if (p_weather->kind == WEATHER_VIEW_FORECAST) {
+        (void)s_draw_text(p_canvas, 60U, 4U, 108U,
+                         "\xE9\xA2\x84\xE6\x8A\xA5");
+    } else if (p_weather->expired != 0U) {
         (void)s_draw_text(p_canvas, 52U, 4U, 108U,
                          "\xE5\xB7\xB2\xE8\xBF\x87\xE6\x9C\x9F");
     }
@@ -516,7 +538,9 @@ static uint8_t s_draw(weather_canvas_t *p_canvas,
         p_label = s_condition_text(p_weather->data.condition);
         if (p_label == NULL) { return 0U; }
         (void)s_draw_text(p_canvas, 56U, 38U, 168U, p_label);
-        s_large_temperature(p_canvas, p_weather->data.temperature_tenths);
+        if (p_weather->kind == WEATHER_VIEW_FORECAST) {
+            s_large_placeholder(p_canvas);
+        } else { s_large_temperature(p_canvas, p_weather->data.temperature_tenths); }
 
         (void)s_draw_text(p_canvas, 8U, 72U, 44U,
                          "\xE6\x9C\x80\xE9\xAB\x98");
@@ -529,18 +553,24 @@ static uint8_t s_draw(weather_canvas_t *p_canvas,
 
         (void)s_draw_text(p_canvas, 8U, 94U, 44U,
                          "\xE6\xB9\xBF\xE5\xBA\xA6");
-        s_format_unsigned(text, p_weather->data.humidity);
+        if (p_weather->kind == WEATHER_VIEW_FORECAST) { strcpy(text, "--"); }
+        else { s_format_unsigned(text, p_weather->data.humidity); }
         (void)s_draw_text(p_canvas, 48U, 94U, 100U, text);
         (void)s_draw_text(p_canvas, 100U, 94U, 136U,
                          "\xE9\xA3\x8E\xE5\x90\x91");
-        p_label = s_wind_text(p_weather->data.wind_direction);
+        p_label = p_weather->kind == WEATHER_VIEW_FORECAST ? "--" :
+            s_wind_text(p_weather->data.wind_direction);
         if (p_label == NULL) { return 0U; }
         (void)s_draw_text(p_canvas, 140U, 94U, 184U, p_label);
         (void)s_draw_text(p_canvas, 190U, 94U, 226U,
                          "\xE9\xA3\x8E\xE9\x80\x9F");
-        s_format_tenths(value, (int16_t)p_weather->data.wind_speed_tenths);
+        if (p_weather->kind == WEATHER_VIEW_FORECAST) { strcpy(value, "--.-"); }
+        else { s_format_tenths(value, (int16_t)p_weather->data.wind_speed_tenths); }
         (void)s_draw_text(p_canvas, 230U, 94U, 288U, value);
 
+        if (p_weather->kind == WEATHER_VIEW_FORECAST) {
+            s_draw_forecast_date(p_canvas, &p_weather->forecast_date);
+        } else {
         (void)s_draw_text(p_canvas, 8U, 112U, 72U,
                          "\xE6\x9B\xB4\xE6\x96\xB0\xE6\x97\xB6\xE9\x97\xB4");
         source_month = (uint8_t)((p_weather->data.source_time[5] - '0') * 10 +
@@ -558,10 +588,15 @@ static uint8_t s_draw(weather_canvas_t *p_canvas,
         text[10] = p_weather->data.source_time[15];
         text[11] = '\0';
         (void)s_draw_text(p_canvas, 78U, 112U, 220U, text);
+        }
     } else {
         s_weather_icon(p_canvas, 0U, 8, 27);
-        (void)s_draw_text(p_canvas, 56U, 38U, 168U,
-                         "\xE7\xAD\x89\xE5\xBE\x85\xE5\xA4\xA9\xE6\xB0\x94\xE6\x95\xB0\xE6\x8D\xAE");
+        p_label = p_weather->kind == WEATHER_VIEW_NO_TODAY ?
+            "\xE6\x97\xA0\xE5\xBD\x93\xE5\xA4\xA9\xE9\xA2\x84\xE6\x8A\xA5" :
+            (p_weather->kind == WEATHER_VIEW_CLOCK_UNAVAILABLE ?
+            "\xE7\xAD\x89\xE5\xBE\x85\xE6\xA0\xA1\xE6\x97\xB6" :
+            "\xE7\xAD\x89\xE5\xBE\x85\xE5\xA4\xA9\xE6\xB0\x94\xE6\x95\xB0\xE6\x8D\xAE");
+        (void)s_draw_text(p_canvas, 56U, 38U, 168U, p_label);
         s_large_placeholder(p_canvas);
         (void)s_draw_text(p_canvas, 8U, 72U, 44U,
                          "\xE6\x9C\x80\xE9\xAB\x98");
@@ -578,9 +613,13 @@ static uint8_t s_draw(weather_canvas_t *p_canvas,
         (void)s_draw_text(p_canvas, 190U, 94U, 226U,
                          "\xE9\xA3\x8E\xE9\x80\x9F");
         (void)s_draw_text(p_canvas, 230U, 94U, 288U, "--.-");
+        if (p_weather->kind == WEATHER_VIEW_NO_TODAY) {
+            s_draw_forecast_date(p_canvas, &p_weather->forecast_date);
+        } else {
         (void)s_draw_text(p_canvas, 8U, 112U, 72U,
                          "\xE6\x9B\xB4\xE6\x96\xB0\xE6\x97\xB6\xE9\x97\xB4");
         (void)s_draw_text(p_canvas, 78U, 112U, 220U, "-- --:--");
+        }
     }
     s_line(p_canvas, 8, 68, 288, 68);
     s_line(p_canvas, 8, 91, 288, 91);
