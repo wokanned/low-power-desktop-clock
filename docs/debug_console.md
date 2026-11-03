@@ -1,5 +1,7 @@
 # USART2 显式文本控制台
 
+2026-11-03：默认 AUTO 待机，不再默认持续发送遥测。在上电30秒或动作唤醒10秒窗口先发送 `POWER HOLD` 并等待应答，再执行 `CONSOLE ON`。完成维护发送 `POWER AUTO`；`POWER STATUS` 可在控制台之外查询。CONSOLE ON/OFF 只切换文本与遥测，不控制待机。详见[低功耗说明](low_power.md)。
+
 2026-11-02 新增 [WDATA](weather_feed_protocol.md)、[大字天气页](weather_pages.md) 和
 [TIME2/TIME?](time_protocol.md)。新业务须先进入控制台，旧 WEATHER/TIME 和
 PAGE CLOCK/WEATHER 仍兼容静默执行。以下旧两页行为只适用于尚无 WDATA 的情况。

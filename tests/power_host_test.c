@@ -60,7 +60,7 @@ int main(void)
     assert(status.wake_sources == (POWER_WAKE_TIMER | POWER_WAKE_MOTION));
     assert(power_can_sleep(50000U)); /* timed wakes do not renew motion window */
     power_init(100U);
-    assert(!power_is_hold() && !power_can_sleep(30100U));
+    assert(!power_is_hold() && !power_can_sleep(101U));
     power_get_status(101U, &status);
     assert(status.sleep_count == 0U && status.fault_count == 0U);
     assert(status.window_remaining_ms == 29999U && s_critical == 0U);

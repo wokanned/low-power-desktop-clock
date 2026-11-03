@@ -2013,6 +2013,7 @@
         <Group>
           <GroupName>app</GroupName>
           <Files>
+            <File><FileName>power.c</FileName><FileType>1</FileType><FilePath>../app/power.c</FilePath></File>
             <File>
               <FileName>accel.c</FileName>
               <FileType>1</FileType>
@@ -2318,6 +2319,8 @@
         <Group>
           <GroupName>platform</GroupName>
           <Files>
+            <File><FileName>stm32_low_power.c</FileName><FileType>1</FileType><FilePath>../platform/stm32_low_power.c</FilePath></File>
+            <File><FileName>low_power_time.c</FileName><FileType>1</FileType><FilePath>../platform/low_power_time.c</FilePath></File>
             <File>
               <FileName>stm32_adxl345.c</FileName>
               <FileType>1</FileType>

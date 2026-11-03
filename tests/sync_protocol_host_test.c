@@ -17,6 +17,7 @@
 #include "task.h"
 #include "cmsis_os.h"
 #include <assert.h>
+bool stm32_debug_uart_sleep_ready(void) { return true; }
 #include <setjmp.h>
 #include <stdio.h>
 #include <string.h>

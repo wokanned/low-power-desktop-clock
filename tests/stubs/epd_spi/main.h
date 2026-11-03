@@ -71,6 +71,19 @@ extern GPIO_TypeDef g_test_gpio;
 #define HAL_UART_ERROR_RTO 32U
 #define HAL_UART_STATE_READY 0U
 #define HAL_UART_STATE_BUSY_TX 1U
+#define HAL_UART_STATE_BUSY_RX 1U
+#define UART_FLAG_PE 1U
+#define UART_FLAG_FE 2U
+#define UART_FLAG_NE 4U
+#define UART_FLAG_ORE 8U
+#define UART_FLAG_RXNE 16U
+#define UART_FLAG_BUSY 32U
+#define UART_FLAG_TC 64U
+#define UART_RXDATA_FLUSH_REQUEST 1U
+#define __HAL_UART_GET_FLAG(uart, flag) ((void)(uart), (flag) == UART_FLAG_TC)
+#define __HAL_UART_DISABLE(uart) ((void)(uart))
+#define __HAL_UART_ENABLE(uart) ((void)(uart))
+#define __HAL_UART_SEND_REQ(uart, request) ((void)(uart), (void)(request))
 #define UART_CLEAR_PEF 1U
 #define UART_CLEAR_FEF 2U
 #define UART_CLEAR_NEF 4U
