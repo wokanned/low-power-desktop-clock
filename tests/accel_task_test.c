@@ -105,6 +105,25 @@ int32_t stm32_adxl345_bind(adxl345_ctx_t *p_ctx)
     return 0;
 }
 
+void stm32_adxl345_motion_init(stm32_adxl345_motion_notify_t notify) { (void)notify; }
+void stm32_adxl345_motion_disarm(void) { }
+void stm32_adxl345_motion_take_pending(void) { }
+uint8_t stm32_adxl345_motion_high(void) { return 0U; }
+uint8_t stm32_adxl345_motion_arm(void) { return 1U; }
+uint32_t ulTaskNotifyTake(BaseType_t clear, TickType_t ticks)
+{
+    (void)clear; (void)ticks; assert(0); return 0U;
+}
+void xTaskNotifyGive(TaskHandle_t task) { (void)task; }
+void vTaskNotifyGiveFromISR(TaskHandle_t task, BaseType_t *higher_priority)
+{ (void)task; (void)higher_priority; }
+adxl345_status_t adxl345_arm_activity(const adxl345_ctx_t *p_ctx, uint8_t *p_source)
+{ (void)p_ctx; *p_source = 0U; assert(0); return ADXL345_OK; }
+adxl345_status_t adxl345_check_activity(const adxl345_ctx_t *p_ctx)
+{ (void)p_ctx; assert(0); return ADXL345_OK; }
+adxl345_status_t adxl345_read_interrupt(const adxl345_ctx_t *p_ctx, uint8_t *p_source)
+{ (void)p_ctx; *p_source = 0U; assert(0); return ADXL345_OK; }
+
 adxl345_status_t adxl345_init(const adxl345_ctx_t *p_ctx)
 {
     (void)p_ctx;

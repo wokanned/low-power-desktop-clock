@@ -79,6 +79,11 @@ int main(void)
     guarded.before = 0x12345678U;
     guarded.after = 0xABCDEF12U;
     debug_console_parser_reset(&guarded.parser);
+    assert(feed(&guarded.parser, "POWER HOLD\r\n") == DEBUG_COMMAND_POWER_HOLD);
+    assert(feed(&guarded.parser, "POWER AUTO\n") == DEBUG_COMMAND_POWER_AUTO);
+    assert(feed(&guarded.parser, "POWER STATUS\n") == DEBUG_COMMAND_POWER_STATUS);
+    assert(feed(&guarded.parser, "POWER AUTO EXTRA\n") == DEBUG_COMMAND_UNKNOWN);
+    assert(feed(&guarded.parser, "POWER\n") == DEBUG_COMMAND_UNKNOWN);
     assert(feed(&guarded.parser, "CONSOLE ON\r\n") == DEBUG_COMMAND_ON);
     assert(feed(&guarded.parser, "CONSOLE OFF\r") == DEBUG_COMMAND_OFF);
     assert(feed(&guarded.parser, "FORMAT 12\n") == DEBUG_COMMAND_FORMAT_12);
@@ -108,6 +113,14 @@ int main(void)
     assert(strncmp(guarded.parser.line, "WEATHER ", 8U) == 0);
     assert(feed(&guarded.parser, "PAGE WEATHER\n") == DEBUG_COMMAND_PAGE_WEATHER);
     assert(feed(&guarded.parser, "PAGE CLOCK\n") == DEBUG_COMMAND_PAGE_CLOCK);
+    assert(feed(&guarded.parser, "PAGE FORECAST\n") == DEBUG_COMMAND_PAGE_DETAIL);
+    assert(feed(&guarded.parser, "PAGE DATA\n") == DEBUG_COMMAND_PAGE_DETAIL);
+    assert(feed(&guarded.parser, "PAGE TEXT 3 25\n") == DEBUG_COMMAND_PAGE_DETAIL);
+    assert(feed(&guarded.parser, "TIME2 2026-11-02T10:30:00.123\r\n") == DEBUG_COMMAND_TIME_PRECISE);
+    assert(feed(&guarded.parser, "TIME?\n") == DEBUG_COMMAND_TIME_PRECISE);
+    assert(feed(&guarded.parser, "TIME2X\n") == DEBUG_COMMAND_UNKNOWN);
+    assert(feed(&guarded.parser, "WDATA STATUS\n") == DEBUG_COMMAND_WEATHER_FEED);
+    assert(feed(&guarded.parser, "WDATAX STATUS\n") == DEBUG_COMMAND_UNKNOWN);
     assert(feed(&guarded.parser, "FS STATUS\n") == DEBUG_COMMAND_FILES);
     assert(feed(&guarded.parser, "FORECAST BEGIN 42,") == DEBUG_COMMAND_NONE);
     assert(feed(&guarded.parser, "\xE6\xB7\xB1\xE5\x9C\xB3,7\r\n") == DEBUG_COMMAND_FORECAST);
@@ -137,6 +150,13 @@ int main(void)
     files_line[224] = '\n';
     files_line[225] = '\0';
     assert(feed(&guarded.parser, files_line) == DEBUG_COMMAND_RX_OVERFLOW);
+    memcpy(files_line, "WDATA TEXT ", 11U);
+    memset(files_line + 11U, '0', 212U);
+    files_line[223] = '\n'; files_line[224] = '\0';
+    assert(feed(&guarded.parser, files_line) == DEBUG_COMMAND_WEATHER_FEED);
+    files_line[223] = '0'; files_line[224] = '\n'; files_line[225] = '\0';
+    assert(feed(&guarded.parser, files_line) == DEBUG_COMMAND_RX_OVERFLOW);
+    assert(feed(&guarded.parser, "WDATA STATUS\n") == DEBUG_COMMAND_WEATHER_FEED);
     assert(feed(&guarded.parser, "WEATHER,\n") == DEBUG_COMMAND_WEATHER);
     for (i = 0U; i < 31U; i++) {
         assert(debug_console_parser_feed(&guarded.parser, 'A') == DEBUG_COMMAND_NONE);

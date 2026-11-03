@@ -268,6 +268,14 @@ w25q128_status_t w25q128_read_id(const w25q128_ctx_t *p_ctx, uint32_t *p_id)
     return result;
 }
 
+w25q128_status_t w25q128_check_idle(const w25q128_ctx_t *p_ctx)
+{
+    uint8_t status;
+    w25q128_status_t result = w25q128_read_status(p_ctx, &status);
+    if (result != W25Q128_OK) { return result; }
+    return (status & W25Q128_STATUS_WIP) != 0U ? W25Q128_ERROR_BUSY : W25Q128_OK;
+}
+
 w25q128_status_t w25q128_read_status(const w25q128_ctx_t *p_ctx, uint8_t *p_status)
 {
     w25q128_status_t result;

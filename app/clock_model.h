@@ -20,6 +20,15 @@ typedef struct {
     uint8_t month, day, weekday, hour, minute, second;
 } clock_calendar_t;
 
+/* RTC observation anchored to a caller-supplied monotonic millisecond tick.
+ * read_span_ms bounds the software read bracket, not network time accuracy. */
+typedef struct {
+    clock_calendar_t calendar;
+    uint32_t tick_ms;
+    uint16_t millisecond;
+    uint16_t read_span_ms;
+} clock_timestamp_t;
+
 typedef struct {
     clock_data_state_t state;
     int32_t value;

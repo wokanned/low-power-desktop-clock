@@ -28,10 +28,19 @@ $taskExecutable = Join-Path $output 'accel_task_test.exe'
 & $Compiler '-std=c99' '-Wall' '-Wextra' '-Werror' '-pedantic' '-O2' `
     "-I$root/tests/stubs/accel" "-I$root/device" "-I$root/app" "-I$root/platform" `
     (Join-Path $root 'tests/accel_task_test.c') `
+    (Join-Path $root 'tests/stubs/power_stub.c') `
     (Join-Path $root 'app/accel.c') '-o' $taskExecutable
 if ($LASTEXITCODE -ne 0) { throw 'Host task build failed' }
 & $taskExecutable
 if ($LASTEXITCODE -ne 0) { throw 'Host task tests failed' }
+$motionExecutable = Join-Path $output 'accel_motion_test.exe'
+& $Compiler '-std=c99' '-Wall' '-Wextra' '-Werror' '-pedantic' '-O2' `
+    "-I$root/tests/stubs/accel" "-I$root/device" "-I$root/app" "-I$root/platform" `
+    (Join-Path $root 'tests/accel_motion_test.c') `
+    (Join-Path $root 'app/accel.c') '-o' $motionExecutable
+if ($LASTEXITCODE -ne 0) { throw 'Host motion build failed' }
+& $motionExecutable
+if ($LASTEXITCODE -ne 0) { throw 'Host motion tests failed' }
 $previousFixture = $env:ADXL345_C_FIXTURE
 try {
     $env:ADXL345_C_FIXTURE = $fixture

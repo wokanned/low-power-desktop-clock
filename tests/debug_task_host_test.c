@@ -9,6 +9,7 @@
 #include "weather.h"
 #include "queue.h"
 #include "task.h"
+#include "power.h"
 #include <assert.h>
 #include <setjmp.h>
 #include <stdio.h>
@@ -38,6 +39,27 @@ static int32_t s_time_accept_result;
 static int32_t s_time_result;
 static uint8_t s_time_done;
 static clock_calendar_t s_requested_time;
+static power_mode_t s_power_mode = POWER_MODE_HOLD;
+static uint32_t s_power_blockers;
+static uint32_t s_power_tick;
+static uint8_t s_power_test;
+
+void power_set_mode(power_mode_t mode) { s_power_mode = mode; }
+bool power_is_hold(void) { return s_power_mode == POWER_MODE_HOLD; }
+void power_set_blocker(uint32_t mask, bool active)
+{
+    if (active) { s_power_blockers |= mask; }
+    else { s_power_blockers &= ~mask; }
+}
+void power_get_status(uint32_t now_ms, power_status_t *p_status)
+{
+    (void)now_ms;
+    memset(p_status, 0, sizeof(*p_status));
+    p_status->mode = s_power_mode;
+    p_status->blockers = s_power_blockers;
+    p_status->sleep_count = 23U;
+    p_status->sleep_ms = 4500U;
+}
 
 static void clear_output(void)
 {
@@ -229,14 +251,74 @@ BaseType_t xQueueReceive(QueueHandle_t queue, void *p_item, TickType_t wait)
 }
 BaseType_t xQueueReset(QueueHandle_t queue) { queue->count = 0U; return pdPASS; }
 TaskHandle_t xTaskGetCurrentTaskHandle(void) { return &s_step; }
-TickType_t xTaskGetTickCount(void) { return s_step * 20U; }
+TickType_t xTaskGetTickCount(void) { return s_power_test != 0U ? s_power_tick : s_step * 20U; }
 void xTaskNotifyGive(TaskHandle_t task) { assert(task != NULL); }
 void vTaskNotifyGiveFromISR(TaskHandle_t task, BaseType_t *p_woken)
 { assert(task != NULL); *p_woken = pdFALSE; }
 void vTaskSuspend(TaskHandle_t task) { (void)task; assert(0); }
 
+static void test_power_step(TickType_t wait)
+{
+    s_step++;
+    s_power_tick += wait;
+    switch (s_step) {
+    case 1U:
+        assert(wait == 1000U && (s_power_blockers & POWER_BLOCK_DEBUG) == 0U);
+        assert(s_binary_frames == 0U && s_output_length == 0U);
+        s_input = "POWER STATUS\nPOWER HOLD\n";
+        break;
+    case 2U:
+        assert(wait == 20U && power_is_hold() && !Debug_IsConsoleActive());
+        assert(strstr(s_output, "POWER AUTO BLOCK=") != NULL);
+        assert(strstr(s_output, "POWER SLEEPS=23 MS=4500") != NULL);
+        assert(strstr(s_output, "OK POWER HOLD\r\n") != NULL);
+        assert(Debug_SendFloats(s_frame, VOFA_MAX_CHANNELS));
+        clear_output();
+        break;
+    case 3U:
+        assert(s_binary_frames == 1U);
+        s_input = "TIME 2026-10-27T14:30:00\nPOWER AUTO\n";
+        break;
+    case 4U:
+        assert(wait == 20U && !power_is_hold());
+        assert((s_power_blockers & POWER_BLOCK_DEBUG) != 0U && s_time_token != 0U);
+        assert(strcmp(s_output, "OK POWER AUTO\r\n") == 0);
+        assert(Debug_SendFloats(s_frame, VOFA_MAX_CHANNELS));
+        s_time_done = 1U;
+        s_time_result = 0;
+        break;
+    case 5U:
+        assert(wait == 1000U && (s_power_blockers & POWER_BLOCK_DEBUG) == 0U);
+        assert(s_time_token == 0U && s_binary_frames == 1U);
+        clear_output();
+        s_input = "POW";
+        break;
+    case 6U:
+        assert(wait == 20U && (s_power_blockers & POWER_BLOCK_DEBUG) != 0U);
+        s_power_tick += 1000U;
+        break;
+    case 7U:
+        assert(wait == 1000U && (s_power_blockers & POWER_BLOCK_DEBUG) == 0U);
+        assert(s_output_length == 0U && !power_is_hold());
+        s_input = "POWER HOLD\nCONSOLE ON\nPOWER AUTO EXTRA\n";
+        break;
+    case 8U:
+        assert(wait == 20U && power_is_hold() && Debug_IsConsoleActive());
+        assert(strcmp(s_output, "OK POWER HOLD\r\nOK CONSOLE ON\r\nERR COMMAND\r\n") == 0);
+        assert(s_storage_requests == 4U);
+        longjmp(s_finished, 1);
+        break;
+    default: assert(0); break;
+    }
+}
+
 uint32_t ulTaskNotifyTake(BaseType_t clear, TickType_t wait)
 {
+    if (s_power_test != 0U) {
+        assert(clear == pdTRUE);
+        test_power_step(wait);
+        return 1U;
+    }
     assert(clear == pdTRUE && wait == 20U);
     s_step++;
     switch (s_step) {
@@ -334,6 +416,7 @@ uint32_t ulTaskNotifyTake(BaseType_t clear, TickType_t wait)
 bool stm32_debug_uart_rx_start(stm32_debug_uart_notify_t notify)
 { assert(notify != NULL); return true; }
 bool stm32_debug_uart_rx_recover(void) { return true; }
+bool stm32_debug_uart_sleep_ready(void) { return *s_input == '\0'; }
 void stm32_debug_uart_set_binary(uint8_t enabled) { assert(enabled == 0U); }
 bool stm32_debug_uart_receive(uint8_t *p_byte, uint32_t *p_errors)
 {
@@ -350,7 +433,7 @@ bool stm32_debug_uart_send(void *p_handle, const uint8_t *p_data, uint16_t len)
         assert(memcmp(p_data + 64U, "\0\0\x80\x7F", 4U) == 0);
         s_binary_frames++;
     } else {
-        assert(Debug_IsConsoleActive() && len <= 64U);
+        assert((Debug_IsConsoleActive() || s_power_test != 0U) && len <= 64U);
         if (s_send_failure != 0U) { s_send_failure = 0U; return false; }
         assert(s_output_length + len < sizeof(s_output));
         memcpy(s_output + s_output_length, p_data, len);
@@ -429,6 +512,19 @@ void clock_service_get_model(clock_view_model_t *p_model)
     p_model->calendar = s_requested_time;
     p_model->calendar_state = CLOCK_DATA_READY;
 }
+int32_t clock_service_request_timestamp(const clock_timestamp_t *p_timestamp,
+                                        uint32_t receive_tick_ms, uint32_t token)
+{
+    (void)p_timestamp; (void)receive_tick_ms; (void)token;
+    return -2;
+}
+int32_t clock_service_request_time_query(uint32_t token) { (void)token; return -2; }
+uint8_t clock_service_take_timestamp_result(uint32_t token, int32_t *p_result,
+                                           clock_timestamp_t *p_timestamp)
+{
+    (void)token; (void)p_result; (void)p_timestamp;
+    return 0U;
+}
 void display_forecast_committed(void) { assert(0); }
 epd_gdey029t94_status_t display_get_last_status(void)
 { return (epd_gdey029t94_status_t)-2; }
@@ -450,6 +546,12 @@ bool display_select_page(display_page_t page)
     s_selected_page = page;
     return true;
 }
+bool display_page_command(const char *p_line)
+{
+    (void)p_line;
+    return false;
+}
+void clock_service_note_sync_success(void) { }
 
 int main(void)
 {
@@ -457,6 +559,17 @@ int main(void)
     assert(Debug_IsReady() && !Debug_IsConsoleActive());
     assert(Debug_SendFloats(s_frame, VOFA_MAX_CHANNELS));
     if (setjmp(s_finished) == 0) { StartDebugTask(NULL); }
+    s_power_test = 1U;
+    s_power_mode = POWER_MODE_AUTO;
+    s_power_tick = 0U;
+    s_step = 0U;
+    s_binary_frames = 0U;
+    s_input = "";
+    clear_output();
+    Debug_Init();
+    assert(Debug_SendFloats(s_frame, VOFA_MAX_CHANNELS));
+    if (setjmp(s_finished) == 0) { StartDebugTask(NULL); }
+    puts("PASS: POWER commands before console, AUTO telemetry suppression, pending TIME veto and partial-line timeout");
     puts("PASS: TIME async result ownership, silent default, console errors, FORMAT coexistence and UART recovery");
     return 0;
 }

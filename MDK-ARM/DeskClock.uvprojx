@@ -2213,6 +2213,36 @@
               <FileType>5</FileType>
               <FilePath>../app/storage_forecast.h</FilePath>
             </File>
+            <File>
+              <FileName>weather_feed.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../app/weather_feed.c</FilePath>
+            </File>
+            <File>
+              <FileName>weather_feed.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../app/weather_feed.h</FilePath>
+            </File>
+            <File>
+              <FileName>time_protocol.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../app/time_protocol.c</FilePath>
+            </File>
+            <File>
+              <FileName>time_protocol.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../app/time_protocol.h</FilePath>
+            </File>
+            <File>
+              <FileName>epd_weather_pages.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../app/epd_weather_pages.c</FilePath>
+            </File>
+            <File>
+              <FileName>epd_weather_pages.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../app/epd_weather_pages.h</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -2437,6 +2467,16 @@
               <FileName>weather_glyphs.h</FileName>
               <FileType>5</FileType>
               <FilePath>../resources/weather_glyphs.h</FilePath>
+            </File>
+            <File>
+              <FileName>weather_pages_assets.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../resources/weather_pages_assets.c</FilePath>
+            </File>
+            <File>
+              <FileName>weather_pages_assets.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../resources/weather_pages_assets.h</FilePath>
             </File>
           </Files>
         </Group>

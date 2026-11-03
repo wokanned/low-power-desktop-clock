@@ -10,30 +10,30 @@ static uint8_t debug_console_utf8_valid(const uint8_t *p_text, uint16_t length)
         first = p_text[i];
         if (first < 0x80U) { i++; continue; }
         if ((first >= 0xC2U) && (first <= 0xDFU)) {
-            if ((uint8_t)(i + 1U) >= length ||
+            if (i + 1U >= length ||
                 (p_text[i + 1U] & 0xC0U) != 0x80U) { return 0U; }
-            i = (uint8_t)(i + 2U);
+            i = (uint16_t)(i + 2U);
             continue;
         }
         if ((first >= 0xE0U) && (first <= 0xEFU)) {
-            if ((uint8_t)(i + 2U) >= length) { return 0U; }
+            if (i + 2U >= length) { return 0U; }
             second = p_text[i + 1U];
             if (((second & 0xC0U) != 0x80U) ||
                 ((p_text[i + 2U] & 0xC0U) != 0x80U) ||
                 ((first == 0xE0U) && (second < 0xA0U)) ||
                 ((first == 0xEDU) && (second >= 0xA0U))) { return 0U; }
-            i = (uint8_t)(i + 3U);
+            i = (uint16_t)(i + 3U);
             continue;
         }
         if ((first >= 0xF0U) && (first <= 0xF4U)) {
-            if ((uint8_t)(i + 3U) >= length) { return 0U; }
+            if (i + 3U >= length) { return 0U; }
             second = p_text[i + 1U];
             if (((second & 0xC0U) != 0x80U) ||
                 ((p_text[i + 2U] & 0xC0U) != 0x80U) ||
                 ((p_text[i + 3U] & 0xC0U) != 0x80U) ||
                 ((first == 0xF0U) && (second < 0x90U)) ||
                 ((first == 0xF4U) && (second >= 0x90U))) { return 0U; }
-            i = (uint8_t)(i + 4U);
+            i = (uint16_t)(i + 4U);
             continue;
         }
         return 0U;
@@ -54,11 +54,23 @@ static uint8_t debug_console_weather_line(const char *p_line, uint16_t length)
 
 static debug_command_t debug_console_command(const char *p_line)
 {
+    if (strcmp(p_line, "POWER HOLD") == 0) { return DEBUG_COMMAND_POWER_HOLD; }
+    if (strcmp(p_line, "POWER AUTO") == 0) { return DEBUG_COMMAND_POWER_AUTO; }
+    if (strcmp(p_line, "POWER STATUS") == 0) { return DEBUG_COMMAND_POWER_STATUS; }
     if (strcmp(p_line, "CONSOLE ON") == 0) { return DEBUG_COMMAND_ON; }
     if (strcmp(p_line, "CONSOLE OFF") == 0) { return DEBUG_COMMAND_OFF; }
     if (strcmp(p_line, "FORMAT 12") == 0) { return DEBUG_COMMAND_FORMAT_12; }
     if (strcmp(p_line, "FORMAT 24") == 0) { return DEBUG_COMMAND_FORMAT_24; }
     if (strcmp(p_line, "ERRORS") == 0) { return DEBUG_COMMAND_ERRORS; }
+    if (strcmp(p_line, "TIME?") == 0 ||
+        (strncmp(p_line, "TIME2", 5U) == 0 &&
+         (p_line[5] == '\0' || p_line[5] == ' '))) {
+        return DEBUG_COMMAND_TIME_PRECISE;
+    }
+    if (strncmp(p_line, "WDATA", 5U) == 0 &&
+        (p_line[5] == '\0' || p_line[5] == ' ')) {
+        return DEBUG_COMMAND_WEATHER_FEED;
+    }
     if (strncmp(p_line, "FS", 2U) == 0 &&
         (p_line[2] == '\0' || p_line[2] == ' ')) { return DEBUG_COMMAND_FILES; }
     if (strncmp(p_line, "TIME", 4U) == 0 &&
@@ -71,6 +83,7 @@ static debug_command_t debug_console_command(const char *p_line)
     }
     if (strcmp(p_line, "PAGE WEATHER") == 0) { return DEBUG_COMMAND_PAGE_WEATHER; }
     if (strcmp(p_line, "PAGE CLOCK") == 0) { return DEBUG_COMMAND_PAGE_CLOCK; }
+    if (strncmp(p_line, "PAGE ", 5U) == 0) { return DEBUG_COMMAND_PAGE_DETAIL; }
     return DEBUG_COMMAND_UNKNOWN;
 }
 
@@ -156,6 +169,9 @@ debug_command_t debug_console_parser_feed(debug_console_parser_t *p_parser,
         line_max = DEBUG_CONSOLE_WEATHER_LINE_MAX;
     }
     if (p_parser->length >= 3U && memcmp(p_parser->line, "FS ", 3U) == 0) {
+        line_max = DEBUG_CONSOLE_FILES_LINE_MAX;
+    }
+    if (p_parser->length >= 6U && memcmp(p_parser->line, "WDATA ", 6U) == 0) {
         line_max = DEBUG_CONSOLE_FILES_LINE_MAX;
     }
     if (byte < 0x20U || byte == 0x7FU ||

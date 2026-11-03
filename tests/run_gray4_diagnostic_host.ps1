@@ -21,10 +21,11 @@ if ($LASTEXITCODE -ne 0) { throw 'Gray4 diagnostic pixel compilation failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Gray4 diagnostic pixel tests failed.' }
 
 $testExecutable = Join-Path $testOutput 'gray4_diagnostic_host_test.exe'
-$testSources = @('tests/gray4_diagnostic_host_test.c', 'app/display.c', 'app/forecast.c',
+$testSources = @('tests/stubs/power_stub.c', 'tests/gray4_diagnostic_host_test.c', 'app/display.c', 'app/forecast.c',
     'app/epd_bringup.c', 'app/epd_vendor_demo.c', 'app/clock_schedule.c',
     'device/epd_gdey029t94.c', 'resources/epd_vendor_assets.c',
-    'fonts/font12CN.c', 'fonts/font24CN.c') | ForEach-Object { Join-Path $projectRoot $_ }
+    'fonts/font12CN.c', 'fonts/font24CN.c', 'app/weather_feed.c', 'app/epd_weather_pages.c',
+    'resources/weather_pages_assets.c', 'resources/weather_glyphs.c') | ForEach-Object { Join-Path $projectRoot $_ }
 $stubDirectory = Join-Path $PSScriptRoot 'stubs/display'
 & $Compiler '-std=c99' '-Wall' '-Wextra' '-Werror' '-pedantic' '-O2' `
     '-DEPD_VENDOR_DEMO_MODE=7' '-I' $stubDirectory @testSources @renderSources '-o' $testExecutable

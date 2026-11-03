@@ -3,6 +3,7 @@
 #include "epd_bringup.h"
 #include "clock_service.h"
 #include "forecast.h"
+#include "epd_weather_pages.h"
 #include <string.h>
 
 #include "FreeRTOS.h"
@@ -15,6 +16,8 @@
 #define DISPLAY_RETRY_DELAY_MS   1000U
 #define DISPLAY_PAGE_INTERVAL_TICKS ((uint32_t)configTICK_RATE_HZ * 180UL)
 #define DISPLAY_TICK_HALF_RANGE 0x80000000UL
+#define DISPLAY_WEATHER_INTERVAL_TICKS ((uint32_t)configTICK_RATE_HZ * 60UL)
+#define DISPLAY_ALERT_HOLD_TICKS ((uint32_t)configTICK_RATE_HZ * 60UL)
 
 /* One owner for the controller, canvas, frame buffers and refresh policy. */
 static StackType_t s_display_stack[DISPLAY_TASK_STACK_WORDS];
@@ -27,6 +30,14 @@ static display_page_t s_selected_page = DISPLAY_PAGE_CLOCK;
 static uint32_t s_page_revision;
 static uint32_t s_page_since_tick;
 static bool s_page_cycle_started;
+static uint32_t s_attention_seen;
+static uint32_t s_attention_tick;
+static uint8_t s_attention_active;
+static display_page_t s_return_page;
+static uint8_t s_return_alert;
+static uint16_t s_return_text;
+static uint8_t s_alert_index;
+static uint16_t s_text_page;
 
 static void s_select_page_locked(display_page_t page)
 {
@@ -43,31 +54,136 @@ static void s_restart_cycle_locked(uint32_t now_tick)
     s_page_cycle_started = true;
 }
 
-static void s_poll_page_locked(uint32_t now_tick)
+static void s_poll_page_locked(uint32_t now_tick,
+                                const weather_feed_snapshot_t *p_feed)
 {
     uint32_t elapsed;
+    uint32_t interval;
+    if (p_feed->attention_revision != 0U &&
+        p_feed->attention_revision != s_attention_seen) {
+        s_attention_seen = p_feed->attention_revision;
+        if (p_feed->alert_state == WEATHER_ALERT_ACTIVE) {
+            if (s_attention_active == 0U) {
+                s_return_page = s_selected_page;
+                s_return_alert = s_alert_index;
+                s_return_text = s_text_page;
+            }
+            s_attention_active = 1U;
+            s_attention_tick = now_tick;
+            s_alert_index = p_feed->attention_index;
+            s_text_page = 0U;
+            s_select_page_locked(DISPLAY_PAGE_ALERT);
+            s_restart_cycle_locked(now_tick);
+        }
+    }
+    if (s_attention_active != 0U) {
+        if (p_feed->attention_revision == s_attention_seen) {
+            s_alert_index = p_feed->attention_index;
+        }
+        elapsed = (uint32_t)(now_tick - s_attention_tick);
+        if (p_feed->alert_state == WEATHER_ALERT_ACTIVE &&
+            (p_feed->alert_mask & (uint8_t)(1U << s_alert_index)) != 0U &&
+            (elapsed < DISPLAY_ALERT_HOLD_TICKS || elapsed >= DISPLAY_TICK_HALF_RANGE)) {
+            return;
+        }
+        s_attention_active = 0U;
+        s_alert_index = s_return_alert;
+        s_text_page = s_return_text;
+        s_select_page_locked(s_return_page);
+        s_restart_cycle_locked(now_tick);
+        return;
+    }
     if (!s_page_cycle_started) {
         s_restart_cycle_locked(now_tick);
         return;
     }
     elapsed = (uint32_t)(now_tick - s_page_since_tick);
     /* A snapshot tick sampled before a concurrent request is stale. */
-    if ((elapsed < DISPLAY_PAGE_INTERVAL_TICKS) ||
+    interval = p_feed->available != 0U && s_selected_page != DISPLAY_PAGE_CLOCK ?
+        DISPLAY_WEATHER_INTERVAL_TICKS : DISPLAY_PAGE_INTERVAL_TICKS;
+    if ((elapsed < interval) ||
         (elapsed >= DISPLAY_TICK_HALF_RANGE)) {
         return;
     }
-    s_select_page_locked(s_selected_page == DISPLAY_PAGE_CLOCK ?
-                         DISPLAY_PAGE_WEATHER : DISPLAY_PAGE_CLOCK);
+    if (p_feed->available != 0U) {
+        switch (s_selected_page) {
+        case DISPLAY_PAGE_CLOCK: s_select_page_locked(DISPLAY_PAGE_WEATHER); break;
+        case DISPLAY_PAGE_WEATHER: s_select_page_locked(DISPLAY_PAGE_FORECAST); break;
+        case DISPLAY_PAGE_FORECAST: s_select_page_locked(DISPLAY_PAGE_DATA); break;
+        default: s_select_page_locked(DISPLAY_PAGE_CLOCK); break;
+        }
+    } else {
+        s_select_page_locked(s_selected_page == DISPLAY_PAGE_CLOCK ?
+                             DISPLAY_PAGE_WEATHER : DISPLAY_PAGE_CLOCK);
+    }
     /* Skip missed turns after a blocking refresh; never replay old pages. */
     s_restart_cycle_locked(now_tick);
 }
 
 bool display_select_page(display_page_t page)
 {
-    if ((page != DISPLAY_PAGE_CLOCK) && (page != DISPLAY_PAGE_WEATHER)) {
+    if ((uint32_t)page > (uint32_t)DISPLAY_PAGE_SOURCE) {
         return false;
     }
     taskENTER_CRITICAL();
+    s_attention_active = 0U;
+    s_alert_index = 0U;
+    s_text_page = 0U;
+    s_select_page_locked(page);
+    s_restart_cycle_locked((uint32_t)xTaskGetTickCount());
+    taskEXIT_CRITICAL();
+    return true;
+}
+
+static uint8_t s_page_number(const char **pp_text, uint16_t *p_number)
+{
+    const char *p_text = *pp_text;
+    uint32_t value = 0U;
+    uint8_t count = 0U;
+    while (*p_text >= '0' && *p_text <= '9') {
+        value = value * 10U + (uint32_t)(*p_text++ - '0');
+        if (++count > 5U || value > UINT16_MAX) { return 0U; }
+    }
+    if (count == 0U || value == 0U) { return 0U; }
+    *pp_text = p_text;
+    *p_number = (uint16_t)value;
+    return 1U;
+}
+
+bool display_page_command(const char *p_line)
+{
+    display_page_t page;
+    weather_feed_lease_t lease;
+    const char *p_args;
+    uint16_t alert = 1U;
+    uint16_t text = 1U;
+    uint16_t count;
+    if (p_line == NULL) { return false; }
+    if (strcmp(p_line, "PAGE LIVE") == 0) { return display_select_page(DISPLAY_PAGE_WEATHER); }
+    if (strcmp(p_line, "PAGE FORECAST") == 0) { return display_select_page(DISPLAY_PAGE_FORECAST); }
+    if (strcmp(p_line, "PAGE DATA") == 0) { return display_select_page(DISPLAY_PAGE_DATA); }
+    if (strcmp(p_line, "PAGE ALERT") == 0) { return display_select_page(DISPLAY_PAGE_ALERT); }
+    if (strncmp(p_line, "PAGE ALERT ", 11U) == 0) {
+        page = DISPLAY_PAGE_ALERT; p_args = p_line + 11U;
+    } else if (strncmp(p_line, "PAGE TEXT ", 10U) == 0) {
+        page = DISPLAY_PAGE_TEXT; p_args = p_line + 10U;
+    } else if (strncmp(p_line, "PAGE SOURCE ", 12U) == 0) {
+        page = DISPLAY_PAGE_SOURCE; p_args = p_line + 12U;
+    } else { return false; }
+    if (s_page_number(&p_args, &alert) == 0U) { return false; }
+    if (page == DISPLAY_PAGE_TEXT) {
+        if (*p_args++ != ' ' || s_page_number(&p_args, &text) == 0U) { return false; }
+    }
+    if (*p_args != '\0' || !weather_feed_acquire(0U, &lease)) { return false; }
+    count = alert <= lease.p_batch->alert_count ?
+        epd_weather_pages_text_count(lease.p_batch, (uint8_t)(alert - 1U)) : 0U;
+    weather_feed_release(&lease);
+    if (alert > WEATHER_FEED_MAX_ALERTS || count == 0U ||
+        (page == DISPLAY_PAGE_TEXT && text > count)) { return false; }
+    taskENTER_CRITICAL();
+    s_attention_active = 0U;
+    s_alert_index = (uint8_t)(alert - 1U);
+    s_text_page = (uint16_t)(text - 1U);
     s_select_page_locked(page);
     s_restart_cycle_locked((uint32_t)xTaskGetTickCount());
     taskEXIT_CRITICAL();
@@ -152,9 +268,12 @@ void display_get_snapshot(uint32_t now_tick, display_snapshot_t *p_snapshot)
 {
     if (p_snapshot == NULL) { return; }
     taskENTER_CRITICAL();
-    s_poll_page_locked(now_tick);
+    weather_feed_get_snapshot(now_tick, &p_snapshot->feed);
+    s_poll_page_locked(now_tick, &p_snapshot->feed);
     p_snapshot->page = s_selected_page;
     p_snapshot->page_revision = s_page_revision;
+    p_snapshot->alert_index = s_alert_index;
+    p_snapshot->text_page = s_text_page;
     clock_service_get_model(&p_snapshot->clock);
     weather_get_snapshot(now_tick, &p_snapshot->weather);
     s_select_weather_locked(&p_snapshot->clock, &p_snapshot->weather);

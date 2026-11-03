@@ -7,7 +7,8 @@ if (-not $OutputDirectory) {
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 $executable = Join-Path $OutputDirectory 'epd_spi_dma_host_test.exe'
 & $Compiler '-std=c99' '-Wall' '-Wextra' '-Werror' '-pedantic' '-O2' `
-    "-I$root/tests/stubs/epd_spi" "-I$root/platform" "-I$root/device" `
+    "-I$root/tests/stubs/epd_spi" "-I$root/platform" "-I$root/device" "-I$root/app" `
+    (Join-Path $root 'tests/stubs/power_stub.c') `
     (Join-Path $root 'tests/epd_spi_dma_host_test.c') `
     (Join-Path $root 'platform/stm32_gdey029t94.c') `
     (Join-Path $root 'platform/stm32_debug_uart.c') `

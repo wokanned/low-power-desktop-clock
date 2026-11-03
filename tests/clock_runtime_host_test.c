@@ -46,6 +46,7 @@ static TickType_t s_loop_origin;
 static uint8_t s_sync_on_image;
 static uint8_t s_sync_before_enter;
 static uint8_t s_require_locked_ticks;
+static uint16_t s_precise_millisecond;
 
 #define TEST_SYNC_HOUR_TICKS (3600UL * configTICK_RATE_HZ)
 
@@ -159,6 +160,28 @@ int32_t stm32_clock_image_sizes(uint32_t *p_sram, uint32_t *p_flash)
         s_sync_before_enter = 1U;
     }
     return s_image_result;
+}
+
+int32_t stm32_clock_read_timestamp(uint32_t tick_ms, clock_timestamp_t *p_sample)
+{
+    int32_t result = stm32_clock_read_calendar(&p_sample->calendar);
+    p_sample->millisecond = s_precise_millisecond;
+    p_sample->tick_ms = tick_ms;
+    p_sample->read_span_ms = 1U;
+    return result;
+}
+
+int32_t stm32_clock_write_timestamp(const clock_timestamp_t *p_requested_time,
+                                   uint32_t tick_ms, clock_timestamp_t *p_verified)
+{
+    clock_timestamp_t requested_time = *p_requested_time;
+    int32_t result = stm32_clock_write_calendar(&requested_time.calendar,
+        &p_verified->calendar);
+    s_precise_millisecond = requested_time.millisecond;
+    p_verified->millisecond = requested_time.millisecond;
+    p_verified->tick_ms = tick_ms;
+    p_verified->read_span_ms = 1U;
+    return result;
 }
 void storage_get_config_snapshot(storage_config_snapshot_t *p_config)
 {
@@ -1101,6 +1124,55 @@ static void s_test_time_loop(void)
     s_wait_hook = NULL;
 }
 
+static void s_test_precise_time(void)
+{
+    clock_timestamp_t requested_time;
+    clock_timestamp_t sampled;
+    clock_view_model_t model;
+    int32_t result;
+    uint32_t writes;
+    s_time_reset(UINT32_MAX - 100U);
+    s_bind_time_owner();
+    memset(&requested_time, 0, sizeof(requested_time));
+    requested_time.calendar = (clock_calendar_t){2028U, 2U, 28U, 0U, 23U, 59U, 59U};
+    requested_time.millisecond = 950U;
+    assert(clock_service_request_timestamp(&requested_time, s_ticks, 2001U) == 0);
+    assert(clock_service_request_time_query(2002U) == -1);
+    s_ticks += 200U;
+    clock_service_poll();
+    assert(clock_service_take_timestamp_result(2001U, &result, &sampled) == 1U);
+    assert(result == 0 && sampled.calendar.month == 2U && sampled.calendar.day == 29U);
+    assert(sampled.calendar.second == 0U && sampled.millisecond == 150U);
+    assert(sampled.tick_ms == s_ticks && s_rtc_writes == 1U);
+    s_assert_sync(CLOCK_DATA_READY, 0);
+    s_ticks += TEST_SYNC_HOUR_TICKS;
+    assert(clock_service_request_time_query(2002U) == 0);
+    clock_service_poll();
+    assert(clock_service_take_timestamp_result(2002U, &result, &sampled) == 1U);
+    assert(result == 0 && s_rtc_writes == 1U);
+    s_assert_sync(CLOCK_DATA_READY, 1);
+    writes = s_rtc_writes;
+    assert(clock_service_request_timestamp(&requested_time, s_ticks - 2001U, 2003U) == 0);
+    clock_service_poll();
+    assert(clock_service_take_timestamp_result(2003U, &result, &sampled) == 1U);
+    assert(result == -4 && s_rtc_writes == writes);
+    clock_service_get_model(&model);
+    assert(model.calendar_state == CLOCK_DATA_READY);
+    s_write_result = -3;
+    assert(clock_service_request_timestamp(&requested_time, s_ticks, 2004U) == 0);
+    clock_service_poll();
+    assert(clock_service_take_timestamp_result(2004U, &result, &sampled) == 1U && result == -3);
+    assert(clock_service_request_time_query(2005U) == 0);
+    clock_service_poll();
+    assert(clock_service_take_timestamp_result(2005U, &result, &sampled) == 1U && result == -1);
+    s_write_result = 0;
+    assert(clock_service_request_timestamp(&requested_time, s_ticks, 2006U) == 0);
+    clock_service_poll();
+    assert(clock_service_take_timestamp_result(2006U, &result, &sampled) == 1U && result == 0);
+    requested_time.millisecond = 1000U;
+    assert(clock_service_request_timestamp(&requested_time, s_ticks, 2007U) == -3);
+}
+
 int main(void)
 {
     s_test_calendar();
@@ -1114,6 +1186,7 @@ int main(void)
     s_test_sync_time();
     s_test_time_requests();
     s_test_time_loop();
+    s_test_precise_time();
     assert(s_critical == 0U);
     (void)puts("clock runtime: dates, faults, schedule, cached service, W25Q snapshots, diagnostic-only TX, TIME mailbox/ownership, fault latch/recovery, notify/deadline/wrap and sync age/boundaries/saturation/atomicity/reset passed");
     return 0;

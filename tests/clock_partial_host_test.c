@@ -9,6 +9,8 @@
 #include "../app/clock_faults.h"
 #include "../app/weather.h"
 #include "../app/forecast.h"
+#include "../app/weather_feed.h"
+#include "../app/epd_weather_pages.h"
 #include "../platform/stm32_gdey029t94.h"
 #include "stubs/display/FreeRTOS.h"
 #include "stubs/display/cmsis_os.h"
@@ -51,6 +53,7 @@ static uint32_t s_tick, s_phase, s_polls, s_last_completed, s_retry_delays;
 static uint8_t s_failed_window, s_injected, s_driver_only, s_timeout_active;
 static osThreadFunc_t s_thread;
 static void *s_thread_argument;
+static uint32_t s_feed_id;
 
 static int scenario(const char *name) { return strcmp(s_scenario,name)==0; }
 
@@ -69,6 +72,47 @@ static void publish_weather(uint8_t condition)
     CHECK(weather_parse_line("WEATHER \xE6\xB7\xB1\xE5\x9C\xB3,2,235,180,270,65,2,35,2026-10-28T16:00",&data));
     data.condition=condition;
     CHECK(display_publish_weather(&data,s_tick));
+}
+
+static uint8_t feed_send(const uint8_t *data,uint16_t length)
+{ CHECK(length>=2U && data[0]=='O' && data[1]=='K');return 1U; }
+
+static uint32_t feed_crc(uint32_t crc,const char *text)
+{
+    uint8_t bit;
+    while(*text!='\0') {
+        crc^=(uint8_t)*text++;
+        for(bit=0U;bit<8U;bit++) {
+            crc=(crc>>1)^((crc&1U)!=0U?0xEDB88320UL:0U);
+        }
+    }
+    return crc;
+}
+
+static void publish_feed(void)
+{
+    static const char *const verbs[]={"NOW","METRICS","DAY","DAY","DAY"};
+    static const char *const payloads[]={
+        "1,235,180,270,72,2,50,3,4,2026-10-28T16:00",
+        "251,60,42,0,1012,180", "0,2026-10-28,1,180,270,20",
+        "1,2026-10-29,4,190,260,NA", "2,2026-10-30,0,200,280,0"};
+    char command[224];
+    uint32_t crc=UINT32_MAX;
+    uint8_t i;
+    s_feed_id++;
+    (void)snprintf(command,sizeof(command),
+        "WDATA BEGIN %lu,1,3,0,2,2026-10-28T16:00,2026-10-28T16:00,0",
+        (unsigned long)s_feed_id);
+    CHECK(weather_feed_command(command,s_tick)==1U);
+    for(i=0U;i<5U;i++) {
+        (void)snprintf(command,sizeof(command),"WDATA %s %lu,%u,%s",verbs[i],
+            (unsigned long)s_feed_id,(unsigned int)i,payloads[i]);
+        CHECK(weather_feed_command(command,s_tick)==1U);
+        crc=feed_crc(crc,command);crc=feed_crc(crc,"\n");
+    }
+    (void)snprintf(command,sizeof(command),"WDATA COMMIT %lu,5,%08lX",
+        (unsigned long)s_feed_id,(unsigned long)(crc^UINT32_MAX));
+    CHECK(weather_feed_command(command,s_tick)==1U);
 }
 
 static void expect_frame(display_page_t page,clock_memory_mode_t memory)
@@ -111,8 +155,21 @@ static void publish_forecast(void)
 static void verify_pixels(void)
 {
     uint32_t i;
-    if(s_expected_page==DISPLAY_PAGE_WEATHER && s_expected.faults.active_categories==0U) {
-        CHECK(epd_weather_view_draw_bw(s_reference,sizeof(s_reference),&s_expected_weather,&s_expected));
+    weather_feed_snapshot_t feed;
+    weather_feed_lease_t lease;
+    weather_page_kind_t page;
+    weather_feed_get_snapshot(s_tick,&feed);
+    if(s_expected_page!=DISPLAY_PAGE_CLOCK && s_expected.faults.active_categories==0U) {
+        if(feed.available!=0U) {
+            page=s_expected_page==DISPLAY_PAGE_FORECAST?WEATHER_PAGE_FORECAST:
+                (s_expected_page==DISPLAY_PAGE_DATA?WEATHER_PAGE_DATA:WEATHER_PAGE_LIVE);
+            CHECK(weather_feed_acquire(feed.revision,&lease));
+            CHECK(epd_weather_pages_draw_bw_for_date(s_reference,sizeof(s_reference),
+                lease.p_batch,page,0U,0U,feed.fresh,&s_expected.calendar));
+            weather_feed_release(&lease);
+        } else {
+            CHECK(epd_weather_view_draw_bw(s_reference,sizeof(s_reference),&s_expected_weather,&s_expected));
+        }
     } else {
         CHECK(epd_clock_view_draw_bw(s_reference,sizeof(s_reference),&s_expected));
     }
@@ -313,7 +370,8 @@ static void finish(void)
 {
     if(scenario("date-full") || scenario("format-full") || scenario("weather-full") ||
        scenario("page-full") || scenario("outside-full") ||
-       scenario("forecast-day") || scenario("forecast-missing")) {
+       scenario("forecast-day") || scenario("forecast-missing") ||
+       scenario("feed-live-data") || scenario("feed-forecast-day")) {
         CHECK(s_panel.sleeps==1U);
     } else if(scenario("fault-full")) { CHECK(s_panel.sleeps==2U); }
     else { CHECK(s_panel.sleeps==0U); }
@@ -323,7 +381,15 @@ static void finish(void)
 
 static void next_change(void)
 {
-    if(scenario("forecast-minute")) {
+    if(scenario("feed-live-data")) {
+        CHECK(display_page_command("PAGE DATA"));
+        expect_frame(DISPLAY_PAGE_DATA,CLOCK_MEMORY_SRAM);
+    } else if(scenario("feed-forecast-day")) {
+        clock_calendar_add_seconds(&s_live.calendar,86400UL);
+        expect_frame(DISPLAY_PAGE_FORECAST,CLOCK_MEMORY_SRAM);
+    } else if(scenario("feed-duplicate")) {
+        publish_feed();
+    } else if(scenario("forecast-minute")) {
         s_live.calendar.minute++;
         expect_forecast(1U);
     } else if(scenario("forecast-day") || scenario("forecast-missing")) {
@@ -415,7 +481,8 @@ int32_t osDelay(uint32_t ticks)
             } else if(scenario("date-full") || scenario("format-full") ||
                       scenario("weather-full") || scenario("page-full") ||
                       scenario("outside-full") || scenario("forecast-day") ||
-                      scenario("forecast-missing")) {
+                      scenario("forecast-missing") || scenario("feed-live-data") ||
+                      scenario("feed-forecast-day")) {
                 CHECK(s_panel.full==2U && s_panel.partial==0U);
             } else if(scenario("fault-full")) {
                 CHECK(s_panel.full==3U && s_panel.partial==0U);
@@ -430,7 +497,8 @@ int32_t osDelay(uint32_t ticks)
             }
             finish();
         }
-    } else if((scenario("duplicate") || scenario("forecast-restore")) && s_polls>=4U) {
+    } else if((scenario("duplicate") || scenario("forecast-restore") ||
+               scenario("feed-duplicate")) && s_polls>=4U) {
         CHECK(completed==1U && s_panel.full==1U && s_panel.partial==0U);
         verify_pixels();
         finish();
@@ -480,7 +548,18 @@ int main(int argc,char **argv)
     }
     if(scenario("date-full")) { s_live.calendar.hour=23U;s_live.calendar.minute=59U; }
     if(scenario("narrow-digits")) { s_live.calendar.hour=18U;s_live.calendar.minute=58U; }
-    if(scenario("forecast-minute") || scenario("forecast-day") || scenario("forecast-missing")) {
+    if(strncmp(s_scenario,"feed-",5U)==0) {
+        weather_feed_init(feed_send);weather_feed_set_console(1U);publish_feed();
+        if(scenario("feed-clock-minute")) {
+            expect_frame(DISPLAY_PAGE_CLOCK,CLOCK_MEMORY_SRAM);
+        } else if(scenario("feed-forecast-day")) {
+            CHECK(display_page_command("PAGE FORECAST"));
+            expect_frame(DISPLAY_PAGE_FORECAST,CLOCK_MEMORY_SRAM);
+        } else {
+            CHECK(display_page_command("PAGE LIVE"));
+            expect_frame(DISPLAY_PAGE_WEATHER,CLOCK_MEMORY_SRAM);
+        }
+    } else if(scenario("forecast-minute") || scenario("forecast-day") || scenario("forecast-missing")) {
         publish_forecast();
         display_forecast_committed();
         expect_forecast(1U);

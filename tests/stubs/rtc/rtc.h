@@ -27,6 +27,10 @@ extern RTC_HandleTypeDef hrtc;
 #define RTC (&g_fake_rtc)
 #define RTC_FORMAT_BIN 0U
 #define RTC_CR_FMT (1UL << 6)
+#define RTC_CR_REFCKON (1UL << 4)
+#define RTC_CR_BYPSHAD (1UL << 5)
+#define RTC_ISR_SHPF (1UL << 3)
+#define RTC_SHIFTADD1S_SET (1UL << 31)
 #define RTC_ISR_INIT (1UL << 7)
 #define RTC_ISR_INITF (1UL << 6)
 #define RTC_TR_HU_Pos 16U
@@ -50,4 +54,8 @@ HAL_StatusTypeDef HAL_RTC_GetTime(RTC_HandleTypeDef *p_handle,
     RTC_TimeTypeDef *p_time, uint32_t format);
 HAL_StatusTypeDef HAL_RTC_GetDate(RTC_HandleTypeDef *p_handle,
     RTC_DateTypeDef *p_date, uint32_t format);
+uint32_t HAL_GetTick(void);
+HAL_StatusTypeDef HAL_RTCEx_SetSynchroShift(RTC_HandleTypeDef *p_handle,
+    uint32_t add_second, uint32_t subtract_fractions);
+HAL_StatusTypeDef HAL_RTC_WaitForSynchro(RTC_HandleTypeDef *p_handle);
 #endif

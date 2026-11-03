@@ -10,6 +10,9 @@
 #include "storage_forecast.h"
 #include "stm32_clock.h"
 #include "stm32_debug_uart.h"
+#include "weather_feed.h"
+#include "time_protocol.h"
+#include "file_transfer.h"
 #include "queue.h"
 #include "task.h"
 #include "cmsis_os.h"
@@ -17,6 +20,12 @@
 #include <setjmp.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+
+#undef assert
+#define assert(expression) do { if (!(expression)) { \
+    fprintf(stderr, "%s:%d: %s\n", __FILE__, __LINE__, #expression); \
+    exit(EXIT_FAILURE); } } while (0)
 
 #define TEST_HOUR_TICKS (3600UL * configTICK_RATE_HZ)
 #define TEST_WEATHER "WEATHER \xE6\xB7\xB1\xE5\x9C\xB3,2,235,180,270,65,2,35,2026-10-28T14:30\n"
@@ -34,6 +43,7 @@ static uint32_t s_format_requests;
 static uint32_t s_file_requests;
 static int32_t s_write_result;
 static const char *s_input = "";
+static const char *s_last_input = "";
 static char s_output[2048];
 static size_t s_output_length;
 static clock_calendar_t s_rtc = {2026U, 10U, 28U, 3U, 14U, 29U, 0U};
@@ -44,6 +54,10 @@ static uint32_t s_forecast_token;
 static uint32_t s_forecast_requests;
 static uint8_t s_forecast_done;
 static int32_t s_forecast_result;
+static uint32_t s_rx_errors;
+static uint8_t s_hold_file;
+static uint8_t s_file_complete;
+static file_store_request_t s_file_pending;
 
 static clock_view_model_t model(void)
 {
@@ -55,6 +69,11 @@ static clock_view_model_t model(void)
 static void expect_wifi(clock_data_state_t state, int32_t hours)
 {
     clock_view_model_t snapshot = model();
+    if (snapshot.wifi.state != state || snapshot.wifi.value != hours) {
+        fprintf(stderr, "WIFI expected %u/%ld actual %u/%ld tick=%lu after [%s]\n",
+            (unsigned int)state, (long)hours, (unsigned int)snapshot.wifi.state,
+            (long)snapshot.wifi.value, (unsigned long)s_tick, s_last_input);
+    }
     assert(snapshot.wifi.state == state && snapshot.wifi.value == hours);
 }
 
@@ -108,7 +127,7 @@ bool stm32_debug_uart_rx_recover(void) { return true; }
 void stm32_debug_uart_set_binary(uint8_t enabled) { assert(enabled == 0U); }
 bool stm32_debug_uart_receive(uint8_t *p_byte, uint32_t *p_errors)
 {
-    *p_errors = 0U;
+    *p_errors = s_rx_errors; s_rx_errors = 0U;
     if (*s_input == '\0') { return false; }
     *p_byte = (uint8_t)*s_input++;
     return true;
@@ -139,6 +158,24 @@ int32_t stm32_clock_write_calendar(const clock_calendar_t *p_calendar,
 }
 int32_t stm32_clock_image_sizes(uint32_t *p_sram, uint32_t *p_flash)
 { assert(s_critical == 0U); *p_sram = 48000U; *p_flash = 98000U; return 0; }
+int32_t stm32_clock_read_timestamp(uint32_t tick_ms, clock_timestamp_t *p_sample)
+{
+    int32_t result = stm32_clock_read_calendar(&p_sample->calendar);
+    p_sample->millisecond = 0U;
+    p_sample->read_span_ms = 1U;
+    p_sample->tick_ms = tick_ms;
+    return result;
+}
+int32_t stm32_clock_write_timestamp(const clock_timestamp_t *p_requested,
+                                   uint32_t tick_ms, clock_timestamp_t *p_verified)
+{
+    clock_timestamp_t requested = *p_requested;
+    int32_t result = stm32_clock_write_calendar(&requested.calendar, &p_verified->calendar);
+    p_verified->millisecond = requested.millisecond;
+    p_verified->tick_ms = tick_ms;
+    p_verified->read_span_ms = 1U;
+    return result;
+}
 void storage_get_config_snapshot(storage_config_snapshot_t *p_snapshot)
 { *p_snapshot = s_config; }
 void storage_get_files_snapshot(file_store_snapshot_t *p_snapshot)
@@ -156,9 +193,22 @@ int32_t storage_request_format(clock_format_t format, uint32_t token)
     return 0;
 }
 int32_t storage_file_request(const file_store_request_t *p_request)
-{ assert(p_request != NULL); s_file_requests++; return FILE_STORE_ERROR_BUSY; }
+{
+    assert(p_request != NULL); s_file_requests++;
+    if (s_hold_file == 0U) { return FILE_STORE_ERROR_BUSY; }
+    assert(s_file_pending.token == 0U); s_file_pending = *p_request;
+    return FILE_STORE_OK;
+}
 uint8_t storage_file_take_result(uint32_t token, file_store_response_t *p_response)
-{ (void)token; (void)p_response; assert(0); return 0U; }
+{
+    assert(token == s_file_pending.token && token != 0U);
+    if (s_file_complete == 0U) { return 0U; }
+    memset(p_response, 0, sizeof(*p_response));
+    p_response->token = token; p_response->operation = s_file_pending.operation;
+    p_response->result = FILE_STORE_OK;
+    s_file_pending.token = 0U; s_file_complete = 0U; s_hold_file = 0U;
+    return 1U;
+}
 int32_t storage_maintenance_acquire(void) { return FILE_STORE_OK; }
 void storage_maintenance_release(void) { }
 int32_t storage_forecast_request(const forecast_batch_t *p_batch, uint32_t token)
@@ -207,6 +257,7 @@ static void command(const char *p_input)
     s_output_length = 0U;
     s_output[0] = '\0';
     s_input = p_input;
+    s_last_input = p_input;
     if (setjmp(s_wait) == 0) { StartDebugTask(NULL); }
     assert(*s_input == '\0' && s_critical == 0U);
 }
@@ -436,6 +487,107 @@ static void test_forecast_time_session_boundary(void)
     assert(!Debug_IsConsoleActive() && s_forecast_requests == 0U);
 }
 
+static uint32_t feed_crc(uint32_t crc, const char *p_line)
+{
+    uint8_t bit;
+    while (*p_line != '\0') {
+        crc ^= (uint8_t)*p_line++;
+        for (bit = 0U; bit < 8U; bit++) {
+            crc = (crc >> 1) ^ ((crc & 1U) != 0U ? 0xEDB88320UL : 0U);
+        }
+    }
+    return crc;
+}
+
+static void test_weather_feed_integration(void)
+{
+    static const char s_begin[] = "WDATA BEGIN 1000,1,0,0,2,2026-10-28T14:30:00,-,0\n";
+    static const char s_now[] = "WDATA NOW 1000,0,2,235,180,270,72,2,50,3,4,2026-10-28T14:30\n";
+    static const char s_metrics[] = "WDATA METRICS 1000,1,251,60,42,0,1012,180\n";
+    static const char s_time2[] = "TIME2 2026-10-28T14:30:00.250\n";
+    weather_feed_snapshot_t before;
+    weather_feed_snapshot_t after;
+    display_snapshot_t display;
+    weather_feed_lease_t lease;
+    uint32_t crc;
+    uint32_t format_requests;
+    uint32_t file_requests;
+    uint32_t writes;
+    char commit[80];
+    char damaged[230];
+    assert(!Debug_IsConsoleActive());
+    command(s_begin); weather_feed_get_snapshot(s_tick, &before);
+    assert(s_output_length == 0U && before.available == 0U && weather_feed_busy() == 0U);
+    command("CONSOLE ON\nPAGE CLOCK\n");
+    age_hour();
+    command(s_begin); assert(strcmp(s_output, "OK WDATA BEGIN\r\n") == 0);
+    assert(weather_feed_busy() != 0U);
+    format_requests = s_format_requests; file_requests = s_file_requests; writes = s_writes;
+    command("TIME?\nTIME2 2026-10-28T14:30:00.250\nTIME 2026-10-28T14:30:00\nFS MKDIR /probe\nFORECAST BEGIN 1000,\xE6\xB7\xB1\xE5\x9C\xB3,1\nCONSOLE OFF\n");
+    assert(s_writes == writes && s_file_requests == file_requests && Debug_IsConsoleActive());
+    assert(time_protocol_busy() == 0U && strstr(s_output, "ERR BUSY") != NULL);
+    command("FORMAT 12\n");
+    assert(strcmp(s_output, "ERR BUSY\r\n") == 0 && s_format_requests == format_requests);
+    command(s_now); assert(strstr(s_output, "OK WDATA 1000,0") != NULL);
+    command(s_metrics); assert(strstr(s_output, "OK WDATA 1000,1") != NULL);
+    crc = feed_crc(UINT32_MAX, s_now); crc = feed_crc(crc, s_metrics) ^ UINT32_MAX;
+    (void)snprintf(commit, sizeof(commit), "WDATA COMMIT 1000,2,%08lX\n", (unsigned long)crc);
+    command("PAGE CLOCK\n"); s_fail_send = 1U; command(commit);
+    assert(s_output_length == 0U); expect_wifi(CLOCK_DATA_READY, 0);
+    weather_feed_get_snapshot(s_tick, &after);
+    assert(after.available != 0U && after.commit_count == before.commit_count + 1U);
+    assert(weather_feed_acquire(after.revision, &lease));
+    assert(lease.p_batch->live.condition == 2U && lease.p_batch->metrics.value[WEATHER_METRIC_AQI_CN] == 42);
+    weather_feed_release(&lease);
+    display_get_snapshot(s_tick, &display); assert(display.page == DISPLAY_PAGE_CLOCK);
+    /* Failed final ACK does not roll back RAM or reset rotation. Replay has no sync side effect. */
+    age_hour(); command(commit); expect_wifi(CLOCK_DATA_READY, 1);
+    assert(strcmp(s_output, "OK WDATA COMMIT\r\n") == 0);
+    weather_feed_get_snapshot(s_tick, &before);
+    assert(before.commit_count == after.commit_count && before.revision == after.revision);
+    /* Same content under a new batch ID resets synchronization, without redraw revision. */
+    command("WDATA BEGIN 1001,1,0,0,2,2026-10-28T14:30:00,-,0\n");
+    command("WDATA NOW 1001,0,2,235,180,270,72,2,50,3,4,2026-10-28T14:30\n");
+    command("WDATA METRICS 1001,1,251,60,42,0,1012,180\n");
+    crc = feed_crc(UINT32_MAX, "WDATA NOW 1001,0,2,235,180,270,72,2,50,3,4,2026-10-28T14:30\n");
+    crc = feed_crc(crc, "WDATA METRICS 1001,1,251,60,42,0,1012,180\n") ^ UINT32_MAX;
+    (void)snprintf(commit, sizeof(commit), "WDATA COMMIT 1001,2,%08lX\n", (unsigned long)crc);
+    command(commit); expect_wifi(CLOCK_DATA_READY, 0);
+    weather_feed_get_snapshot(s_tick, &after);
+    assert(after.commit_count == before.commit_count + 1U && after.revision == before.revision);
+    /* RX framing error and overlong WDATA cancel only the uncommitted candidate. */
+    command("WDATA BEGIN 1002,1,0,0,2,2026-10-28T14:30:00,-,0\n");
+    s_rx_errors = STM32_DEBUG_UART_RX_ERROR; command("");
+    assert(strcmp(s_output, "ERR RX\r\n") == 0 && weather_feed_busy() == 0U);
+    command("WDATA BEGIN 1003,1,0,0,2,2026-10-28T14:30:00,-,0\n");
+    memcpy(damaged, "WDATA NOW ", 10U); memset(damaged + 10U, 'X', 214U);
+    damaged[224] = '\n'; damaged[225] = '\0'; command(damaged);
+    assert(strcmp(s_output, "ERR RX\r\n") == 0 && weather_feed_busy() == 0U);
+    weather_feed_get_snapshot(s_tick, &before); assert(before.commit_count == after.commit_count);
+    /* Asynchronous TIME2 excludes a new feed/format/FS/forecast until owner completion. */
+    age_hour(); command(s_time2); assert(time_protocol_busy() != 0U && s_output_length == 0U);
+    format_requests = s_format_requests; file_requests = s_file_requests;
+    command("WDATA BEGIN 1004,1,0,0,2,2026-10-28T14:30:00,-,0\nFORMAT 12\nFS MKDIR /probe\nFORECAST BEGIN 1004,\xE6\xB7\xB1\xE5\x9C\xB3,1\n");
+    assert(weather_feed_busy() == 0U && s_format_requests == format_requests && s_file_requests == file_requests);
+    clock_service_poll(); command("");
+    assert(strstr(s_output, "OK TIME2 2026-10-28T14:30:00.250 RX ") != NULL);
+    expect_wifi(CLOCK_DATA_READY, 0);
+    /* File service pending in text mode excludes the same new operations. */
+    s_hold_file = 1U; command("FS MKDIR /probe\n");
+    assert(file_transfer_busy() != 0U && s_output_length == 0U);
+    command("WDATA BEGIN 1005,1,0,0,2,2026-10-28T14:30:00,-,0\nTIME?\n");
+    assert(weather_feed_busy() == 0U && time_protocol_busy() == 0U);
+    assert(strstr(s_output, "ERR BUSY") != NULL);
+    s_file_complete = 1U; command(""); assert(strcmp(s_output, "OK FS\r\n") == 0);
+    assert(file_transfer_busy() == 0U);
+    /* TIME2 grants the old forecast gate only after verified completion; feed remains excluded. */
+    command("FORECAST BEGIN 1006,\xE6\xB7\xB1\xE5\x9C\xB3,1\n");
+    assert(strstr(s_output, "OK FORECAST BEGIN 1006") != NULL);
+    command("WDATA BEGIN 1006,1,0,0,2,2026-10-28T14:30:00,-,0\n");
+    assert(strcmp(s_output, "ERR BUSY\r\n") == 0 && weather_feed_busy() == 0U);
+    command("FORECAST CANCEL 1006\nCONSOLE OFF\n"); assert(!Debug_IsConsoleActive());
+}
+
 int main(void)
 {
     s_config.ready = 1U;
@@ -449,6 +601,7 @@ int main(void)
     test_time();
     test_forecast_time_session_boundary();
     test_forecast();
-    puts("PASS: real USART2/weather/clock and forecast TIME session gate, durable publish, failed ACK replay, silent mode and RAM reset");
+    test_weather_feed_integration();
+    puts("PASS: real USART2/weather/clock, WDATA/TIME2/FS/FORECAST exclusion, commit/ACK replay, RX cancellation, silent sessions and RAM reset");
     return 0;
 }

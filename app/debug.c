@@ -4,6 +4,9 @@
 #include "weather.h"
 #include "forecast.h"
 #include "forecast_protocol.h"
+#include "weather_feed.h"
+#include "time_protocol.h"
+#include "power.h"
 #include "clock_faults.h"
 #include "clock_service.h"
 #include "display.h"
@@ -18,6 +21,8 @@
 #define DEBUG_QUEUE_DEPTH 8U
 #define DEBUG_COUNTER_MAX 0x00FFFFFFU
 #define DEBUG_POLL_MS 20U
+#define DEBUG_IDLE_POLL_MS 1000U
+#define DEBUG_PARTIAL_LINE_MS 1000U
 #define DEBUG_TEXT_CHUNK 64U
 #define DEBUG_TEXT_SIZE 128U
 
@@ -40,6 +45,17 @@ static uint32_t s_pending_token;
 static clock_format_t s_pending_format;
 static uint32_t s_pending_time_token;
 static uint8_t s_pending_time_reply;
+static clock_view_model_t s_feed_clock;
+static uint32_t s_line_since;
+static uint8_t s_line_active;
+
+static bool debug_busy(void)
+{
+    return s_line_active != 0U || s_pending_token != 0U ||
+        s_pending_time_token != 0U || file_transfer_busy() != 0U ||
+        forecast_protocol_busy() != 0U || weather_feed_busy() != 0U ||
+        time_protocol_busy() != 0U;
+}
 
 static void debug_fault_update(uint32_t set_mask, uint32_t clear_mask)
 {
@@ -127,9 +143,40 @@ static void debug_command(debug_command_t command)
     weather_data_t weather;
     clock_calendar_t calendar;
     int32_t result;
+    weather_feed_snapshot_t feed_before;
+    weather_feed_snapshot_t feed_after;
+    power_status_t power_status;
     if (command == DEBUG_COMMAND_NONE) { return; }
+    /* Power management remains available before CONSOLE ON. The debug veto
+       stays held through the command reply and all already accepted work. */
+    if (command == DEBUG_COMMAND_POWER_HOLD || command == DEBUG_COMMAND_POWER_AUTO) {
+        power_set_mode(command == DEBUG_COMMAND_POWER_HOLD ? POWER_MODE_HOLD :
+                       POWER_MODE_AUTO);
+        if (command == DEBUG_COMMAND_POWER_AUTO) { (void)xQueueReset(s_debug_queue); }
+        (void)debug_send_text(command == DEBUG_COMMAND_POWER_HOLD ?
+                             "OK POWER HOLD\r\n" : "OK POWER AUTO\r\n");
+        return;
+    }
+    if (command == DEBUG_COMMAND_POWER_STATUS) {
+        power_get_status((uint32_t)xTaskGetTickCount(), &power_status);
+        (void)snprintf(s_text, sizeof(s_text),
+            "POWER %s BLOCK=%08lX FAULT=%08lX FAIL=%lu WINDOW=%lu\r\n",
+            power_status.mode == POWER_MODE_HOLD ? "HOLD" : "AUTO",
+            (unsigned long)power_status.blockers, (unsigned long)power_status.faults,
+            (unsigned long)power_status.fault_count,
+            (unsigned long)power_status.window_remaining_ms);
+        if (!debug_send_text(s_text)) { return; }
+        (void)snprintf(s_text, sizeof(s_text),
+            "POWER SLEEPS=%lu MS=%lu LAST=%08lX SOURCES=%08lX MOTION=%lu\r\n",
+            (unsigned long)power_status.sleep_count, (unsigned long)power_status.sleep_ms,
+            (unsigned long)power_status.last_wake, (unsigned long)power_status.wake_sources,
+            (unsigned long)power_status.motion_count);
+        (void)debug_send_text(s_text);
+        return;
+    }
     if (command == DEBUG_COMMAND_TIME) {
-        if (forecast_protocol_busy() != 0U) {
+        if (forecast_protocol_busy() != 0U || weather_feed_busy() != 0U ||
+            time_protocol_busy() != 0U) {
             if (s_console_active != 0U) { (void)debug_send_text("ERR BUSY\r\n"); }
             return;
         }
@@ -190,11 +237,14 @@ static void debug_command(debug_command_t command)
         (void)xQueueReset(s_debug_queue);
         taskEXIT_CRITICAL();
         forecast_protocol_reset_session();
+        weather_feed_set_console(1U);
         debug_fault_update(0U, CLOCK_FAULT_RX | CLOCK_FAULT_OVERFLOW);
         (void)debug_send_text("OK CONSOLE ON\r\n");
         return;
     }
     if (command == DEBUG_COMMAND_RX_ERROR || command == DEBUG_COMMAND_RX_OVERFLOW) {
+        weather_feed_set_console(0U);
+        weather_feed_set_console(1U);
         debug_uart_error();
         debug_fault_update(command == DEBUG_COMMAND_RX_OVERFLOW ?
                            CLOCK_FAULT_OVERFLOW : CLOCK_FAULT_RX, 0U);
@@ -206,17 +256,51 @@ static void debug_command(debug_command_t command)
         return;
     }
     debug_fault_update(0U, CLOCK_FAULT_RX | CLOCK_FAULT_OVERFLOW);
+    if (command == DEBUG_COMMAND_TIME_PRECISE) {
+        if (forecast_protocol_busy() != 0U || weather_feed_busy() != 0U ||
+            file_transfer_busy() != 0U || s_pending_time_token != 0U || s_pending_token != 0U) {
+            (void)debug_send_text("ERR BUSY\r\n");
+            return;
+        }
+        if (strcmp(s_parser.line, "TIME?") != 0) { forecast_protocol_time_result(0U); }
+        (void)time_protocol_command(s_parser.line, (uint32_t)xTaskGetTickCount());
+        return;
+    }
+    if (command == DEBUG_COMMAND_WEATHER_FEED) {
+        if (forecast_protocol_busy() != 0U || file_transfer_busy() != 0U ||
+            s_pending_time_token != 0U || time_protocol_busy() != 0U ||
+            s_pending_token != 0U) {
+            (void)debug_send_text("ERR BUSY\r\n");
+            return;
+        }
+        weather_feed_get_snapshot((uint32_t)xTaskGetTickCount(), &feed_before);
+        (void)weather_feed_command(s_parser.line, (uint32_t)xTaskGetTickCount());
+        weather_feed_get_snapshot((uint32_t)xTaskGetTickCount(), &feed_after);
+        if (feed_after.available != 0U && feed_after.commit_count != feed_before.commit_count) {
+            clock_service_note_sync_success();
+        }
+        return;
+    }
+    if (command == DEBUG_COMMAND_PAGE_DETAIL) {
+        (void)debug_send_text(display_page_command(s_parser.line) ?
+                             "OK PAGE\r\n" : "ERR PAGE\r\n");
+        return;
+    }
     if (command == DEBUG_COMMAND_ERRORS) { debug_print_errors(); return; }
     if (command == DEBUG_COMMAND_ON) {
         (void)debug_send_text("OK CONSOLE ON\r\n");
         return;
     }
     if (command == DEBUG_COMMAND_FORECAST) {
+        if (weather_feed_busy() != 0U || time_protocol_busy() != 0U) {
+            (void)debug_send_text("ERR BUSY\r\n"); return;
+        }
         (void)forecast_protocol_command(s_parser.line, (uint32_t)xTaskGetTickCount());
         return;
     }
     if (command == DEBUG_COMMAND_FILES) {
-        if (forecast_protocol_busy() != 0U && strcmp(s_parser.line, "FS STATUS") != 0) {
+        if ((forecast_protocol_busy() != 0U || weather_feed_busy() != 0U ||
+             time_protocol_busy() != 0U) && strcmp(s_parser.line, "FS STATUS") != 0) {
             (void)debug_send_text("ERR BUSY\r\n");
             return;
         }
@@ -235,17 +319,24 @@ static void debug_command(debug_command_t command)
     }
     if (command == DEBUG_COMMAND_OFF) {
         if (s_pending_time_token != 0U || file_transfer_busy() != 0U ||
-            forecast_protocol_busy() != 0U) {
+            forecast_protocol_busy() != 0U || weather_feed_busy() != 0U ||
+            time_protocol_busy() != 0U) {
             (void)debug_send_text("ERR BUSY\r\n");
             return;
         }
         if (debug_send_text("OK CONSOLE OFF\r\n")) {
             forecast_protocol_reset_session();
+            weather_feed_set_console(0U);
             taskENTER_CRITICAL();
             (void)xQueueReset(s_debug_queue);
             s_console_active = 0U;
             taskEXIT_CRITICAL();
         }
+        return;
+    }
+    if (weather_feed_busy() != 0U || time_protocol_busy() != 0U ||
+        forecast_protocol_busy() != 0U || file_transfer_busy() != 0U) {
+        (void)debug_send_text("ERR BUSY\r\n");
         return;
     }
     format = command == DEBUG_COMMAND_FORMAT_12 ? CLOCK_FORMAT_12 : CLOCK_FORMAT_24;
@@ -307,11 +398,15 @@ void Debug_Init(void)
     s_pending_token = 0U;
     s_pending_time_token = 0U;
     s_pending_time_reply = 0U;
+    s_line_since = 0U;
+    s_line_active = 0U;
     debug_console_parser_reset(&s_parser);
     file_transfer_init(debug_send_bytes);
     weather_init();
     forecast_init();
     forecast_protocol_init(debug_send_bytes);
+    weather_feed_init(debug_send_bytes);
+    time_protocol_init(debug_send_bytes);
     s_debug_queue = xQueueCreateStatic(DEBUG_QUEUE_DEPTH,
         VOFA_MAX_CHANNELS * sizeof(float), s_queue_storage, &s_queue_control);
 }
@@ -333,7 +428,7 @@ bool Debug_SendFloats(const float *p_data, uint8_t ch_cnt)
         return false;
     }
     taskENTER_CRITICAL();
-    if (s_console_active != 0U) {
+    if (s_console_active != 0U || !power_is_hold()) {
         if (s_suppressed_count < DEBUG_COUNTER_MAX) { s_suppressed_count++; }
         taskEXIT_CRITICAL();
         return true;
@@ -373,6 +468,10 @@ void StartDebugTask(void *p_argument)
     uint16_t consumed;
     uint32_t errors;
     bool available;
+    bool busy;
+    bool rx_healthy;
+    uint32_t now;
+    uint32_t wait_ms;
     (void)p_argument;
     for (i = 0U; i < VOFA_MAX_CHANNELS; i++) {
         types[i] = VOFA_DATA_FLOAT;
@@ -386,14 +485,26 @@ void StartDebugTask(void *p_argument)
         debug_fault_update(CLOCK_FAULT_RX, 0U);
     }
     for (;;) {
-        if (!stm32_debug_uart_rx_recover()) {
+        power_set_blocker(POWER_BLOCK_DEBUG, true);
+        rx_healthy = stm32_debug_uart_rx_recover();
+        if (!rx_healthy) {
             debug_fault_update(CLOCK_FAULT_RX, 0U);
+        }
+        now = (uint32_t)xTaskGetTickCount();
+        if (s_line_active != 0U && now - s_line_since >= DEBUG_PARTIAL_LINE_MS) {
+            /* A partial line never spans an idle/sleep boundary. */
+            debug_console_parser_reset(&s_parser);
+            s_line_active = 0U;
+            if (s_console_active != 0U) { (void)debug_send_text("ERR RX TIMEOUT\r\n"); }
         }
         /* Bound command work so a continuous RX stream cannot starve telemetry. */
         for (consumed = 0U; consumed < 256U; consumed++) {
             available = stm32_debug_uart_receive(&byte, &errors);
             if (errors != 0U) {
                 debug_console_parser_reset(&s_parser);
+                s_line_active = 0U;
+                weather_feed_set_console(0U);
+                weather_feed_set_console(s_console_active);
                 debug_uart_error();
                 debug_fault_update(
                     ((errors & STM32_DEBUG_UART_RX_ERROR) != 0U ? CLOCK_FAULT_RX : 0U) |
@@ -405,7 +516,16 @@ void StartDebugTask(void *p_argument)
             if (!available) { break; }
             if (file_transfer_active() != 0U) {
                 file_transfer_feed(byte, (uint32_t)xTaskGetTickCount());
-            } else { debug_command(debug_console_parser_feed(&s_parser, byte)); }
+            } else {
+                if (s_line_active == 0U && byte != '\r' && byte != '\n') {
+                    s_line_since = (uint32_t)xTaskGetTickCount();
+                    s_line_active = 1U;
+                }
+                debug_command(debug_console_parser_feed(&s_parser, byte));
+                if (s_parser.length == 0U && s_parser.discard == 0U) {
+                    s_line_active = 0U;
+                }
+            }
         }
         file_transfer_poll((uint32_t)xTaskGetTickCount());
         stm32_debug_uart_set_binary(file_transfer_active());
@@ -413,7 +533,14 @@ void StartDebugTask(void *p_argument)
         debug_poll_config();
         debug_poll_time();
         forecast_protocol_poll((uint32_t)xTaskGetTickCount());
-        if (s_console_active == 0U &&
+        time_protocol_poll();
+        if (time_protocol_take_sync_success() != 0U) { forecast_protocol_time_result(1U); }
+        weather_feed_poll((uint32_t)xTaskGetTickCount());
+        clock_service_get_model(&s_feed_clock);
+        if (s_feed_clock.calendar_state == CLOCK_DATA_READY) {
+            weather_feed_expire(&s_feed_clock.calendar);
+        }
+        if (power_is_hold() && s_console_active == 0U &&
             xQueueReceive(s_debug_queue, frame, 0U) == pdPASS) {
             /* Capture current transmit counters, not their old queued values. */
             frame[13] = (float)s_queue_drop_count;
@@ -426,7 +553,11 @@ void StartDebugTask(void *p_argument)
             }
             continue;
         }
-        (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(DEBUG_POLL_MS));
+        busy = debug_busy() || !rx_healthy || consumed == 256U ||
+            !stm32_debug_uart_sleep_ready();
+        power_set_blocker(POWER_BLOCK_DEBUG, busy);
+        wait_ms = power_is_hold() || busy ? DEBUG_POLL_MS : DEBUG_IDLE_POLL_MS;
+        (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(wait_ms));
     }
 }
 

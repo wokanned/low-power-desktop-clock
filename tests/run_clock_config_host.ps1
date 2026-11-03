@@ -28,6 +28,7 @@ $serviceArguments = @('-std=c99', '-Wall', '-Wextra', '-Werror', '-pedantic', '-
     (Join-Path $root 'app/clock_model.c'),
     (Join-Path $root 'tests/stubs/file_store_stub.c'),
     (Join-Path $root 'tests/storage_service_host_test.c'), '-o', $service)
+$serviceArguments += (Join-Path $root 'tests/stubs/power_stub.c')
 & $Compiler @serviceArguments
 if ($LASTEXITCODE -ne 0) { throw 'Storage service host compilation failed' }
 foreach ($scenario in @('normal', 'init-failure', 'load-failure', 'save-failure', 'late-commit',
@@ -44,6 +45,7 @@ $usageArguments = @('-std=c99', '-Wall', '-Wextra', '-Werror', '-pedantic', '-O2
     (Join-Path $root 'app/clock_model.c'),
     (Join-Path $root 'tests/stubs/file_store_stub.c'),
     (Join-Path $root 'tests/storage_usage_host_test.c'), '-o', $usage)
+$usageArguments += (Join-Path $root 'tests/stubs/power_stub.c')
 & $Compiler @usageArguments
 if ($LASTEXITCODE -ne 0) { throw 'Storage usage host compilation failed' }
 foreach ($scenario in @('empty', 'full', 'boundaries', 'periodic', 'tick-wrap', 'timer-preempt',

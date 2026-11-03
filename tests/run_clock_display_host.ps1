@@ -10,12 +10,16 @@ if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
 $testOutput = [IO.Path]::GetFullPath($OutputDirectory)
 New-Item -ItemType Directory -Path $testOutput -Force | Out-Null
 $testSources = @(
+    (Join-Path $projectRoot 'tests/stubs/power_stub.c'),
     (Join-Path $projectRoot 'tests\clock_display_host_test.c'),
     (Join-Path $projectRoot 'app\epd_bringup.c'),
     (Join-Path $projectRoot 'app\epd_weather_view.c'),
     (Join-Path $projectRoot 'app\display.c'),
     (Join-Path $projectRoot 'app\weather.c'),
     (Join-Path $projectRoot 'app\forecast.c'),
+    (Join-Path $projectRoot 'app\weather_feed.c'),
+    (Join-Path $projectRoot 'app\epd_weather_pages.c'),
+    (Join-Path $projectRoot 'resources\weather_pages_assets.c'),
     (Join-Path $projectRoot 'app\clock_schedule.c'),
     (Join-Path $projectRoot 'app\clock_model.c'),
     (Join-Path $projectRoot 'app\clock_faults.c'),

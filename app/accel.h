@@ -18,7 +18,8 @@ enum {
     ACCEL_STATUS_STARTUP = 1U << 6,
     ACCEL_STATUS_OVERRUN = 1U << 7,
     ACCEL_STATUS_LATE = 1U << 8,
-    ACCEL_STATUS_SATURATED = 1U << 9
+    ACCEL_STATUS_SATURATED = 1U << 9,
+    ACCEL_STATUS_MOTION_ARMED = 1U << 10
 };
 
 typedef struct {
@@ -31,5 +32,7 @@ typedef struct {
 } accel_snapshot_t;
 
 bool accel_start(void);
+/* Task context. The owner acknowledges AUTO/HOLD only at an I2C boundary. */
+void accel_power_mode_changed(void);
 void accel_get_snapshot(accel_snapshot_t *p_snapshot);
 #endif

@@ -1,0 +1,5 @@
+Source: Microsoft Cascadia Mono (Windows-installed CascadiaMono.ttf)
+SHA256: 0e141cb99609f6f10ad05313fd1807d5cc9e28658dcbb35ab162e52ff67dc718
+Generated derivative family name: DeskClock Weather Numbers
+Only derived 1-bit glyph arrays are distributed; the TTF is not copied.
+Numeric source can be selected explicitly with --numeric-font.

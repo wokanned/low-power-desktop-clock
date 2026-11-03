@@ -9,6 +9,7 @@ $executable = Join-Path $OutputDirectory 'storage_files_integration_host_test.ex
     '-DLFS_NO_ERROR' '-DLFS_NAME_MAX=31' "-I$root/tests/stubs/storage" `
     "-I$root/device" "-I$root/middleware" "-I$root/app" "-I$root/platform" `
     (Join-Path $root 'tests/storage_files_integration_host_test.c') `
+    (Join-Path $root 'tests/stubs/power_stub.c') `
     (Join-Path $root 'app/storage.c') (Join-Path $root 'app/clock_config.c') `
     (Join-Path $root 'app/forecast.c') (Join-Path $root 'app/clock_model.c') `
     (Join-Path $root 'middleware/file_store.c') `
@@ -16,7 +17,7 @@ $executable = Join-Path $OutputDirectory 'storage_files_integration_host_test.ex
     (Join-Path $root 'middleware/littlefs/lfs_util.c') '-o' $executable
 if ($LASTEXITCODE -ne 0) { throw 'Storage files integration compilation failed' }
 foreach ($scenario in @('blank', 'formatted', 'diagnostics', 'forecast',
-    'forecast-restore', 'forecast-corrupt', 'forecast-unformatted')) {
+    'forecast-restore', 'forecast-corrupt', 'forecast-unformatted', 'power')) {
     & $executable $scenario
     if ($LASTEXITCODE -ne 0) { throw "Storage files integration failed: $scenario" }
 }

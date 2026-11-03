@@ -61,6 +61,7 @@ void RTC_Alarm_IRQHandler(void);
 void LPTIM1_IRQHandler(void);
 /* USER CODE BEGIN EFP */
 
+void EXTI9_5_IRQHandler(void);
 void DMA1_Channel5_IRQHandler(void);
 void SPI2_IRQHandler(void);
 

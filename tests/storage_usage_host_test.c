@@ -276,6 +276,8 @@ w25q128_status_t w25q128_read_id(const w25q128_ctx_t *p_context, uint32_t *p_id)
     *p_id = W25Q128_JEDEC_ID;
     return W25Q128_OK;
 }
+w25q128_status_t w25q128_check_idle(const w25q128_ctx_t *p_context)
+{ (void)p_context; return W25Q128_OK; }
 w25q128_status_t w25q128_read_registers(const w25q128_ctx_t *p_context,
                                        w25q128_registers_t *p_registers)
 {

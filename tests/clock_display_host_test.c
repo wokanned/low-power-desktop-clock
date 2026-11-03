@@ -980,7 +980,7 @@ static void verify_cycle_contract(void)
         s_tick=360000U;
         CHECK(display_select_page(DISPLAY_PAGE_WEATHER));
         check_selected_page(539999U, DISPLAY_PAGE_WEATHER);
-        CHECK(!display_select_page((display_page_t)2U));
+        CHECK(!display_select_page((display_page_t)255U));
         check_selected_page(540000U, DISPLAY_PAGE_CLOCK);
     } else if(scenario("cycle-time")) {
         s_live.calendar=(clock_calendar_t){2099U,12U,31U,4U,23U,59U,59U};

@@ -164,7 +164,12 @@ standard names. */
 #define USE_CUSTOM_SYSTICK_HANDLER_IMPLEMENTATION 0
 
 /* USER CODE BEGIN Defines */
-/* Section where parameter definitions can be added (for instance, to override default ones in FreeRTOS.h) */
+/* The platform owns STOP2 timing; the vendor SysTick-only port is unsuitable. */
+#ifdef configUSE_TICKLESS_IDLE
+#undef configUSE_TICKLESS_IDLE
+#endif
+#define configUSE_TICKLESS_IDLE 2
+#define configEXPECTED_IDLE_TIME_BEFORE_SLEEP 10
 /* USER CODE END Defines */
 
 #endif /* FREERTOS_CONFIG_H */

@@ -1,6 +1,8 @@
 #include "epd_bringup.h"
+#include "power.h"
 #include "epd_clock_view.h"
 #include "epd_weather_view.h"
+#include "epd_weather_pages.h"
 #include "display.h"
 #include "clock_service.h"
 #include "clock_schedule.h"
@@ -28,6 +30,11 @@ static uint8_t s_displayed_kind;
 static weather_snapshot_t s_displayed_weather;
 static uint32_t s_weather_minute_key;
 static clock_format_t s_weather_format;
+static uint32_t s_displayed_feed_revision;
+static uint8_t s_displayed_feed_fresh;
+static display_page_t s_displayed_page;
+static uint8_t s_displayed_alert;
+static uint16_t s_displayed_text;
 #if !EPD_CLOCK_USE_GRAY4
 static uint32_t s_displayed_date;
 static uint32_t s_displayed_format_revision;
@@ -98,6 +105,33 @@ static uint8_t s_draw_clock(void)
 
 static uint8_t s_draw_weather(void)
 {
+    weather_feed_lease_t lease;
+    uint8_t drawn;
+    weather_page_kind_t page;
+    if (s_snapshot.feed.available != 0U) {
+        if (!weather_feed_acquire(s_snapshot.feed.revision, &lease)) { return 0U; }
+        switch (s_snapshot.page) {
+        case DISPLAY_PAGE_FORECAST: page = WEATHER_PAGE_FORECAST; break;
+        case DISPLAY_PAGE_DATA: page = WEATHER_PAGE_DATA; break;
+        case DISPLAY_PAGE_ALERT: page = WEATHER_PAGE_ALERT; break;
+        case DISPLAY_PAGE_TEXT: page = WEATHER_PAGE_TEXT; break;
+        case DISPLAY_PAGE_SOURCE: page = WEATHER_PAGE_SOURCE; break;
+        default: page = WEATHER_PAGE_LIVE; break;
+        }
+#if EPD_CLOCK_USE_GRAY4
+        drawn = epd_weather_pages_draw_gray4_for_date(s_frame, EPD_CLOCK_VIEW_GRAY4_BYTES,
+            lease.p_batch, page, s_snapshot.alert_index, s_snapshot.text_page,
+            s_snapshot.feed.fresh, s_snapshot.clock.calendar_state == CLOCK_DATA_READY ?
+            &s_snapshot.clock.calendar : NULL);
+#else
+        drawn = epd_weather_pages_draw_bw_for_date(s_frame, EPD_CLOCK_VIEW_BW_BYTES,
+            lease.p_batch, page, s_snapshot.alert_index, s_snapshot.text_page,
+            s_snapshot.feed.fresh, s_snapshot.clock.calendar_state == CLOCK_DATA_READY ?
+            &s_snapshot.clock.calendar : NULL);
+#endif
+        weather_feed_release(&lease);
+        return drawn;
+    }
 #if EPD_CLOCK_USE_GRAY4
     return epd_weather_view_draw_gray4(s_frame, EPD_CLOCK_VIEW_GRAY4_BYTES,
         &s_snapshot.weather, &s_snapshot.clock);
@@ -129,6 +163,13 @@ static uint8_t s_weather_content_equal(void)
 {
     const weather_data_t *p_displayed = &s_displayed_weather.data;
     const weather_data_t *p_current = &s_snapshot.weather.data;
+    if (s_snapshot.feed.available != 0U || s_displayed_feed_revision != 0U) {
+        return (uint8_t)(s_displayed_feed_revision == s_snapshot.feed.revision &&
+            s_displayed_feed_fresh == s_snapshot.feed.fresh &&
+            s_displayed_page == s_snapshot.page &&
+            s_displayed_alert == s_snapshot.alert_index &&
+            s_displayed_text == s_snapshot.text_page);
+    }
     if (s_displayed_weather.kind != s_snapshot.weather.kind) { return 0U; }
     if (s_snapshot.weather.kind != WEATHER_VIEW_LIVE &&
         (p_displayed->city != p_current->city ||
@@ -164,7 +205,9 @@ static uint8_t s_weather_content_due(void)
     uint32_t minute_key = s_weather_current_minute(&s_snapshot.clock);
     return (uint8_t)(s_displayed_kind != EPD_CONTENT_WEATHER ||
         s_weather_content_equal() == 0U ||
-        s_weather_minute_key != minute_key ||
+        (s_snapshot.feed.available != 0U &&
+         (s_weather_minute_key >> 11) != (minute_key >> 11)) ||
+        (s_snapshot.feed.available == 0U && s_weather_minute_key != minute_key) ||
         s_weather_format != s_snapshot.clock.format);
 }
 
@@ -233,6 +276,7 @@ static const epd_gdey029t94_rect_t s_weather_region =
 static uint8_t s_partial_allowed(uint8_t continuous)
 {
     return (uint8_t)(continuous != 0U && s_force_full == 0U &&
+        (s_pending_kind != EPD_CONTENT_WEATHER || s_snapshot.feed.available == 0U) &&
         s_displayed_kind == s_pending_kind && s_device.initialized != 0U &&
         s_device.sleeping == 0U && s_device.background_valid != 0U &&
         s_device.profile == EPD_PROFILE_BW_296 &&
@@ -312,6 +356,17 @@ static epd_gdey029t94_status_t s_submit_bw(uint8_t continuous, uint8_t *p_change
     uint8_t i;
     epd_gdey029t94_status_t status;
     *p_changed = 0U;
+    /* New feed metadata can change within the same displayed minute. Commit
+     * the newer snapshot without another physical refresh of identical ink. */
+    if (continuous != 0U && s_force_full == 0U &&
+        s_snapshot.feed.available != 0U &&
+        s_pending_kind == EPD_CONTENT_WEATHER && s_displayed_kind == EPD_CONTENT_WEATHER &&
+        s_displayed_page == s_snapshot.page &&
+        s_device.initialized != 0U && s_device.sleeping == 0U &&
+        s_device.profile == EPD_PROFILE_BW_296 && s_device.background_valid != 0U &&
+        memcmp(s_frame, s_device.background_image, EPD_CLOCK_VIEW_BW_BYTES) == 0) {
+        return EPD_GDEY029T94_OK;
+    }
     if (s_partial_allowed(continuous) != 0U && s_find_windows(windows, &count) != 0U) {
         for (i = 0U; i < count; i++) {
             p_window = &windows[i];
@@ -372,6 +427,11 @@ static epd_gdey029t94_status_t s_submit_frame(uint8_t continuous)
         if (changed == 0U) { s_schedule.next_memory = next_memory; }
     } else {
         s_displayed_weather = s_snapshot.weather;
+        s_displayed_feed_revision = s_snapshot.feed.revision;
+        s_displayed_feed_fresh = s_snapshot.feed.fresh;
+        s_displayed_page = s_snapshot.page;
+        s_displayed_alert = s_snapshot.alert_index;
+        s_displayed_text = s_snapshot.text_page;
         s_weather_minute_key = s_weather_current_minute(&s_snapshot.clock);
         s_weather_format = s_snapshot.clock.format;
     }
@@ -423,9 +483,11 @@ epd_gdey029t94_status_t epd_bringup_run_once(void)
 epd_gdey029t94_status_t epd_bringup_run_clock(void)
 {
 #if EPD_VENDOR_DEMO_MODE == EPD_VENDOR_DEMO_GRAY4_HOLD
+    power_set_blocker(POWER_BLOCK_DISPLAY, true);
     return s_run_gray4_diagnostic();
 #else
     epd_gdey029t94_status_t status;
+    power_set_blocker(POWER_BLOCK_DISPLAY, true);
     status = s_bind();
     if (status != EPD_GDEY029T94_OK) { s_last_status = status; return status; }
 #if EPD_VENDOR_DEMO_MODE != EPD_VENDOR_DEMO_OFF
@@ -471,12 +533,17 @@ epd_gdey029t94_status_t epd_bringup_run_clock(void)
         }
     }
     for (;;) {
+        power_set_blocker(POWER_BLOCK_DISPLAY, true);
         if (s_pending == 0U) {
             (void)s_capture_and_draw(0U);
         }
         if (s_pending != 0U) {
             status = s_submit_frame(1U);
             if (status != EPD_GDEY029T94_OK) { return status; }
+        }
+        /* All SPI DMA and panel BUSY work has completed at this boundary. */
+        if (s_snapshot.clock.startup_ready != 0U) {
+            power_set_blocker(POWER_BLOCK_DISPLAY, false);
         }
         (void)osDelay(pdMS_TO_TICKS(EPD_CLOCK_POLL_MS));
     }

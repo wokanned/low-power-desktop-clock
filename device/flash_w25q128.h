@@ -47,6 +47,8 @@ typedef struct {
 w25q128_status_t w25q128_init(const w25q128_ctx_t *p_ctx);
 w25q128_status_t w25q128_read_id(const w25q128_ctx_t *p_ctx, uint32_t *p_id);
 w25q128_status_t w25q128_read_status(const w25q128_ctx_t *p_ctx, uint8_t *p_status);
+/* Read-only quiescence check; BUSY until the chip's internal write/erase ends. */
+w25q128_status_t w25q128_check_idle(const w25q128_ctx_t *p_ctx);
 w25q128_status_t w25q128_read_registers(const w25q128_ctx_t *p_ctx,
                                        w25q128_registers_t *p_registers);
 w25q128_status_t w25q128_read(const w25q128_ctx_t *p_ctx, uint32_t address,

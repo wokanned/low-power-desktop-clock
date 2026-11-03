@@ -1,5 +1,33 @@
 # USART2 显式文本控制台
 
+2026-11-02 新增 [WDATA](weather_feed_protocol.md)、[大字天气页](weather_pages.md) 和
+[TIME2/TIME?](time_protocol.md)。新业务须先进入控制台，旧 WEATHER/TIME 和
+PAGE CLOCK/WEATHER 仍兼容静默执行。以下旧两页行为只适用于尚无 WDATA 的情况。
+
+新增导航命令如下。参数从1开始，超出已发布预警或阅读页范围回复 `ERR PAGE`。
+普通新导航成功回复 `OK PAGE`，表示选择已接受，屏幕刷新异步完成。
+
+```text
+PAGE LIVE
+PAGE FORECAST
+PAGE DATA
+PAGE ALERT
+PAGE ALERT 2
+PAGE TEXT 1 1
+PAGE SOURCE 1
+```
+
+`PAGE TEXT 预警序号 阅读页号` 依次阅读正文、防御指南和来源；来源长机构可占多页。
+`PAGE SOURCE 预警序号` 直接进入来源第一页。无预警时 `PAGE ALERT` 显示当前查询状态。
+有 WDATA 时自动轮换为 CLOCK 180秒、LIVE 60秒、FORECAST 60秒、DATA 60秒。
+普通数据刷新保留计时。重要预警新出现、更新或生效时抢屏概览60秒，之后返回原页面；
+任意 PAGE 手动选择立即退出自动停留。相同内容不会每次轮询重抢屏，首版无声。
+
+WDATA 收集期间，TIME/TIME2/TIME?、FORECAST、FORMAT、CONSOLE OFF 和文件维护
+（FS STATUS除外）回复 BUSY。先完整提交或 `WDATA CANCEL` 再执行这些命令。
+TIME2/TIME? 也与新天气、预报和文件事务排他；旧 TIME 与 FORMAT 并行兼容保留。
+成功新批次 COMMIT 和 TIME2 计入 WIFI 同步记录，重复 COMMIT、查询 TIME? 不计入。
+
 多天预报新增`FORECAST BEGIN/DAY/COMMIT/CANCEL/STATUS`，仅在控制台处理，先完成TIME再发送新批次；完整日期字段、异步落盘应答和重试规则见[多天预报协议](forecast_protocol.md)。收集或保存预报时，TIME、CONSOLE OFF以及除FS STATUS以外的文件维护返回BUSY，须完成或取消预报后再切换。
 
 更新日期：2026-10-28。文档入口见 [文档导航](README.md)，工程总进度见 [totalPLAN.md 的“当前开发状态（2026-10-27）”](totalPLAN.md#当前开发状态2026-10-27)。控制台、天气注入、切页和 TIME 校时已接入。USART2 TX 已改为 DMA，最新构建与验证范围见[验证记录](测试数据.md)；最新镜像尚未烧录，板上验收仍待完成。
@@ -11,8 +39,8 @@ USART2 使用 H10，PA2 TX / PA3 RX，115200、8N1、3.3V TTL。默认发送现�
 
 ## 命令
 
-命令区分大小写，不带前后空格，以CR、LF或CRLF结束。WEATHER行最多127字节，FS行最多223字节；其他输入保留31字节限制。长度不含换行和终止NUL。
-只有精确WEATHER命令族（后接空格或逗号）和FS命令族使用各自长行上限，WEATHERX等未知命令仍受31字节限制。
+命令区分大小写，不带前后空格，以CR、LF或CRLF结束。WEATHER/FORECAST行最多127字节，FS/WDATA行最多223字节；其他输入保留31字节限制。长度不含换行和终止NUL。
+只有精确命令族使用各自长行上限，WEATHERX、WDATAX等未知命令仍受31字节限制。
 二进制模式下 `WEATHER`、`PAGE` 和 `TIME` 命令静默执行，其他文本仅
 `CONSOLE ON` 会产生切换应答。
 

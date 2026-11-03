@@ -2,11 +2,20 @@
 #include "usart.h"
 #include "semphr.h"
 #include "task.h"
+#include "power.h"
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
 
 UART_HandleTypeDef huart2;
+uint32_t test_uart_flags = UART_FLAG_TC;
+static uint32_t s_uart_enabled = 1U;
+static uint32_t s_power_blockers;
+void power_set_blocker(uint32_t mask, bool active)
+{
+    if (active) { s_power_blockers |= mask; }
+    else { s_power_blockers &= ~mask; }
+}
 static DMA_HandleTypeDef s_tx_dma;
 static uint8_t *s_receive;
 static uint32_t s_primask;
@@ -121,6 +130,8 @@ BaseType_t xSemaphoreTake(SemaphoreHandle_t semaphore, TickType_t wait)
         assert(wait == pdMS_TO_TICKS(15U));
         assert(s_primask == 0U && s_basepri == 0U && s_ipsr == 0U);
         assert(s_critical_depth == 0U);
+        assert((s_power_blockers & POWER_BLOCK_UART) != 0U);
+        assert(!stm32_debug_uart_sleep_ready());
     }
     if (wait != 0U && semaphore->count == 0U) {
         switch (s_tx_mode) {
@@ -206,7 +217,14 @@ HAL_StatusTypeDef HAL_UART_Receive_IT(UART_HandleTypeDef *p_uart, uint8_t *p_dat
 HAL_StatusTypeDef HAL_UART_AbortReceive(UART_HandleTypeDef *p_uart)
 { assert(p_uart == &huart2); p_uart->RxState = 0U; s_abort_count++; return HAL_OK; }
 void test_uart_clear(UART_HandleTypeDef *p_uart, uint32_t flags)
-{ assert(p_uart == &huart2 && flags == 15U); }
+{ assert(p_uart == &huart2 && flags == 15U); test_uart_flags &= ~flags; }
+void test_uart_enable(UART_HandleTypeDef *p_uart, uint32_t enabled)
+{ assert(p_uart == &huart2); s_uart_enabled = enabled; }
+void test_uart_flush(UART_HandleTypeDef *p_uart, uint32_t request)
+{
+    assert(p_uart == &huart2 && request == UART_RXDATA_FLUSH_REQUEST);
+    test_uart_flags &= ~UART_FLAG_RXNE;
+}
 static void notify(void) { s_notifications++; }
 static void receive_byte(uint8_t byte)
 {
@@ -356,6 +374,50 @@ static void test_tx_dma(void)
     s_tx_mode = TX_COMPLETE;
     assert(stm32_debug_uart_send(NULL, frame, sizeof(frame)));
     assert(s_dma_active == 0U && s_semaphore_creations == 2U);
+    assert((s_power_blockers & POWER_BLOCK_UART) == 0U);
+}
+
+static void test_sleep_receiver(void)
+{
+    uint32_t flags[] = {UART_FLAG_RXNE, UART_FLAG_BUSY, UART_FLAG_PE,
+                        UART_FLAG_FE, UART_FLAG_NE, UART_FLAG_ORE};
+    uint32_t i;
+    uint32_t errors;
+    uint8_t byte;
+    stm32_debug_uart_set_binary(0U);
+    assert(stm32_debug_uart_sleep_ready());
+    assert(!stm32_debug_uart_suspend_rx()); /* Only legal in the masked idle port. */
+    for (i = 0U; i < sizeof(flags) / sizeof(flags[0]); i++) {
+        test_uart_flags = UART_FLAG_TC | flags[i];
+        assert(!stm32_debug_uart_sleep_ready());
+    }
+    test_uart_flags = 0U;
+    assert(!stm32_debug_uart_sleep_ready()); /* Last TX stop bit still pending. */
+    test_uart_flags = UART_FLAG_TC;
+    receive_text("Q");
+    assert(!stm32_debug_uart_sleep_ready());
+    s_primask = 1U;
+    assert(!stm32_debug_uart_suspend_rx() && s_uart_enabled != 0U);
+    s_primask = 0U;
+    expect_text("Q");
+    s_primask = 1U;
+    assert(stm32_debug_uart_suspend_rx());
+    assert(s_uart_enabled == 0U && huart2.RxState == 0U && s_primask == 1U);
+    test_uart_flags |= UART_FLAG_RXNE | UART_FLAG_ORE;
+    stm32_debug_uart_resume_rx();
+    assert(s_primask == 1U && s_uart_enabled != 0U);
+    assert(test_uart_flags == UART_FLAG_TC && stm32_debug_uart_sleep_ready());
+    s_primask = 0U;
+    receive_text("POWER HOLD\n");
+    expect_text("POWER HOLD\n");
+    s_primask = 1U;
+    assert(stm32_debug_uart_suspend_rx());
+    s_fail_rearm = 1U;
+    stm32_debug_uart_resume_rx();
+    assert(!stm32_debug_uart_sleep_ready());
+    s_primask = 0U;
+    assert(stm32_debug_uart_rx_recover() && stm32_debug_uart_sleep_ready());
+    assert(!stm32_debug_uart_receive(&byte, &errors) && errors == 0U);
 }
 int main(void)
 {
@@ -422,6 +484,8 @@ int main(void)
     assert(stm32_debug_uart_receive(&byte, &errors) && byte == 'C');
     assert(errors == STM32_DEBUG_UART_RX_ERROR);
     assert(s_notifications > 500U);
+    test_sleep_receiver();
+    puts("PASS: UART idle veto, masked suspend/resume, sleep-byte discard and failed rearm recovery");
     puts("PASS: TX DMA completion/timeout/error/context/reentry isolation; 1024-byte RX ring and recovery");
     return 0;
 }

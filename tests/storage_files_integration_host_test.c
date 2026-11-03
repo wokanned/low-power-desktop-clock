@@ -3,6 +3,7 @@
 #include "storage_forecast.h"
 #include "clock_config.h"
 #include "clock_faults.h"
+#include "power.h"
 #include "cmsis_os.h"
 #include "queue.h"
 #include <assert.h>
@@ -62,6 +63,13 @@ static uint8_t s_bad_restore;
 static uint8_t s_blank_forecast;
 static forecast_batch_t s_forecast_batch;
 static forecast_batch_t s_forecast_expected;
+extern bool g_test_power_hold;
+extern uint32_t g_test_power_blockers;
+static uint8_t s_power_mode;
+static uint8_t s_power_step;
+static uint8_t s_busy_chip;
+static uint32_t s_scan_reads;
+static uint32_t s_scan_checkpoint;
 
 static void s_make_forecast(uint32_t id)
 {
@@ -110,6 +118,8 @@ w25q128_status_t w25q128_read_id(const w25q128_ctx_t *p_context, uint32_t *p_id)
     *p_id = W25Q128_JEDEC_ID;
     return W25Q128_OK;
 }
+w25q128_status_t w25q128_check_idle(const w25q128_ctx_t *p_context)
+{ (void)p_context; return s_busy_chip != 0U ? W25Q128_ERROR_BUSY : W25Q128_OK; }
 w25q128_status_t w25q128_read_registers(const w25q128_ctx_t *p_context,
                                        w25q128_registers_t *p_registers)
 {
@@ -122,6 +132,7 @@ w25q128_status_t w25q128_read(const w25q128_ctx_t *p_context, uint32_t address,
 {
     assert(p_context != NULL && p_data != NULL);
     s_range(address, length);
+    if (address < FILE_STORE_BASE && length == W25Q128_PAGE_SIZE) { s_scan_reads++; }
     if (s_read_result != W25Q128_OK && address >= FILE_STORE_BASE &&
         address < CLOCK_CONFIG_SECTOR_A) { return s_read_result; }
     if (s_fail_fs_reads != 0U && address >= FILE_STORE_BASE &&
@@ -568,9 +579,46 @@ static void s_drive(void)
 
 int xQueueReceive(QueueHandle_t queue, void *p_item, uint32_t wait)
 {
+    file_store_snapshot_t files;
+    storage_config_snapshot_t config;
     assert(queue != NULL && p_item != NULL && s_critical == 0U);
     assert(++s_queue_calls < 100000U);
-    if (s_forecast_mode != 0U) { s_drive_forecast(); }
+    if (s_power_mode != 0U) {
+        storage_get_files_snapshot(&files);
+        storage_get_config_snapshot(&config);
+        if (files.state == FILE_STORE_INITIALIZING) {
+            assert((g_test_power_blockers & POWER_BLOCK_STORAGE) != 0U);
+        } else if (s_power_step == 0U) {
+            assert(s_scan_reads == 0U);
+            assert((g_test_power_blockers & POWER_BLOCK_STORAGE) == 0U);
+            s_busy_chip = 1U;
+            s_power_step = 1U;
+        } else if (s_power_step == 1U) {
+            assert((g_test_power_blockers & POWER_BLOCK_STORAGE) != 0U);
+            assert(wait <= 100U && s_scan_reads == 0U);
+            s_busy_chip = 0U;
+            s_power_step = 2U;
+        } else if (s_power_step == 2U) {
+            assert((g_test_power_blockers & POWER_BLOCK_STORAGE) == 0U);
+            assert(storage_request_format(CLOCK_FORMAT_12, TEST_CONFIG_TOKEN) == 0);
+            s_power_step = 3U;
+        } else if (s_power_step == 3U) {
+            assert(config.completed_token == TEST_CONFIG_TOKEN && config.completed_result == 0);
+            assert(s_scan_reads == 0U);
+            g_test_power_hold = true;
+            storage_set_scan_paused(0U);
+            s_power_step = 4U;
+        } else if (s_power_step == 4U && s_scan_reads != 0U) {
+            g_test_power_hold = false;
+            storage_set_scan_paused(1U);
+            s_scan_checkpoint = s_scan_reads;
+            s_power_step = 5U;
+        } else if (s_power_step == 5U) {
+            assert(s_scan_reads == s_scan_checkpoint);
+            assert((g_test_power_blockers & POWER_BLOCK_STORAGE) == 0U);
+            longjmp(s_finished, 1);
+        }
+    } else if (s_forecast_mode != 0U) { s_drive_forecast(); }
     else { s_drive(); }
     if (s_queued != 0U) {
         memcpy(p_item, s_queued_bytes, s_queue_size);
@@ -590,6 +638,8 @@ int main(int argc, char **argv)
     uint8_t encoded[FORECAST_ENCODED_MAX];
     size_t encoded_length;
     assert(argc == 2);
+    s_power_mode = (uint8_t)(strcmp(argv[1], "power") == 0);
+    if (s_power_mode != 0U) { g_test_power_hold = false; }
     s_forecast_mode = (uint8_t)(strncmp(argv[1], "forecast", 8U) == 0);
     s_restore_mode = (uint8_t)(strcmp(argv[1], "forecast-restore") == 0 ||
                              strcmp(argv[1], "forecast-corrupt") == 0);

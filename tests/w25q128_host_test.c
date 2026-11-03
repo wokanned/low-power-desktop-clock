@@ -350,6 +350,15 @@ int main(void)
     s_test_errors(&context);
     s_test_erase_and_timeouts(&context);
     s_test_io_failures(&context);
+    s_reset();
+    assert(w25q128_check_idle(&context) == W25Q128_OK);
+    s_model.force_busy = 1U;
+    assert(w25q128_check_idle(&context) == W25Q128_ERROR_BUSY);
+    assert(s_model.tick == 0U); /* sleep readiness must not wait for erase */
+    s_reset();
+    s_model.fail_at = 1U;
+    assert(w25q128_check_idle(&context) == W25Q128_ERROR_IO);
+    s_balanced();
     puts("w25q128 host tests passed");
     return 0;
 }

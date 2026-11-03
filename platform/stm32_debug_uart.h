@@ -16,4 +16,11 @@ bool stm32_debug_uart_rx_recover(void);
 void stm32_debug_uart_set_binary(uint8_t enabled);
 /* Task-context, atomic event and byte retrieval. Errors invalidate partial lines. */
 bool stm32_debug_uart_receive(uint8_t *p_byte, uint32_t *p_errors);
+/* Idle port only: caller keeps PRIMASK set until clocks and RX are restored.
+   Suspend rechecks RX/TX; a false result leaves the active receiver unchanged.
+   Bytes sent while suspended are intentionally discarded, never joined to a
+   previous command. The debug owner must first discard/timed-out partial lines. */
+bool stm32_debug_uart_sleep_ready(void);
+bool stm32_debug_uart_suspend_rx(void);
+void stm32_debug_uart_resume_rx(void);
 #endif

@@ -1,4 +1,5 @@
 #include "clock_service.h"
+#include "power.h"
 #include "clock_faults.h"
 #include "storage.h"
 #include "storage_files.h"
@@ -14,6 +15,11 @@
 #define CLOCK_TICK_HALF_RANGE  ((TickType_t)(UINT32_MAX / 2U + 1U))
 #define CLOCK_SYNC_HOUR_TICKS  ((TickType_t)configTICK_RATE_HZ * 3600UL)
 #define CLOCK_SYNC_MAX_HOURS   100U
+#define CLOCK_PRECISE_MAX_QUEUE_MS 2000U
+#define CLOCK_PRECISE_SAMPLE_MARGIN_MS 4U
+
+typedef char clock_precise_requires_millisecond_tick[
+    configTICK_RATE_HZ == 1000U ? 1 : -1];
 
 typedef enum {
     CLOCK_TIME_IDLE = 0,
@@ -22,11 +28,19 @@ typedef enum {
     CLOCK_TIME_COMPLETE
 } clock_time_state_t;
 
+typedef enum {
+    CLOCK_TIME_LEGACY = 0,
+    CLOCK_TIME_PRECISE,
+    CLOCK_TIME_QUERY
+} clock_time_kind_t;
+
 typedef struct {
     clock_calendar_t calendar;
     uint32_t token;
     int32_t result;
     clock_time_state_t state;
+    clock_timestamp_t timestamp;
+    clock_time_kind_t kind;
 } clock_time_request_t;
 
 static clock_view_model_t s_model;
@@ -100,11 +114,72 @@ int32_t clock_service_request_time(const clock_calendar_t *p_calendar,
     else {
         s_time_request.calendar = calendar;
         s_time_request.token = token;
+        s_time_request.kind = CLOCK_TIME_LEGACY;
         s_time_request.state = CLOCK_TIME_PENDING;
     }
     taskEXIT_CRITICAL();
     if (result == 0) { (void)xTaskNotifyGive(owner); }
     return result;
+}
+
+static int32_t s_request_timestamp(const clock_timestamp_t *p_timestamp,
+                                    uint32_t receive_tick_ms, uint32_t token,
+                                    clock_time_kind_t kind)
+{
+    clock_timestamp_t timestamp;
+    TaskHandle_t owner;
+    int32_t result = 0;
+    memset(&timestamp, 0, sizeof(timestamp));
+    if (token == 0U) { return -3; }
+    if (kind == CLOCK_TIME_PRECISE) {
+        if (p_timestamp == NULL || p_timestamp->millisecond >= 1000U) { return -3; }
+        timestamp = *p_timestamp;
+        timestamp.calendar.weekday = clock_calendar_weekday(timestamp.calendar.year,
+            timestamp.calendar.month, timestamp.calendar.day);
+        if (!clock_calendar_valid(&timestamp.calendar)) { return -3; }
+        timestamp.tick_ms = receive_tick_ms;
+    }
+    taskENTER_CRITICAL();
+    owner = s_owner_task;
+    if (owner == NULL) { result = -2; }
+    else if (s_time_request.state != CLOCK_TIME_IDLE) { result = -1; }
+    else {
+        s_time_request.timestamp = timestamp;
+        s_time_request.token = token;
+        s_time_request.kind = kind;
+        s_time_request.state = CLOCK_TIME_PENDING;
+    }
+    taskEXIT_CRITICAL();
+    if (result == 0) { (void)xTaskNotifyGive(owner); }
+    return result;
+}
+
+int32_t clock_service_request_timestamp(const clock_timestamp_t *p_timestamp,
+                                        uint32_t receive_tick_ms, uint32_t token)
+{
+    return s_request_timestamp(p_timestamp, receive_tick_ms, token, CLOCK_TIME_PRECISE);
+}
+
+int32_t clock_service_request_time_query(uint32_t token)
+{
+    return s_request_timestamp(NULL, 0U, token, CLOCK_TIME_QUERY);
+}
+
+uint8_t clock_service_take_timestamp_result(uint32_t token, int32_t *p_result,
+                                           clock_timestamp_t *p_timestamp)
+{
+    uint8_t complete = 0U;
+    if (token == 0U || p_result == NULL || p_timestamp == NULL) { return 0U; }
+    taskENTER_CRITICAL();
+    if (s_time_request.state == CLOCK_TIME_COMPLETE &&
+        s_time_request.token == token && s_time_request.kind != CLOCK_TIME_LEGACY) {
+        *p_result = s_time_request.result;
+        *p_timestamp = s_time_request.timestamp;
+        s_time_request.state = CLOCK_TIME_IDLE;
+        complete = 1U;
+    }
+    taskEXIT_CRITICAL();
+    return complete;
 }
 
 uint8_t clock_service_take_time_result(uint32_t token, int32_t *p_result)
@@ -113,7 +188,7 @@ uint8_t clock_service_take_time_result(uint32_t token, int32_t *p_result)
     if (p_result == NULL || token == 0U) { return 0U; }
     taskENTER_CRITICAL();
     if (s_time_request.state == CLOCK_TIME_COMPLETE &&
-        s_time_request.token == token) {
+        s_time_request.token == token && s_time_request.kind == CLOCK_TIME_LEGACY) {
         *p_result = s_time_request.result;
         s_time_request.state = CLOCK_TIME_IDLE;
         complete = 1U;
@@ -132,6 +207,7 @@ void clock_service_run(void)
     s_owner_task = xTaskGetCurrentTaskHandle();
     taskEXIT_CRITICAL();
     for (;;) {
+        power_set_blocker(POWER_BLOCK_CLOCK, true);
         clock_service_poll();
         now = xTaskGetTickCount();
         overdue = now - next_poll;
@@ -140,6 +216,7 @@ void clock_service_run(void)
             next_poll += (overdue / period + 1U) * period;
         }
         /* A notification before this call remains pending, so no wake is lost. */
+        power_set_blocker(POWER_BLOCK_CLOCK, false);
         (void)ulTaskNotifyTake(pdTRUE, (TickType_t)(next_poll - now));
     }
 }
@@ -156,22 +233,67 @@ void clock_service_poll(void)
     clock_field_t flash = {CLOCK_DATA_UNAVAILABLE, 0};
     uint8_t sample_memory;
     uint8_t apply_time;
+    clock_time_kind_t request_kind = CLOCK_TIME_LEGACY;
+    uint8_t request_pending;
+    uint32_t elapsed;
+    uint32_t total_ms;
+    uint16_t request_year;
     clock_calendar_t requested;
+    clock_timestamp_t timestamp;
 
     taskENTER_CRITICAL();
-    apply_time = (uint8_t)(s_time_request.state == CLOCK_TIME_PENDING);
-    if (apply_time != 0U) {
+    request_pending = (uint8_t)(s_time_request.state == CLOCK_TIME_PENDING);
+    if (request_pending != 0U) {
         requested = s_time_request.calendar;
+        timestamp = s_time_request.timestamp;
+        request_kind = s_time_request.kind;
         s_time_request.state = CLOCK_TIME_APPLYING;
     }
+    apply_time = (uint8_t)(request_pending != 0U && request_kind != CLOCK_TIME_QUERY);
     taskEXIT_CRITICAL();
     if (apply_time != 0U) {
-        write_result = stm32_clock_write_calendar(&requested, &s_calendar);
+        if (request_kind == CLOCK_TIME_PRECISE) {
+            now = xTaskGetTickCount();
+            elapsed = (uint32_t)now - timestamp.tick_ms;
+            if (elapsed > CLOCK_PRECISE_MAX_QUEUE_MS) {
+                /* Stale input has not touched RTC; preserve previous trust. */
+                write_result = -4;
+                apply_time = 0U;
+                result = stm32_clock_read_calendar(&s_calendar);
+            } else {
+                total_ms = timestamp.millisecond + elapsed;
+                request_year = timestamp.calendar.year;
+                clock_calendar_add_seconds(&timestamp.calendar, total_ms / 1000U);
+                if (timestamp.calendar.year < request_year) {
+                    write_result = -4;
+                    apply_time = 0U;
+                    result = stm32_clock_read_calendar(&s_calendar);
+                } else {
+                    timestamp.millisecond = (uint16_t)(total_ms % 1000U);
+                    write_result = stm32_clock_write_timestamp(&timestamp,
+                        (uint32_t)now, &timestamp);
+                    if (write_result == 0 && (uint32_t)(xTaskGetTickCount() -
+                        timestamp.tick_ms) > timestamp.read_span_ms +
+                        CLOCK_PRECISE_SAMPLE_MARGIN_MS) { write_result = -4; }
+                    if (write_result == 0) { s_calendar = timestamp.calendar; }
+                }
+            }
+        } else {
+            write_result = stm32_clock_write_calendar(&requested, &s_calendar);
+        }
         if (write_result == 0 && !clock_calendar_valid(&s_calendar)) {
             write_result = -2;
         }
-        s_rtc_trust_lost = (uint8_t)(write_result != 0);
-        result = write_result;
+        if (apply_time != 0U) {
+            s_rtc_trust_lost = (uint8_t)(write_result != 0);
+            result = write_result;
+        }
+    } else if (request_pending != 0U && request_kind == CLOCK_TIME_QUERY) {
+        result = stm32_clock_read_timestamp((uint32_t)xTaskGetTickCount(), &timestamp);
+        if (result == 0 && (uint32_t)(xTaskGetTickCount() - timestamp.tick_ms) >
+            timestamp.read_span_ms + CLOCK_PRECISE_SAMPLE_MARGIN_MS) { result = -4; }
+        write_result = result;
+        if (result == 0) { s_calendar = timestamp.calendar; }
     } else {
         result = stm32_clock_read_calendar(&s_calendar);
     }
@@ -213,9 +335,13 @@ void clock_service_poll(void)
         s_model.memory[CLOCK_MEMORY_IFLASH] = flash;
     }
     s_polled = 1U;
-    if (apply_time != 0U) {
+    if (request_pending != 0U) {
         /* Publish completion with the matching calendar/fault model. */
-        s_time_request.result = write_result;
+        s_time_request.result = (request_kind == CLOCK_TIME_QUERY && s_rtc_trust_lost != 0U) ?
+            -1 : write_result;
+        if (request_kind != CLOCK_TIME_LEGACY && write_result == 0) {
+            s_time_request.timestamp = timestamp;
+        }
         s_time_request.state = CLOCK_TIME_COMPLETE;
     }
     taskEXIT_CRITICAL();

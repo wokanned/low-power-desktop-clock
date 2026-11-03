@@ -18,13 +18,14 @@ $taskExe = Join-Path $OutputDirectory 'debug_task_host_test.exe'
     (Join-Path $root 'app/vofa.c') (Join-Path $root 'app/weather.c') `
     (Join-Path $root 'app/file_transfer.c') (Join-Path $root 'app/forecast.c') `
     (Join-Path $root 'app/forecast_protocol.c') `
+    (Join-Path $root 'app/weather_feed.c') (Join-Path $root 'app/time_protocol.c') `
     (Join-Path $root 'app/clock_model.c') '-o' $taskExe
 if ($LASTEXITCODE -ne 0) { throw 'Debug task build failed' }
 & $taskExe
 if ($LASTEXITCODE -ne 0) { throw 'Debug task tests failed' }
 $uartExe = Join-Path $OutputDirectory 'debug_uart_host_test.exe'
 & $Compiler '-std=c99' '-Wall' '-Wextra' '-Werror' '-pedantic' '-O2' '-DTEST_DEBUG_UART_CRITICAL' `
-    "-I$root/tests/stubs/debug" "-I$root/platform" `
+    "-I$root/tests/stubs/debug" "-I$root/platform" "-I$root/app" `
     (Join-Path $root 'tests/debug_uart_host_test.c') `
     (Join-Path $root 'platform/stm32_debug_uart.c') '-o' $uartExe
 if ($LASTEXITCODE -ne 0) { throw 'Debug UART build failed' }

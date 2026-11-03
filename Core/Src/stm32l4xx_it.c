@@ -23,6 +23,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "spi.h"
+#include "stm32_low_power.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -255,7 +256,7 @@ void RTC_Alarm_IRQHandler(void)
 void LPTIM1_IRQHandler(void)
 {
   /* USER CODE BEGIN LPTIM1_IRQn 0 */
-
+  stm32_low_power_irq();
   /* USER CODE END LPTIM1_IRQn 0 */
   HAL_LPTIM_IRQHandler(&hlptim1);
   /* USER CODE BEGIN LPTIM1_IRQn 1 */
@@ -264,6 +265,14 @@ void LPTIM1_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
+
+/* Move this USER handler to the generated implementation after CubeMX
+   generates EXTI9_5 from DeskClock.ioc. PA8 is the historical ADXL INT1. */
+void EXTI9_5_IRQHandler(void)
+{
+  HAL_GPIO_EXTI_IRQHandler(ACCINT2A8_Pin);
+  HAL_GPIO_EXTI_IRQHandler(ACCINT2_Pin);
+}
 
 /* Move these USER handlers to the generated implementations after CubeMX
    regenerates the DMA1 Channel5 and SPI2 IRQs from DeskClock.ioc. */

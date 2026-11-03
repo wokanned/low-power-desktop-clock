@@ -21,6 +21,14 @@ int32_t clock_service_request_time(const clock_calendar_t *p_calendar,
 /* Returns 1 and releases a matching completed request; otherwise returns 0.
  * The result is 0 only after the platform write and verified readback succeed. */
 uint8_t clock_service_take_time_result(uint32_t token, int32_t *p_result);
+/* Same one-request mailbox as TIME. Precise input denotes receive_tick_ms in
+ * the 1000Hz RTOS tick domain; owner compensates queue delay (max 2000ms).
+ * Query performs fresh RTC IO on the owner task and never records a sync. */
+int32_t clock_service_request_timestamp(const clock_timestamp_t *p_timestamp,
+                                        uint32_t receive_tick_ms, uint32_t token);
+int32_t clock_service_request_time_query(uint32_t token);
+uint8_t clock_service_take_timestamp_result(uint32_t token, int32_t *p_result,
+                                           clock_timestamp_t *p_timestamp);
 /* Coherent task-context read; no IO or formatting. */
 void clock_service_get_model(clock_view_model_t *p_model);
 

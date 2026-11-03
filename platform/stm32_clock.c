@@ -1,6 +1,13 @@
 #include "stm32_clock.h"
 #include "rtc.h"
 
+#define CLOCK_PRECISE_PRER 0x007F00FFUL
+#define CLOCK_PRECISE_READ_MS 4U
+#define CLOCK_PRECISE_OPERATION_MS 50U
+#define CLOCK_PRECISE_VERIFY_MS 20
+#define CLOCK_PRECISE_SHIFT_ATTEMPTS 2U
+#define CLOCK_MILLISECONDS_PER_SECOND 1000U
+
 #if defined(__CC_ARM)
 extern const uint8_t Image$$RW_IRAM1$$Base[];
 extern const uint8_t Image$$RW_IRAM1$$ZI$$Limit[];
@@ -39,6 +46,132 @@ int32_t stm32_clock_read_calendar(clock_calendar_t *p_calendar)
     /* The retained/default RTC weekday may disagree with its calendar date. */
     p_calendar->weekday = clock_calendar_weekday(p_calendar->year,
         p_calendar->month, p_calendar->day);
+    return 0;
+}
+
+int32_t stm32_clock_read_timestamp(uint32_t tick_ms, clock_timestamp_t *p_sample)
+{
+    RTC_TimeTypeDef time;
+    RTC_DateTypeDef date;
+    clock_timestamp_t sample;
+    uint32_t started;
+    uint32_t span;
+    HAL_StatusTypeDef time_result;
+    HAL_StatusTypeDef date_result;
+    if (p_sample == NULL) { return -2; }
+    if (hrtc.Instance != RTC || (hrtc.Instance->CR & (RTC_CR_BYPSHAD | RTC_CR_FMT)) != 0U ||
+        hrtc.Instance->PRER != CLOCK_PRECISE_PRER) { return -1; }
+    started = HAL_GetTick();
+    time_result = HAL_RTC_GetTime(&hrtc, &time, RTC_FORMAT_BIN);
+    date_result = HAL_RTC_GetDate(&hrtc, &date, RTC_FORMAT_BIN);
+    span = HAL_GetTick() - started;
+    if (time_result != HAL_OK || date_result != HAL_OK) { return -1; }
+    if (span > CLOCK_PRECISE_READ_MS) { return -4; }
+    sample.calendar.year = (uint16_t)(2000U + date.Year);
+    sample.calendar.month = date.Month;
+    sample.calendar.day = date.Date;
+    sample.calendar.weekday = clock_calendar_weekday(sample.calendar.year,
+        sample.calendar.month, sample.calendar.day);
+    sample.calendar.hour = time.Hours;
+    sample.calendar.minute = time.Minutes;
+    sample.calendar.second = time.Seconds;
+    if (!clock_calendar_valid(&sample.calendar) || time.SecondFraction != 255U ||
+        time.SubSeconds > time.SecondFraction) { return -2; }
+    sample.millisecond = (uint16_t)((time.SecondFraction - time.SubSeconds) *
+        CLOCK_MILLISECONDS_PER_SECOND / (time.SecondFraction + 1U));
+    sample.tick_ms = tick_ms;
+    sample.read_span_ms = (uint16_t)span;
+    *p_sample = sample;
+    return 0;
+}
+
+/* Gregorian seconds from 2000; the supported 100 years fit in uint32_t. */
+static uint32_t s_calendar_seconds(const clock_calendar_t *p_calendar)
+{
+    static const uint8_t s_days[] = {31U,28U,31U,30U,31U,30U,31U,31U,30U,31U,30U,31U};
+    uint32_t days = p_calendar->day - 1U;
+    uint16_t year;
+    uint8_t month;
+    for (year = 2000U; year < p_calendar->year; year++) {
+        days += year % 4U == 0U ? 366U : 365U;
+    }
+    for (month = 1U; month < p_calendar->month; month++) {
+        days += s_days[month - 1U];
+        if (month == 2U && p_calendar->year % 4U == 0U) { days++; }
+    }
+    return ((days * 24U + p_calendar->hour) * 60U + p_calendar->minute) * 60U +
+        p_calendar->second;
+}
+
+static int32_t s_precise_difference(const clock_timestamp_t *p_reference,
+                                   uint32_t elapsed_ms,
+                                   const clock_timestamp_t *p_actual)
+{
+    int64_t difference = ((int64_t)s_calendar_seconds(&p_reference->calendar) -
+        (int64_t)s_calendar_seconds(&p_actual->calendar)) * 1000 +
+        p_reference->millisecond + elapsed_ms - p_actual->millisecond;
+    if (difference < -2000 || difference > 2000) { return 2001; }
+    return (int32_t)difference;
+}
+
+int32_t stm32_clock_write_timestamp(const clock_timestamp_t *p_requested,
+                                   uint32_t tick_ms,
+                                   clock_timestamp_t *p_verified)
+{
+    clock_timestamp_t requested;
+    clock_timestamp_t actual;
+    clock_calendar_t calendar;
+    uint32_t started;
+    uint32_t sampled;
+    uint32_t fractions;
+    uint32_t shift_ms;
+    uint32_t attempt;
+    int32_t difference;
+    int32_t result;
+    if (p_requested == NULL || p_verified == NULL ||
+        p_requested->millisecond >= CLOCK_MILLISECONDS_PER_SECOND) { return -2; }
+    requested = *p_requested;
+    requested.calendar.weekday = clock_calendar_weekday(requested.calendar.year,
+        requested.calendar.month, requested.calendar.day);
+    if (!clock_calendar_valid(&requested.calendar)) { return -2; }
+    if (hrtc.Instance != RTC || hrtc.Instance->PRER != CLOCK_PRECISE_PRER ||
+        (hrtc.Instance->CR & (RTC_CR_REFCKON | RTC_CR_BYPSHAD)) != 0U ||
+        (hrtc.Instance->ISR & RTC_ISR_SHPF) != 0U) { return -1; }
+    started = HAL_GetTick();
+    /* INIT resets the synchronous divider. The following observations include
+     * time spent entering INIT, shadow synchronization and shift application. */
+    result = stm32_clock_write_calendar(&requested.calendar, &calendar);
+    if (result != 0) { return result; }
+    for (attempt = 0U; attempt < CLOCK_PRECISE_SHIFT_ATTEMPTS; attempt++) {
+        sampled = HAL_GetTick() - started;
+        if (sampled > CLOCK_PRECISE_OPERATION_MS) { return -4; }
+        result = stm32_clock_read_timestamp(tick_ms + sampled, &actual);
+        if (result != 0) { return result; }
+        difference = s_precise_difference(&requested, sampled, &actual);
+        if (difference >= -CLOCK_PRECISE_VERIFY_MS &&
+            difference <= CLOCK_PRECISE_VERIFY_MS) {
+            *p_verified = actual;
+            return 0;
+        }
+        if (difference < 0 || difference > 2000) { return -3; }
+        shift_ms = (uint32_t)difference > CLOCK_MILLISECONDS_PER_SECOND ?
+            CLOCK_MILLISECONDS_PER_SECOND : (uint32_t)difference;
+        fractions = (shift_ms * 256U + 500U) / CLOCK_MILLISECONDS_PER_SECOND;
+        if (HAL_RTCEx_SetSynchroShift(&hrtc, RTC_SHIFTADD1S_SET,
+            256U - fractions) != HAL_OK) { return -1; }
+        while ((hrtc.Instance->ISR & RTC_ISR_SHPF) != 0U) {
+            if (HAL_GetTick() - started > CLOCK_PRECISE_OPERATION_MS) { return -4; }
+        }
+        if (HAL_RTC_WaitForSynchro(&hrtc) != HAL_OK) { return -1; }
+    }
+    sampled = HAL_GetTick() - started;
+    if (sampled > CLOCK_PRECISE_OPERATION_MS) { return -4; }
+    result = stm32_clock_read_timestamp(tick_ms + sampled, &actual);
+    if (result != 0) { return result; }
+    difference = s_precise_difference(&requested, sampled, &actual);
+    if (difference < -CLOCK_PRECISE_VERIFY_MS ||
+        difference > CLOCK_PRECISE_VERIFY_MS) { return -3; }
+    *p_verified = actual;
     return 0;
 }
 

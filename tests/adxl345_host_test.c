@@ -9,6 +9,7 @@ typedef struct {
     uint8_t registers[64];
     uint8_t fail;
     uint8_t corrupt_format;
+    uint8_t fail_burst;
     uint32_t reads;
     uint32_t bursts;
     uint32_t writes;
@@ -24,8 +25,10 @@ static int32_t s_read(void *p_handle, uint8_t reg, uint8_t *p_data, uint16_t len
     mock_bus_t *p_bus = (mock_bus_t *)p_handle;
     p_bus->reads++;
     if (p_bus->fail != 0U) { return -1; }
+    if (reg == 0x32U && p_bus->fail_burst != 0U) { return -1; }
     assert((uint16_t)reg + len <= sizeof(p_bus->registers));
     memcpy(p_data, p_bus->registers + reg, len);
+    if (reg == 0x30U) { p_bus->registers[reg] &= (uint8_t)~ADXL345_ACTIVITY; }
     if (reg == 0x32U) {
         assert(len == 6U);
         p_bus->bursts++;
@@ -64,6 +67,7 @@ static void s_driver_tests(void)
     adxl345_ctx_t ctx = {s_read, s_write, &bus};
     adxl345_sample_t sample;
     uint32_t reads;
+    uint8_t source;
     memset(&bus, 0, sizeof(bus));
     bus.registers[0] = 0xE5U;
     bus.registers[0x31U] = 0xF7U;
@@ -89,16 +93,52 @@ static void s_driver_tests(void)
     reads = bus.reads;
     assert(adxl345_sample(&ctx, &sample) == ADXL345_NOT_READY);
     assert(bus.reads == reads + 1U && bus.bursts == 1U);
+    bus.registers[0x30U] = ADXL345_ACTIVITY;
+    assert(adxl345_sample(&ctx, &sample) == ADXL345_NOT_READY);
+    assert(sample.source == ADXL345_ACTIVITY && bus.registers[0x30U] == 0U);
+    bus.registers[0x30U] = ADXL345_ACTIVITY | ADXL345_DATA_READY;
+    bus.fail_burst = 1U;
+    assert(adxl345_sample(&ctx, &sample) == ADXL345_ERROR_IO);
+    assert(sample.source == (ADXL345_ACTIVITY | ADXL345_DATA_READY));
+    bus.fail_burst = 0U;
+
+    /* Arm keeps unrelated fields and returns the read-to-clear source. */
+    bus.registers[0x27U] = 0x05U;
+    bus.registers[0x2FU] = 0xFFU;
+    bus.registers[0x30U] = ADXL345_ACTIVITY;
+    assert(adxl345_arm_activity(&ctx, &source) == ADXL345_OK);
+    assert(source == ADXL345_ACTIVITY && bus.registers[0x30U] == 0U);
+    assert(bus.registers[0x24U] == 4U && bus.registers[0x27U] == 0xF5U);
+    assert(bus.registers[0x2FU] == 0xEFU && bus.registers[0x2EU] == ADXL345_ACTIVITY);
+    assert((bus.registers[0x31U] & 0x20U) == 0U);
+    assert(adxl345_check_activity(&ctx) == ADXL345_OK);
+    bus.registers[0x30U] = ADXL345_ACTIVITY;
+    assert(adxl345_check_activity(&ctx) == ADXL345_OK);
+    assert(bus.registers[0x30U] == ADXL345_ACTIVITY); /* Health never clears it. */
+    assert(adxl345_read_interrupt(&ctx, &source) == ADXL345_OK);
+    assert(source == ADXL345_ACTIVITY);
+    bus.registers[0x24U] = 5U;
+    assert(adxl345_check_activity(&ctx) == ADXL345_ERROR_CONFIG);
+    bus.registers[0x24U] = 4U;
     bus.fail = 1U;
     assert(adxl345_sample(&ctx, &sample) == ADXL345_ERROR_IO);
     assert(adxl345_init(&ctx) == ADXL345_ERROR_IO);
+    assert(adxl345_check_activity(&ctx) == ADXL345_ERROR_IO);
+    source = ADXL345_ACTIVITY;
+    assert(adxl345_read_interrupt(&ctx, &source) == ADXL345_ERROR_IO && source == 0U);
+    assert(adxl345_arm_activity(&ctx, &source) == ADXL345_ERROR_IO);
     bus.fail = 0U; bus.registers[0] = 0x00U;
     assert(adxl345_init(&ctx) == ADXL345_ERROR_ID);
+    assert(adxl345_check_activity(&ctx) == ADXL345_ERROR_ID);
     bus.registers[0] = 0xE5U; bus.corrupt_format = 1U;
     assert(adxl345_init(&ctx) == ADXL345_ERROR_CONFIG);
     assert((bus.registers[0x2DU] & 0x08U) == 0U);
     assert(adxl345_init(NULL) == ADXL345_ERROR_ARGUMENT);
     assert(adxl345_sample(&ctx, NULL) == ADXL345_ERROR_ARGUMENT);
+    assert(adxl345_arm_activity(&ctx, NULL) == ADXL345_ERROR_ARGUMENT);
+    assert(adxl345_arm_activity(NULL, &source) == ADXL345_ERROR_ARGUMENT);
+    assert(adxl345_read_interrupt(NULL, &source) == ADXL345_ERROR_ARGUMENT);
+    assert(adxl345_check_activity(NULL) == ADXL345_ERROR_ARGUMENT);
 }
 
 static void s_wire_tests(const char *p_fixture)

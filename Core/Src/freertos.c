@@ -31,6 +31,8 @@
 #include "storage.h"
 #include "clock_service.h"
 #include "clock_faults.h"
+#include "power.h"
+#include "stm32_low_power.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -78,6 +80,8 @@ void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
   */
 void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN Init */
+  power_init((uint32_t)xTaskGetTickCount());
+  stm32_low_power_init();
   clock_service_init();
   /* USER CODE END Init */
 

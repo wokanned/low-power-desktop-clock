@@ -1,4 +1,5 @@
 #include "storage.h"
+#include "power.h"
 #include "storage_files.h"
 #include "storage_forecast.h"
 #include "clock_config.h"
@@ -20,6 +21,7 @@
 #define STORAGE_TEST_PATCH_BASE   0xA0U
 #define STORAGE_ERASED_BYTE       0xFFU
 #define STORAGE_SCAN_YIELD_TICKS  ((TickType_t)1U)
+#define STORAGE_IDLE_RETRY_MS 100U
 #define STORAGE_BITMAP_BYTES (W25Q128_TOTAL_SIZE / W25Q128_SECTOR_SIZE / 8U)
 #define STORAGE_FILE_NO_ENTRY (-2) /* littlefs LFS_ERR_NOENT */
 #if FORECAST_ENCODED_MAX > FILE_STORE_DATA_MAX
@@ -512,8 +514,12 @@ static void s_storage_task(void *p_argument)
     uint8_t online;
     uint8_t test_ran = 0U;
     int32_t result;
+    int32_t received;
+    bool busy;
 
     (void)p_argument;
+    power_set_blocker(POWER_BLOCK_STORAGE, true);
+    s_scan_paused = power_is_hold() ? 0U : 1U;
     diagnostics.test_status = STORAGE_TEST_RUNNING;
     s_publish(&diagnostics);
     diagnostics.result = (w25q128_status_t)s_initialize(&diagnostics);
@@ -559,7 +565,7 @@ static void s_storage_task(void *p_argument)
      * scan must not bypass reload after an ambiguous configuration commit. */
     for (;;) {
         now = xTaskGetTickCount();
-        if (scan.running == 0U && s_scan_paused == 0U && s_files.upload_active == 0U &&
+        if (scan.running == 0U && s_scan_paused == 0U && power_is_hold() && s_files.upload_active == 0U &&
             s_file_state != STORAGE_FILE_RUNNING && (TickType_t)(now - scan.completed_tick) >=
             pdMS_TO_TICKS(STORAGE_USAGE_INTERVAL_MS)) {
             s_publish_usage(CLOCK_DATA_INITIALIZING, 0U, W25Q128_OK);
@@ -592,7 +598,7 @@ static void s_storage_task(void *p_argument)
         }
         now = xTaskGetTickCount();
         elapsed = (TickType_t)(now - scan.completed_tick);
-        wait = ((scan.running != 0U && s_scan_paused == 0U && s_files.upload_active == 0U) ||
+        wait = ((scan.running != 0U && s_scan_paused == 0U && power_is_hold() && s_files.upload_active == 0U) ||
                 s_files.state == FILE_STORE_INITIALIZING || s_file_state == STORAGE_FILE_RUNNING ||
                 (s_forecast_state >= STORAGE_FORECAST_PENDING &&
                  s_forecast_state <= STORAGE_FORECAST_CLEANUP)) ?
@@ -602,7 +608,25 @@ static void s_storage_task(void *p_argument)
              (elapsed >= pdMS_TO_TICKS(STORAGE_USAGE_INTERVAL_MS) ? 0U :
               pdMS_TO_TICKS(STORAGE_USAGE_INTERVAL_MS) - elapsed));
         /* token zero is a wake-only message for the separate file mailbox. */
-        if (xQueueReceive(s_request_queue, &request, wait) == pdPASS && request.token != 0U) {
+        /* Owner acknowledgment: blocking between file-store steps is NOT idle.
+         * Every synchronous flash operation has returned before this boundary. */
+        busy =
+            s_files.state == FILE_STORE_INITIALIZING ||
+            s_file_state != STORAGE_FILE_IDLE || s_files.upload_active != 0U ||
+            s_file_owner != STORAGE_OWNER_NONE ||
+            (s_forecast_state >= STORAGE_FORECAST_PENDING &&
+             s_forecast_state <= STORAGE_FORECAST_CLEANUP);
+        if (!busy && !power_is_hold()) {
+            /* A failed write may still be internally busy after its timeout. */
+            busy = w25q128_check_idle(&s_context) != W25Q128_OK;
+            if (busy && wait > pdMS_TO_TICKS(STORAGE_IDLE_RETRY_MS)) {
+                wait = pdMS_TO_TICKS(STORAGE_IDLE_RETRY_MS);
+            }
+        }
+        power_set_blocker(POWER_BLOCK_STORAGE, busy);
+        received = xQueueReceive(s_request_queue, &request, wait);
+        power_set_blocker(POWER_BLOCK_STORAGE, true);
+        if (received == pdPASS && request.token != 0U) {
             result = W25Q128_OK;
             if (online == 0U) {
                 result = s_initialize(&diagnostics);
@@ -642,7 +666,7 @@ static void s_storage_task(void *p_argument)
         clock_fault_report(CLOCK_FAULT_W25Q, boot_fault | config_fault | scan_fault |
                            file_fault | s_maintenance_fault);
         taskEXIT_CRITICAL();
-        if (scan.running != 0U && s_scan_paused == 0U &&
+        if (scan.running != 0U && s_scan_paused == 0U && power_is_hold() &&
             s_files.upload_active == 0U && s_file_state != STORAGE_FILE_RUNNING) {
             scan_result = s_scan_step(&scan);
             if (scan_result != W25Q128_OK ||
