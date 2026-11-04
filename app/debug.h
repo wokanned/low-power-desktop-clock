@@ -7,7 +7,8 @@
 void Debug_Init(void);
 bool Debug_IsReady(void);
 void StartDebugTask(void *p_argument);
-/* Nonblocking copy; intentional console suppression succeeds without queueing. */
+/* Nonblocking copy in HOLD; AUTO or console suppression succeeds without
+ * queueing. Suppressed frames are not transmitted. */
 bool Debug_SendFloats(const float *p_data, uint8_t ch_cnt);
 bool Debug_SendFrame(const void *p_data, uint8_t ch_cnt,
                      const VOFA_Data_TypeDef_Enum *p_types);

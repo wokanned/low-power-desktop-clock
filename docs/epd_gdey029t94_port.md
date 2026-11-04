@@ -1,6 +1,6 @@
 # GDEY029T94-FL03 显示移植记录
 
-更新时间：2026-10-28。返回[文档导航](README.md)。工程总进度见 [totalPLAN.md 的“当前开发状态”](totalPLAN.md#当前开发状态2026-10-27)。本文件维护显示接口、默认行为和分版本验证记录；界面和刷新契约见 [clock_gray4_ui.md](clock_gray4_ui.md)，串口接入分别见[天气协议](weather_protocol.md)和[校时协议](time_protocol.md)。
+更新时间：2026-10-28。返回[文档导航](README.md)。工程总进度见 [totalPLAN.md 的“当前开发状态”](totalPLAN.md#当前开发状态2026-11-04)。本文件维护显示接口、默认行为和分版本验证记录；界面和刷新契约见 [clock_gray4_ui.md](clock_gray4_ui.md)，串口接入分别见[天气协议](weather_protocol.md)和[校时协议](time_protocol.md)。
 
 当前源码已接入黑白时钟、串口注入天气页、三分钟页面轮换、USART2 秒级校时和WIFI同步记录；默认 `EPD_VENDOR_DEMO_MODE=0`、`EPD_CLOCK_USE_GRAY4=0`。本轮改用SPI2 TX DMA，独立信号量等待及异常恢复、真实设备驱动BUSY语义和UART接收隔离的主机验证通过，默认/模式7完整Keil重建均0错误/0警告；最新镜像身份统一见[验证记录](测试数据.md)。尚未烧录，整机板测仍待完成。下文历史构建和实屏记录保留各自日期，不代替当前镜像的板上验证。
 

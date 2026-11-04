@@ -1,10 +1,10 @@
 # AGENTS.md
 
-本文件为 AI 编程助手提供本仓库的开发规则。更新日期：2026-10-28。面向使用者的说明见 [文档导航](docs/README.md)。
+本文件为 AI 编程助手提供本仓库的开发规则。更新日期：2026-11-04。面向使用者的说明见 [文档导航](docs/README.md)。
 
 ## 工程概况
 
-目标为低功耗 IoT 桌面时钟。MCU 为 STM32L471RET6（Cortex-M4，80MHz，512KB Flash，128KB SRAM，LQFP-64），使用 FreeRTOS V10.3.1 和 CMSIS-RTOS V2。2026-10-27 当前处于软件集成原型阶段，已接入 RTC/黑白时钟显示、ADXL345 遥测、W25Q 配置存储、USART2 注入天气和 TIME 校时；自动联网、环境/电量采集、按键闹钟及整机低功耗尚未实现。
+目标为低功耗 IoT 桌面时钟。MCU 为 STM32L471RET6（Cortex-M4，80MHz，512KB Flash，128KB SRAM，LQFP-64），使用 FreeRTOS V10.3.1 和 CMSIS-RTOS V2。当前处于软件集成原型阶段，已接入 RTC/黑白时钟、WDATA 多页天气/预警、TIME2/TIME?、FORECAST 持久化、littlefs 文件维护，以及 Tickless/STOP2 和 ADXL345 Activity。自动联网、环境/电量采集、按键闹钟与分域断电未实现；当前整机硬件验收未完成。
 
 **工程进度统一维护在 [docs/totalPLAN.md](docs/totalPLAN.md) 的“当前开发状态”。** 文件系统第一阶段新增 littlefs 与 USART2 文件维护；具体构建身份和测试范围见统一进度及 `docs/测试数据.md`，整机验收待完成。模块文档保留具体历史证据；源码接入、历史构建或局部实采均不能代替当前完整镜像的板测。
 
@@ -53,8 +53,8 @@ DeskClock.ioc      # CubeMX 工程配置
 | USART2 | huart2 | 调试串口（H10 排针，3.3V TTL）                                       | TX=PA2，RX=PA3                                                                               |
 | ADC1   | hadc1  | 预留电池电压采样，尚未接入业务                                       | PA0 接电池分压；电池 NTC 接到 BQ24074 TS，不接此 ADC                                         |
 | TIM4   | htim4  | 预留蜂鸣器 PWM，尚未启动响铃业务                                     | 5.2kHz 无源压电蜂鸣器，当前仅完成外设配置                                                     |
-| TIM17  | htim17 | HAL SysTick 时间基准                                                 | 用于`HAL_IncTick()`（FreeRTOS 使用 SysTick 作为内核节拍）                                  |
-| RTC    | hrtc   | 日历计时已接入；闹钟提醒与低功耗唤醒业务待实现                       | LSE 32.768kHz；备份域供电时使用 RTC_BKP_DR0 标记保留日历；冷初始化为 2000-10-18 00:00:00    |
+| TIM17  | htim17 | HAL 毫秒时间基准                                                 | 用于`HAL_IncTick()`（FreeRTOS 使用 SysTick 作为内核节拍）                                  |
+| RTC    | hrtc   | 日历已接入；闹钟业务待实现，MCU定时睡醒使用LPTIM1                       | LSE 32.768kHz；备份域供电时使用 RTC_BKP_DR0 标记保留日历；冷初始化为 2000-10-18 00:00:00    |
 
 ### 电源域 GPIO
 
@@ -92,7 +92,9 @@ DeskClock.ioc      # CubeMX 工程配置
 - **FPU / MPU**：`configENABLE_FPU=1`，`configENABLE_MPU=0`，以 `Core/Inc/FreeRTOSConfig.h` 为准
 - **节拍**：FreeRTOS 使用 SysTick；HAL 使用 TIM17 调用 `HAL_IncTick()`（见 `stm32l4xx_hal_timebase_tim.c`）
 - **NVIC**：允许调用系统 API 的最高中断优先级值为 5，内核中断优先级为 15（最低）
-- **当前任务**：defaultTask、debugTask、accelTask、displayTask、storageTask；Tickless、Stop 2 和运动唤醒尚未接入。
+- **当前任务**：defaultTask、debugTask、accelTask、displayTask、storageTask；Tickless（USER 覆盖为2）、LPTIM1/LSE 计时的 STOP2 和 PA8 动作唤醒已接入，实际时序/功耗待板测。
+
+当前使用与实现限制见 [docs/low_power.md](docs/low_power.md)、[docs/weather_pages.md](docs/weather_pages.md) 和 [已知差异](docs/current_code_gaps.md)。有 WDATA 时普通轮换为 CLOCK 180秒→LIVE/FORECAST/DATA 各60秒；以下三分钟两页描述仅适用于无 WDATA 的兼容路径。5项已知缺陷和5项已确认待实现需求不得写成已修复或已完成。
 
 ## 显示模块集成
 
@@ -108,7 +110,7 @@ DeskClock.ioc      # CubeMX 工程配置
 - `.ioc` 与生成的 SPI2 初始化必须保持一致，预分频为 32（2.5MHz）。普通 MCU 复位应保留 RTC 备份标记和日历。
 - 显示信号连接以对应板版本的原始网表为准，`.ioc`、Core 和文档按网表同步，不能反过来用固件配置推断接线。当前参考提交 `8583f09` 的主板网表为 `MOSI2 ; H8.6 U1.11`，对应 PC3 AF5；BUSY 为 `H8.2 U1.25`，对应 PC5，并保留 `BUSY` 标签。USART2及TX DMA中断入口由 CubeMX 生成，平台保留 HAL 发送完成、接收和错误回调。完整映射见 `docs/epd_gdey029t94_port.md`。
 - `defaultTask` 独占运行期 RTC 读写，按一秒截止时间轮询并被校时请求通知立即唤醒，每十秒缓存内存统计；只有显示任务绘制。不存在的数据提供者显示 N/A。静态故障表按七类聚合，EPD 故障只保留诊断，不上屏。
-- USART2 默认 JustFloat；WEATHER、PAGE 和 TIME 命令在两种串口模式下均可接收，JustFloat 模式静默处理；显式 `CONSOLE ON` 后暂停遥测并启用控制台应答，支持 FORMAT、ERRORS、WEATHER、PAGE 和 TIME。TIME 使用北京时间整秒，RTC 写入及读回验证完成后才应答，详见 `docs/time_protocol.md`；板载 ESP32 的 USART1 尚未接入该业务。weather 数据只缓存在 RAM；storageTask 独占配置事务，预留 W25Q 最后两个独立扇区，不可与启动测试区混用。
+- USART2 默认 AUTO 且不连续遥测，JustFloat 是默认帧格式；调试先在启动/动作窗口取得 POWER HOLD 应答，再按需 CONSOLE ON。HOLD 且 CONSOLE OFF 时才连续遥测；WEATHER、PAGE 和 TIME 命令在两种串口模式下均可接收，JustFloat 模式静默处理；显式 `CONSOLE ON` 后暂停遥测并启用控制台应答，支持 FORMAT、ERRORS、WEATHER、PAGE 和 TIME。TIME 使用北京时间整秒，RTC 写入及读回验证完成后才应答，详见 `docs/time_protocol.md`；板载 ESP32 的 USART1 尚未接入该业务。weather 数据只缓存在 RAM；storageTask 独占配置事务，预留 W25Q 最后两个独立扇区，不可与启动测试区混用。
 - `Debug_Log()` 当前为空实现，不能期待文字启动日志。EPD 自身状态通过控制台 `ERRORS` 或调试器查看。DBG TX故障及恢复只影响遥测和完整诊断；显示使用独立故障快照过滤该位，不能因发送超时触发全刷或覆盖时钟/天气页。RX、溢出及其他业务故障沿用原上屏规则。
 - USART2 TX 使用 DMA1 Channel7 / Request2 普通模式，DMA与USART2 IRQ均为优先级5。debugTask独占发送，平台用独立静态信号量等待UART TC（15 ms参数），同步返回前完成或中止TX，缓冲区不可提前复用；RX继续使用单字节中断和1024字节环形缓冲。CubeMX重新生成时核对DMA句柄关联、初始化顺序和两个中断入口。
 - SPI2 TX 使用 DMA1 Channel5 / Request1 普通模式，DMA与SPI2 IRQ均为优先级5。displayTask独占，平台用屏幕专用静态信号量同步等待SPI线传输完成；栈命令及灰阶编码块只能在完成或确认DMA停止后复用。错误回调唤醒等待，超时/错误仅清理本DMA通道并恢复SPI2，长轮询留在临界区外以保留USART2 RX。SPI完成后仍须等待屏幕BUSY，再提交；是否休眠由对应显示会话决定。CubeMX再生成须核对USER兼容块与生成定义，详见显示移植文档。
@@ -164,7 +166,7 @@ Core ---------> 仅负责系统初始化，不放业务逻辑
 | `docs/测试数据.md`                                      | 当前镜像、构建身份、主机测试与历史数据索引                        | 查验验证记录                       |
 | `docs/w25q128_storage.md`                                | Flash 自检区、配置持久化和物理占用扫描                            | 存储与配置                         |
 | `docs/adxl345_telemetry.md`                              | 三轴采样、遥测及历史实板采集                                      | 加速度数据和串口观测               |
-| `docs/adxl345_stop2_guide.md`                            | 尚未接入构建的低功耗与动作唤醒设计                                | 低功耗实现规划                     |
+| `docs/adxl345_stop2_guide.md`                            | 历史低功耗设计；当前实现见 docs/low_power.md                                | 低功耗实现规划                     |
 | `.github/copilot-instructions.md`                        | AI 启动规则和仓库级指导                                             | 所有任务                           |
 | `.github/instructions/project-structure.instructions.md` | 分层边界和构建同步规则                                              | 新增/移动源文件                    |
 | `.github/instructions/cubemx-generated.instructions.md`  | CubeMX 文件修改安全规则                                             | 修改 Core/ 或`.ioc`              |

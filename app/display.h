@@ -27,7 +27,9 @@ typedef struct {
     uint16_t text_page;
 } display_snapshot_t;
 
-/* 选择 RAM 页面并重新计时；同页命令也重置三分钟轮换，复位默认时钟页。 */
+/* 选择 RAM 页面并重新计时，同页也重计；复位默认时钟页。
+ * 无 WDATA 为两页各180秒；有 WDATA 为时钟180秒、其他页60秒。
+ * 未消费预警仍可能覆盖手动选择，已知限制见 docs/current_code_gaps.md。 */
 bool display_select_page(display_page_t page);
 /* Console-only navigation, strict complete PAGE command. One-based arguments. */
 bool display_page_command(const char *p_line);
@@ -37,7 +39,8 @@ bool display_publish_weather(const weather_data_t *p_data, uint32_t now_tick);
 /* A newly committed forecast selects weather and records a sync. Restoring a
  * saved batch must publish it without calling this command-side hook. */
 void display_forecast_committed(void);
-/* 获取一致快照并推进三分钟轮换，耗时刷新后只切一次，不补跑错过的页面。 */
+/* 获取一致快照并推进按页面时长配置的轮换/预警停留；
+ * 耗时刷新后只切一次，不补跑错过的页面。 */
 void display_get_snapshot(uint32_t now_tick, display_snapshot_t *p_snapshot);
 
 /* Create one task with application-owned stack and control block.

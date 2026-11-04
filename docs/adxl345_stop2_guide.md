@@ -1,14 +1,16 @@
 # ADXL345 动作中断与 STM32L471 STOP2 配置指南
 
+文档核对日期：2026-11-04。下方带日期的旧设计和旧镜像记录保留为历史；当前已知限制见[代码与需求差距](current_code_gaps.md)。
+
 2026-11-03 更新：本文下方保留历史设计。当前已接入自定义 Tickless、STOP2、Activity 唤醒与 POWER 命令，真实构建和主机验证见[测试数据](测试数据.md)，使用和板测以[低功耗说明](low_power.md)为准。下文“尚未实现”及逐次屏幕深睡策略不再描述当前实现；当前保留屏幕局刷会话，实板尚未验收。
 
 设计日期：2026-10-17；更新时间：2026-10-27。返回[文档导航](README.md)。适用工程：STM32L471RET6、FreeRTOS V10.3.1 / CMSIS-RTOS V2、Keil ARMCC。
 
-本文件是配置教程与代码设计，动作唤醒及 STOP2 仍处于规划阶段，本文示例尚未加入当前构建。当前工程已有 LPTIM1 的 LSE、DIV1 和优先级 5 中断配置，但没有自定义 Tickless 或 STOP2 入口，ADXL345 仍关闭中断输出并轮询采样。部分外设配置已存在，不代表低功耗功能已经完成。整机进度统一见 [totalPLAN.md](totalPLAN.md) 的“当前开发状态（2026-10-27）”。
+下文为接入前的历史配置教程与设计附录，描述的是2026-10-27及更早的源码状态，不是当前操作步骤。当前实现位于 `app/power.c`、`app/accel.c`、`platform/stm32_low_power.c` 和 `platform/low_power_time.c`，已加入 Keil 构建；实际使用以[低功耗说明](low_power.md)及当前源码为准。历史示例不得直接覆盖当前端口、任务或中断实现。整机进度统一见 [totalPLAN.md](totalPLAN.md)。
 
 10月27日默认黑白时钟、天气和TIME集成镜像已完成Keil重建，独立产物为 `build/time-sync-keil/mode-0/DeskClock.hex`，该镜像不包含本文的动作布防或STOP2实现，也尚未烧录。构建与哈希见 [time_protocol.md](time_protocol.md)。实施本指南前先阅读[显示任务边界](epd_gdey029t94_port.md)、[时钟与刷新](clock_gray4_ui.md)、[天气协议](weather_protocol.md)和[校时协议](time_protocol.md)，确定休眠时的数据与请求处理约定。
 
-## 1. 选择 STOP2
+## 历史设计附录：1. 选择 STOP2
 
 目标流程是 ADXL345 持续测量并自行判断 Activity，STM32 进入 STOP2。传感器中断脚产生上升沿后，EXTI 唤醒 STM32；恢复运行时钟后，由任务读取中断原因，再按需要恢复显示、WiFi 和其他传感器。
 

@@ -1,10 +1,12 @@
 # ADXL345 三轴采集与 JustFloat 遥测
 
-更新日期：2026-10-27。文档入口见 [文档导航](README.md)，整机进度见 [totalPLAN.md](totalPLAN.md#当前开发状态2026-10-27)。
+**当前串口操作前提（2026-11-04）**：默认 AUTO 不持续遥测，睡眠时不能保证串口接收。先在上电30秒或晃动后的10秒窗口发送 `POWER HOLD`，收到 `OK POWER HOLD` 后再执行本文示例；结束调试可发送 `POWER AUTO`。仅 `CONSOLE ON` 不会保持清醒。详见[低功耗说明](low_power.md)。
+
+更新日期：2026-11-04。文档入口见 [文档导航](README.md)，整机进度见 [totalPLAN.md](totalPLAN.md#当前开发状态2026-11-04)。
 
 ## 版本与范围
 
-三轴采样及 JustFloat 遥测已接入当前工程，包含天气与 TIME 校时的默认黑白完整 Keil 构建已通过，最新镜像尚未烧录。下文保留 2026-10-14/15 的构建、主机测试和真实采集记录。历史流没有固件身份字段，不能据此认定当前全模块集成镜像已通过板测。Activity 中断、动作唤醒和 STOP2 尚未实现。
+当前 accelTask 已分 AUTO 动作检测与 HOLD 三轴采样两种模式。AUTO 已接入 Activity 中断和 MCU STOP2 协作，不连续发送遥测；HOLD 保留三轴采样与 JustFloat 输出，文字控制台期间暂停发送。最新构建身份与执行范围见[验证记录](测试数据.md)，真实睡醒、运动检测和整机功耗仍待板测。下文保留 2026-10-14/15 的历史构建与实采，流中无固件身份字段，不能证明当前完整镜像已通过板测。
 
 器件为 ADXL345BCCZ-RL7 三轴加速度计。第一版验证通信、量程、数据符号和安装轴向，暂不实现角速度、姿态融合、FFT、零偏校准或噪声密度分析。温度字段保留，固定为 quiet NaN；温度无效标志始终置位。raw_x/y/z 是 ADXL345 数字输出原始码，不是 MCU PA0 电池 ADC。
 
@@ -25,6 +27,10 @@
 器件驱动在 `device/imu_adxl345`，HAL 适配在 `platform/stm32_adxl345`，任务和恢复策略在 `app/accel`。当前 accelTask 是 I2C2 唯一运行时用户。平台适配有静态互斥锁；将来接入 MAX17043 时必须让两个适配器共享同一总线仲裁器，不能另建独立锁后并发访问 hi2c2。
 
 ## 任务与恢复
+
+AUTO 调用 `adxl345_arm_activity()`，使用 AC 三轴、0.25 g 初始阈值、100 Hz 与 INT1→PA8 历史映射。ISR 只屏蔽本引脚并通知，accelTask 独占读取 INT_SOURCE；动作延长10秒清醒窗口，不切页。持续运动100 ms检查，INT持续高超过1秒进入故障重试；静置60秒核对配置。动作源故障保持禁睡，每秒重试，健康恢复后重新布防。实际连线、慢动作触发率与阈值仍需板测，详见[低功耗说明](low_power.md)。
+
+以下 DATA_READY 轮询、滤波和故障帧描述只适用于 HOLD 连续采样模式。
 
 accelTask 使用静态控制块和 1024 字节栈，AboveNormal 优先级。通过 RTOS 延时约每 1 ms 检查 DATA_READY，有新数据才读取并生成一帧；传感器 ODR 仍为标称 100 Hz，串口帧不再强制每 10 ms 产生。短暂未就绪时让出 CPU，不发送无效帧、不推进序号、不增加错误计数。debugTask 在 BelowNormal 优先级阻塞发送 UART。八帧静态发送队列占 512 字节，不增加 RTOS 堆占用。平台 I2C 单次 HAL 超时参数 1 ms，最多两次尝试；HAL 的内部 BUSY 检查可能另有更长上限，所以失败时以 LATE 状态和主机时间间隔衡量实际成本，不能把超时参数当作完整事务最坏耗时。
 
@@ -76,7 +82,9 @@ accelTask 使用静态控制块和 1024 字节栈，AboveNormal 优先级。通�
 | 8 | LATE | 本次任务处理超过一个标称周期 |
 | 9 | SATURATED | 某轴达到/超出 ±2 g 的原始边界（−512/+511） |
 
-典型正常状态为 7（INITIALIZED+VALID+TEMPERATURE_INVALID）。USART2 默认只输出固定 JustFloat 帧，无启动横幅和文本日志；此模式仍接收 WEATHER、PAGE 和 TIME，处理结果保持静默。显式发送 `CONSOLE ON` 后，debugTask 在完整帧发送结束后暂停遥测并进入文本控制台；`CONSOLE OFF` 成功应答后恢复遥测。控制台期间采样继续，主动暂停不增加 queue_drop_count；序号继续推进，因此不应跨控制台会话连续采集并将该缺口判为通信丢帧。`Debug_GetSuppressedCount()` 单独保留主动暂停计数。`Debug_Log` 仍为空操作。协议和配置命令见 [debug_console.md](debug_console.md)。
+位10 `MOTION_ARMED` 用于 AUTO 动作布防的 RAM 快照诊断；AUTO 不发送该状态为 JustFloat 帧。HOLD 遥测帧继续使用位0～9，现有主机解码约束保持不变。
+
+典型正常状态为 7（INITIALIZED+VALID+TEMPERATURE_INVALID）。USART2 默认处于非控制台模式，无启动横幅和文本日志；只有 HOLD 下才持续输出固定 JustFloat 帧。非控制台模式仍接收 WEATHER、PAGE 和 TIME，处理结果保持静默。显式发送 `CONSOLE ON` 后，debugTask 在完整帧发送结束后暂停遥测并进入文本控制台；`CONSOLE OFF` 成功应答后仅在 HOLD 下恢复遥测，AUTO 不恢复连续采样或发送。控制台期间采样继续，主动暂停不增加 queue_drop_count；序号继续推进，因此不应跨控制台会话连续采集并将该缺口判为通信丢帧。`Debug_GetSuppressedCount()` 单独保留主动暂停计数。`Debug_Log` 仍为空操作。协议和配置命令见 [debug_console.md](debug_console.md)。
 
 ## 带宽与观测成本
 
@@ -84,7 +92,7 @@ accelTask 使用静态控制块和 1024 字节栈，AboveNormal 优先级。通�
 
 ## 电脑端
 
-在 `software/DeskClock` 目录运行：
+真实采集前，用串口终端在启动/动作窗口发送 `POWER HOLD` 并等待应答，再发送 `CONSOLE OFF` 退出控制台。关闭终端释放 COM 口后，才在 `software/DeskClock` 目录运行以下采集器；采集工具不会自动取得 HOLD。离线 `--replay` 无需连接设备。
 
 ```powershell
 py -m pip install -r tools/requirements.txt
@@ -109,7 +117,7 @@ JustFloat 没有 CRC，字段合法的位损坏仍可能逃过检查；帧同步
 
 以下记录按日期保留，本次文档核对未重新执行采集、测试或构建。完整链接证明相应源码进入该构建，历史真实采集证明当时观察到的三轴响应；两者均不代替最新镜像的板上验收。
 
-### 最新整机集成记录（2026-10-27）
+### 历史整机集成记录（2026-10-27）
 
 包含天气、TIME 和现有加速度遥测的默认黑白工程已通过 Keil ARMCC 5.06 update 7 完整重建，0错误、0警告。日志、Program Size、镜像 SHA-256 和逐文件源码哈希见 [校时验证记录](time_protocol.md#2026-10-27-验证记录)。显示集成25场景分别通过 BW 和 gray4 配置；该结果不代表加速度总线或实机采样时序验证。本轮校时记录未新增 ADXL345 板上采集，最新镜像未烧录。
 

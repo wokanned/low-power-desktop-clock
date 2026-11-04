@@ -5,7 +5,7 @@
 #include "clock_model.h"
 
 #define ACCEL_SCHEMA_VERSION 1U
-#define ACCEL_SAMPLE_MS 10U /* Nominal sensor period and fault-frame interval. */
+#define ACCEL_SAMPLE_MS 10U /* HOLD sampling/fault-frame interval; AUTO uses Activity interrupts. */
 #define ACCEL_WIRE_MODULUS 0x01000000U
 
 enum {

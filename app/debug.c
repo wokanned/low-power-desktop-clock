@@ -492,7 +492,8 @@ void StartDebugTask(void *p_argument)
         }
         now = (uint32_t)xTaskGetTickCount();
         if (s_line_active != 0U && now - s_line_since >= DEBUG_PARTIAL_LINE_MS) {
-            /* A partial line never spans an idle/sleep boundary. */
+            /* A partial line vetoes STOP2 until completed or this timeout clears it;
+               ordinary task waits may still occur while collecting the line. */
             debug_console_parser_reset(&s_parser);
             s_line_active = 0U;
             if (s_console_active != 0U) { (void)debug_send_text("ERR RX TIMEOUT\r\n"); }

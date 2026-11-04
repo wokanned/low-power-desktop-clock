@@ -17,7 +17,9 @@ int32_t storage_maintenance_acquire(void);
 void storage_maintenance_release(void);
 /* Asynchronous scan-only pause at a sector boundary. This does not acknowledge
  * quiescence and does not make suspending this task or powering down Flash safe.
- * A future PowerMgr must obtain an owner-side quiescent handshake. */
+ * MCU STOP2 uses the storage owner's POWER_BLOCK_STORAGE acknowledgment after
+ * synchronous operations and Flash-idle checks; scan pause alone is insufficient.
+ * Flash power removal/deep-power-down is not implemented. */
 void storage_set_scan_paused(uint8_t paused);
 
 #endif

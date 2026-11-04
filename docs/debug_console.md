@@ -1,5 +1,7 @@
 # USART2 显式文本控制台
 
+当前源码的已知缺陷、与用户已确认但尚未实现的行为差异，见[代码与需求差距](current_code_gaps.md)。本文不将待修复项写成已完成。
+
 2026-11-03：默认 AUTO 待机，不再默认持续发送遥测。在上电30秒或动作唤醒10秒窗口先发送 `POWER HOLD` 并等待应答，再执行 `CONSOLE ON`。完成维护发送 `POWER AUTO`；`POWER STATUS` 可在控制台之外查询。CONSOLE ON/OFF 只切换文本与遥测，不控制待机。详见[低功耗说明](low_power.md)。
 
 2026-11-02 新增 [WDATA](weather_feed_protocol.md)、[大字天气页](weather_pages.md) 和
@@ -32,28 +34,29 @@ TIME2/TIME? 也与新天气、预报和文件事务排他；旧 TIME 与 FORMAT 
 
 多天预报新增`FORECAST BEGIN/DAY/COMMIT/CANCEL/STATUS`，仅在控制台处理，先完成TIME再发送新批次；完整日期字段、异步落盘应答和重试规则见[多天预报协议](forecast_protocol.md)。收集或保存预报时，TIME、CONSOLE OFF以及除FS STATUS以外的文件维护返回BUSY，须完成或取消预报后再切换。
 
-更新日期：2026-10-28。文档入口见 [文档导航](README.md)，工程总进度见 [totalPLAN.md 的“当前开发状态（2026-10-27）”](totalPLAN.md#当前开发状态2026-10-27)。控制台、天气注入、切页和 TIME 校时已接入。USART2 TX 已改为 DMA，最新构建与验证范围见[验证记录](测试数据.md)；最新镜像尚未烧录，板上验收仍待完成。
+更新日期：2026-11-04。文档入口见 [文档导航](README.md)，工程总进度见 [totalPLAN.md 的“当前开发状态（2026-11-04）”](totalPLAN.md#当前开发状态2026-11-04)。控制台、天气注入、切页和 TIME 校时已接入。USART2 TX 已改为 DMA，最新构建与验证范围见[验证记录](测试数据.md)；最新镜像尚未烧录，板上验收仍待完成。
 
-USART2 使用 H10，PA2 TX / PA3 RX，115200、8N1、3.3V TTL。默认发送现有
-16 通道、68 字节 JustFloat 帧，`debugTask` 始终是唯一发送者。
-普通文本终端看到二进制乱码符合默认协议。`Debug_Log()` 当前为空实现，启动、重试和
+USART2 使用 H10，PA2 TX / PA3 RX，115200、8N1、3.3V TTL。默认 AUTO 不持续发送遥测；
+取得 HOLD 且退出控制台后发送16通道、68字节 JustFloat 帧，`debugTask` 始终是唯一发送者。
+HOLD 非控制台模式下，普通文本终端看到二进制乱码符合协议。`Debug_Log()` 当前为空实现，启动、重试和
 挂起位置的文字不会自动输出；发送 `CONSOLE ON` 并换行后才使用下文文本应答。
 
 ## 命令
 
 命令区分大小写，不带前后空格，以CR、LF或CRLF结束。WEATHER/FORECAST行最多127字节，FS/WDATA行最多223字节；其他输入保留31字节限制。长度不含换行和终止NUL。
 只有精确命令族使用各自长行上限，WEATHERX、WDATAX等未知命令仍受31字节限制。
-二进制模式下 `WEATHER`、`PAGE` 和 `TIME` 命令静默执行，其他文本仅
+二进制模式下 `WEATHER`、`PAGE` 和 `TIME` 命令静默执行，POWER HOLD/AUTO/STATUS 在控制台外也处理并产生文本应答；其他文本仅
 `CONSOLE ON` 会产生切换应答。
 
 | 命令 | 结果 |
 | --- | --- |
+| `POWER HOLD` / `POWER AUTO` / `POWER STATUS` | 保持清醒、恢复自动待机、查询软件状态；控制台外也可使用，详细位定义见[低功耗说明](low_power.md) |
 | `CONSOLE ON` | 完整遥测帧发送结束后清空旧队列，暂停遥测，回复 `OK CONSOLE ON` |
 | `FORMAT 12` / `FORMAT 24` | 异步请求保存格式；验证持久化成功后回复 `OK FORMAT 12` / `OK FORMAT 24` |
 | `ERRORS` | 输出活动类别数、故障修订号、保留 EPD 状态；各来源输出当前原因、初次原因、首次完整时间和 tick |
-| `CONSOLE OFF` | 回复 `OK CONSOLE OFF` 成功后清空旧队列，恢复二进制输出 |
+| `CONSOLE OFF` | 回复 `OK CONSOLE OFF` 成功后清空旧队列；HOLD恢复二进制输出，AUTO仍暂停连续遥测 |
 | `WEATHER <record>` | 控制台回复 `OK WEATHER`；完整记录校验成功后原子替换 RAM 天气缓存、选择天气页、重启三分钟轮换计时并记录同步成功 |
-| `PAGE WEATHER` / `PAGE CLOCK` | 控制台分别回复 `OK PAGE WEATHER` / `OK PAGE CLOCK`；手动选择目标页面并重启三分钟计时，状态仅保存在 RAM |
+| `PAGE WEATHER` / `PAGE CLOCK` | 控制台分别回复 `OK PAGE WEATHER` / `OK PAGE CLOCK`；手动选择目标页面并重新计时（无WDATA为180秒；有WDATA时CLOCK180秒、WEATHER60秒），状态仅保存在RAM |
 | `TIME YYYY-MM-DDTHH:MM:SS` | 北京时间直接校时；RTC 写入、同步和读回验证成功后发布模型并记录同步成功，控制台回复 `OK TIME` |
 | `FS STATUS` / `FS LIST /` | 查询文件系统快照或目录；STATUS 的 FLASH 字段保留文件故障的底层原因，文件检查中返回未就绪 |
 | `FS MKDIR /name` / `FS REMOVE /name` / `FS RENAME /old /new` | 异步文件维护 |
@@ -93,7 +96,7 @@ TIMEOUT=004、ID=008、VERIFY=010、START=020、TX=040、RX=080、OVERFLOW=100�
 
 ## 发送与接收约束
 
-控制台期间加速度采样继续，`Debug_SendFloats()` 成功返回且不入队。
+HOLD 下控制台期间加速度采样继续；AUTO 下使用动作检测，不连续采样。控制台或 AUTO 时 `Debug_SendFloats()` 成功返回且不入队。
 `Debug_GetSuppressedCount()` 保留主动暂停次数，不增加队列拒绝计数，
 也不因主动暂停产生 SYSTEM 错误。退出后只发送新入队的数据。
 
@@ -113,7 +116,7 @@ CubeMX 在 `Core/Src/stm32l4xx_it.c` 生成唯一中断入口，分别调用 `HA
 和 `HAL_UART_IRQHandler(&huart2)`。普通模式 DMA 完成只开启 UART TC 中断，平台在 HAL TX 完成回调中释放信号量。
 重新生成后应检查 DMA 句柄关联、两个中断入口唯一、USER CODE 和 Keil 源文件分组。
 ISR只收单字节、写1024字节静态环形缓冲并通知debugTask。任务解析命令，
-按 20 ms 等待参数轮询异步完成，该参数不是实机往返延迟上限。环形缓冲溢出时清空待处理字节，丢弃当前行到下一个
+活动事务或 HOLD 时按20 ms等待参数检查；AUTO 空闲时等待最长1秒，RX通知可提前唤醒。等待参数不是实机往返延迟上限。环形缓冲溢出时清空待处理字节，丢弃当前行到下一个
 换行；不会将损坏行的后半段当作新命令执行。
 
 文件二进制会话使用帧魔数、长度和CRC恢复同步，不丢弃到换行。会话期间所有文字命令均暂停解析，避免混入应答。长存储操作返回BUSY，最终应答可按相同请求重放；EXIT清理后保留7.5秒以处理5秒后的重试，再返回文本控制台。重新发送CONSOLE ON后可继续使用上述命令。
