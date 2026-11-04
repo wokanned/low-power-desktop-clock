@@ -4,7 +4,7 @@ $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $root 'build/weather-pages-integration-host' }
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 $executable = Join-Path $OutputDirectory 'weather_pages_integration_host_test.exe'
-$sources = @('tests/weather_pages_integration_host_test.c', 'app/weather_feed.c',
+$sources = @('tests/stubs/power_stub.c', 'tests/weather_pages_integration_host_test.c', 'app/weather_feed.c',
     'app/display.c', 'app/weather.c', 'app/forecast.c', 'app/clock_model.c',
     'app/epd_weather_pages.c', 'resources/weather_pages_assets.c') |
     ForEach-Object { Join-Path $root $_ }

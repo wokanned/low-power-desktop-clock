@@ -1,4 +1,5 @@
 #include "display.h"
+#include "power.h"
 #include "debug.h"
 #include "epd_bringup.h"
 #include "clock_service.h"
@@ -332,6 +333,7 @@ static void s_display_run(void *p_argument)
         s_display_last_status = status;
         if (status == EPD_GDEY029T94_OK) {
             s_display_stopped = true;
+            power_set_blocker(POWER_BLOCK_DISPLAY, false);
             Debug_Log("display: gray4 diagnostic asleep; page retained\r\n");
             for (;;) {
                 (void)osThreadSuspend(osThreadGetId());
@@ -350,6 +352,12 @@ static void s_display_run(void *p_argument)
     }
 
     s_display_stopped = true;
+    /* Synchronous driver calls have returned with DMA completed or stopped.
+       Park the controller before releasing its veto, even after BUSY timeout.
+       Preserve the original error for diagnostics. */
+    if (epd_bringup_stop() == EPD_GDEY029T94_OK) {
+        power_set_blocker(POWER_BLOCK_DISPLAY, false);
+    }
     Debug_Log("display: retries exhausted; task suspended\r\n");
     for (;;) {
         (void)osThreadSuspend(osThreadGetId());

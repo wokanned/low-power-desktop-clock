@@ -243,6 +243,7 @@ osThreadId_t osThreadGetId(void) { assert(0); return NULL; }
 int32_t osThreadSuspend(osThreadId_t thread) { (void)thread; assert(0); return -1; }
 int32_t osDelay(uint32_t ticks) { (void)ticks; assert(0); return -1; }
 epd_gdey029t94_status_t epd_bringup_run_clock(void) { assert(0); return EPD_GDEY029T94_OK; }
+epd_gdey029t94_status_t epd_bringup_stop(void) { return EPD_GDEY029T94_OK; }
 epd_gdey029t94_status_t epd_bringup_get_last_status(void) { return EPD_GDEY029T94_OK; }
 uint32_t epd_bringup_get_completed_frames(void) { return 0U; }
 

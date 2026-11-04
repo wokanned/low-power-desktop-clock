@@ -26,7 +26,7 @@ $testSources = @(
     (Join-Path $projectRoot 'resources\weather_glyphs.c')
 )
 $stubDirectory = Join-Path $PSScriptRoot 'stubs\display'
-$scenarios = @('startup', 'minute', 'time-jump', 'weather-time-jump', 'rtc-error', 'retry-limit', 'retry-success',
+$scenarios = @('startup', 'minute', 'time-jump', 'weather-time-jump', 'rtc-error', 'retry-limit', 'retry-stop-error', 'retry-success',
     'init-retry', 'retry-budget', 'sleep-failure', 'coalesce',
     'failed-fault-coalesce', 'failed-recovery-coalesce', 'page-switch',
     'weather-auto-page', 'fault-weather', 'weather-duplicate', 'weather-minute',

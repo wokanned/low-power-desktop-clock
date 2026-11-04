@@ -542,6 +542,10 @@ int main(void)
     test_arguments();
     test_dma_and_rx();
     test_busy_completion();
+    s_dma_registers.CCR |= DMA_CCR_EN;
+    assert(stm32_gdey029t94_stop() == EPD_GDEY029T94_ERROR_STATE);
+    s_dma_registers.CCR &= ~DMA_CCR_EN;
+    assert(stm32_gdey029t94_stop() == EPD_GDEY029T94_OK);
     assert(s_critical == 0U && s_primask == 0U && s_basepri == 0U);
     assert(s_inflight == NULL && s_uart_rx_aborts == 1U);
     puts("PASS: EPD SPI DMA host suite");

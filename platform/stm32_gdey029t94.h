@@ -32,6 +32,9 @@ epd_gdey029t94_status_t stm32_gdey029t94_make_io(
    The display supply is continuous; no power-enable GPIO is accessed. */
 epd_gdey029t94_status_t stm32_gdey029t94_prepare(
     stm32_gdey029t94_context_t *context);
+/* Owner only, after all synchronous calls returned. Reject active DMA,
+ * deassert CS and hold controller reset before releasing its sleep veto. */
+epd_gdey029t94_status_t stm32_gdey029t94_stop(void);
 
 #ifdef __cplusplus
 }

@@ -39,6 +39,9 @@ extern "C" {
 epd_gdey029t94_status_t epd_bringup_run_once(void);
 /* Run only from the single display task after the RTOS scheduler starts. */
 epd_gdey029t94_status_t epd_bringup_run_clock(void);
+/* Display owner only, after run_clock returned. Park CS/reset; no sleep command
+ * or refresh. Success acknowledges that this owner will issue no further IO. */
+epd_gdey029t94_status_t epd_bringup_stop(void);
 epd_gdey029t94_status_t epd_bringup_get_last_status(void);
 uint32_t epd_bringup_get_completed_frames(void);
 /* Counts physical activations, including driver cleanup; two successful

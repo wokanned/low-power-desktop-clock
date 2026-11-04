@@ -5,7 +5,7 @@ $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $projectRoot 'build/forecast-host-tests' }
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 $testExecutable = Join-Path $OutputDirectory 'forecast_host_test.exe'
-$sources = @('tests/forecast_host_test.c', 'app/forecast.c', 'app/weather.c',
+$sources = @('tests/stubs/power_stub.c', 'tests/forecast_host_test.c', 'app/forecast.c', 'app/weather.c',
     'app/display.c', 'app/clock_model.c', 'app/epd_weather_view.c',
     'resources/weather_glyphs.c', 'app/weather_feed.c', 'app/epd_weather_pages.c',
     'resources/weather_pages_assets.c') | ForEach-Object { Join-Path $projectRoot $_ }

@@ -1,6 +1,10 @@
 /* Real renderer, vendor flow, controller driver and display task. Only the
  * platform, clock data provider and RTOS are replaced; each case is a process. */
 #include "../app/display.h"
+#include "../app/power.h"
+extern uint32_t g_test_power_blockers;
+epd_gdey029t94_status_t stm32_gdey029t94_stop(void)
+{ return EPD_GDEY029T94_OK; }
 #include "../app/epd_bringup.h"
 #include "../app/epd_clock_view.h"
 #include "../app/clock_service.h"
@@ -258,6 +262,7 @@ osThreadId_t osThreadGetId(void) { return (osThreadId_t)&s_thread_function; }
 
 int32_t osThreadSuspend(osThreadId_t thread)
 {
+    CHECK((g_test_power_blockers & POWER_BLOCK_DISPLAY) == 0U);
     CHECK(thread == osThreadGetId());
     s_suspends++;
     longjmp(s_stop, STOP_SUSPENDED);

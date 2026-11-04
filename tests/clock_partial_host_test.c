@@ -12,6 +12,8 @@
 #include "../app/weather_feed.h"
 #include "../app/epd_weather_pages.h"
 #include "../platform/stm32_gdey029t94.h"
+epd_gdey029t94_status_t stm32_gdey029t94_stop(void)
+{ return EPD_GDEY029T94_OK; }
 #include "stubs/display/FreeRTOS.h"
 #include "stubs/display/cmsis_os.h"
 #include <setjmp.h>

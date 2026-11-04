@@ -1,6 +1,12 @@
 /* Real display/bringup/schedule; mock only RTOS, data, raster and transport.
  * Each scenario is a fresh process so production private statics stay private. */
 #include "../app/display.h"
+#include "../app/power.h"
+extern uint32_t g_test_power_blockers;
+static unsigned s_stop_calls;
+static unsigned s_stop_failure;
+epd_gdey029t94_status_t stm32_gdey029t94_stop(void)
+{ s_stop_calls++; return s_stop_failure ? EPD_GDEY029T94_ERROR_STATE : EPD_GDEY029T94_OK; }
 #include "../app/epd_bringup.h"
 #include "../app/epd_clock_view.h"
 #include "../app/epd_weather_view.h"
@@ -378,6 +384,7 @@ osThreadId_t osThreadGetId(void) { return (osThreadId_t)&s_thread_function; }
 
 int32_t osThreadSuspend(osThreadId_t thread)
 {
+    CHECK(((g_test_power_blockers & POWER_BLOCK_DISPLAY) != 0U) == (s_stop_failure != 0U));
     CHECK(thread==osThreadGetId());
     s_suspends++;
     longjmp(s_stop,STOP_SUSPENDED);
@@ -755,6 +762,7 @@ static void verify(int stopped)
         CHECK(s_init_calls==1U && s_bind_calls==1U);check_retry_intervals(0U);
     } else if(scenario("retry-limit")) {
         CHECK(stopped==STOP_SUSPENDED);CHECK(s_suspends==1U);
+        CHECK(s_stop_calls == 1U);
         CHECK(s_refreshes==3U && s_init_calls==3U);
         CHECK(s_committed==0U && s_sleeps==0U && s_renders==3U);
         CHECK(s_frame_hashes[0]==s_frame_hashes[1] && s_frame_hashes[1]==s_frame_hashes[2]);
@@ -1079,6 +1087,10 @@ int main(int argc,char **argv)
     int stopped;
     if(argc!=2) { fprintf(stderr,"A scenario argument is required\n");return 2; }
     s_scenario=argv[1];
+    if (strcmp(s_scenario, "retry-stop-error") == 0) {
+        s_stop_failure = 1U;
+        s_scenario = "retry-limit";
+    }
     if(scenario("cycle-wrap")) { s_tick=UINT32_MAX-89999U; }
     init_model();
     CHECK(display_start());CHECK(display_start());

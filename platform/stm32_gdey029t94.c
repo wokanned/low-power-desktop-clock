@@ -20,6 +20,18 @@ static volatile uint8_t s_tx_waiting;
 static volatile uint8_t s_tx_complete;
 static volatile uint8_t s_tx_failed;
 
+epd_gdey029t94_status_t stm32_gdey029t94_stop(void)
+{
+    if (s_tx_active != 0U || s_tx_waiting != 0U || hspi2.hdmatx == NULL ||
+        (hspi2.hdmatx->Instance->CCR & DMA_CCR_EN) != 0U) {
+        return EPD_GDEY029T94_ERROR_STATE;
+    }
+    HAL_GPIO_WritePin(CS2_GPIO_Port, CS2_Pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(DC_GPIO_Port, DC_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(RES_GPIO_Port, RES_Pin, GPIO_PIN_RESET);
+    return EPD_GDEY029T94_OK;
+}
+
 static void stm32_epd_spi_recover(SPI_HandleTypeDef *p_spi)
 {
     /* Only the SPI2/DMA1 Channel5 IRQs are masked by the caller. HAL abort

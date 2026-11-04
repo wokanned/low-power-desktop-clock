@@ -551,6 +551,18 @@ epd_gdey029t94_status_t epd_bringup_run_clock(void)
 #endif
 }
 
+epd_gdey029t94_status_t epd_bringup_stop(void)
+{
+    epd_gdey029t94_status_t status;
+    status = stm32_gdey029t94_stop();
+    if (status == EPD_GDEY029T94_OK) {
+        s_device.initialized = 0U;
+        s_device.background_valid = 0U;
+        s_device.fast_initialized = 0U;
+    }
+    return status;
+}
+
 epd_gdey029t94_status_t epd_bringup_get_last_status(void) { return s_last_status; }
 uint32_t epd_bringup_get_completed_frames(void) { return s_completed_frames; }
 

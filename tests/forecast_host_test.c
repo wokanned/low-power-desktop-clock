@@ -22,6 +22,7 @@ void clock_service_get_model(clock_view_model_t *p_model) { *p_model = s_clock; 
 void clock_service_note_sync_success(void) { s_syncs++; }
 void Debug_Log(const char *p_text) { (void)p_text; }
 epd_gdey029t94_status_t epd_bringup_run_clock(void) { return EPD_GDEY029T94_OK; }
+epd_gdey029t94_status_t epd_bringup_stop(void) { return EPD_GDEY029T94_OK; }
 epd_gdey029t94_status_t epd_bringup_get_last_status(void) { return EPD_GDEY029T94_OK; }
 uint32_t epd_bringup_get_completed_frames(void) { return 0U; }
 osThreadId_t osThreadNew(osThreadFunc_t function, void *p_argument,
