@@ -17,7 +17,10 @@ $executable = Join-Path $OutputDirectory 'storage_files_integration_host_test.ex
     (Join-Path $root 'middleware/littlefs/lfs_util.c') '-o' $executable
 if ($LASTEXITCODE -ne 0) { throw 'Storage files integration compilation failed' }
 foreach ($scenario in @('blank', 'formatted', 'diagnostics', 'forecast',
-    'forecast-restore', 'forecast-corrupt', 'forecast-unformatted', 'power')) {
+    'forecast-restore', 'forecast-corrupt', 'forecast-unformatted', 'power',
+    'auto-valid', 'auto-missing', 'auto-corrupt', 'auto-unformatted',
+    'release-file', 'release-forecast', 'release-maintenance', 'release-full',
+    'release-chip-busy', 'reserved-path', 'reserved-existing')) {
     & $executable $scenario
     if ($LASTEXITCODE -ne 0) { throw "Storage files integration failed: $scenario" }
 }

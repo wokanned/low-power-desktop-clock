@@ -2,7 +2,7 @@
 
 **当前串口操作前提（2026-11-04）**：默认 AUTO 不持续遥测，睡眠时不能保证串口接收。先在上电30秒或晃动后的10秒窗口发送 `POWER HOLD`，收到 `OK POWER HOLD` 后再执行本文示例；结束调试可发送 `POWER AUTO`。仅 `CONSOLE ON` 不会保持清醒。详见[低功耗说明](low_power.md)。
 
-当前源码的已知缺陷、与用户已确认但尚未实现的行为差异，见[代码与需求差距](current_code_gaps.md)。本文不将待修复项写成已完成。
+B1～B5修复证据和另外5项已确认待实现需求，见[代码与需求差距](current_code_gaps.md)；构建/主机验证不代表板测通过。
 
 文档核对日期：2026-11-04；协议接入日期：2026-11-02。适用于 `app/weather_feed.*`。这是 USART2 上新增的 RAM 业务；旧 `WEATHER`、`FORECAST` 和整秒 `TIME` 保持独立兼容。`WDATA` 不操作 Flash，也不授予旧 `FORECAST` 的校时许可。实际构建、镜像身份和硬件验证范围以 [验证记录](测试数据.md) 为准。
 
@@ -79,7 +79,7 @@ ALERT最后六个长度是 **UTF-8字节数**，对应 id、replaces、title、s
 
 成功的ACTIVE批次必须含1～3条预警，其余状态BEGIN的alert_count必须为0。每次成功查询给出当前完整预警集合；上次存在而这次省去的ID表示已取消/解除。由ACTIVE变成成功NONE时显示CLEARED；重试失败必须使用OFFLINE。同城OFFLINE保留旧预警、文字、字形及last_success，不能把失败当作“无预警”。查询城市改变时不混用另一城市的缓存。
 
-重要预警首次出现、内容更新或升级时生成一次 `attention_revision`；相同ID/内容的轮询不会重发注意事件。replaces匹配旧ID且其余元数据/文本相同时也不重复抢屏。协议约定多个变化优先选择severity较大、其次urgency较大的条目；提交路径已比较等级，pending条目同时生效的路径仍有排序缺陷，见[代码与需求差距](current_code_gaps.md)。checked变化和批次id变化不算预警内容更新。发布时已到期的预警不抢屏；未来生效的条目标记pending，defaultTask提供的可信RTC观察到生效后才产生注意事件。RTC到期处理只由debugTask调用 `weather_feed_expire()`，没有跨任务RTC IO；到期事件不清空正文，便于保留来源，元数据标记expired。没有到期字段时保留，直到成功查询明确移除。
+重要预警首次出现、内容更新或升级时生成一次 `attention_revision`；相同ID/内容的轮询不会重发注意事件。replaces匹配旧ID且其余元数据/文本相同时也不重复抢屏。提交与pending生效共用优先级比较：先选severity较大、其次urgency较大条目，完全相同保留较小索引；B5修复的主机证据见[修复状态](current_code_gaps.md)。checked变化和批次id变化不算预警内容更新。发布时已到期的预警不抢屏；未来生效的条目标记pending，defaultTask提供的可信RTC观察到生效后才产生注意事件。RTC到期处理只由debugTask调用 `weather_feed_expire()`，没有跨任务RTC IO；到期事件不清空正文，便于保留来源，元数据标记expired。没有到期字段时保留，直到成功查询明确移除。
 
 ## 动态中文字形与资源
 

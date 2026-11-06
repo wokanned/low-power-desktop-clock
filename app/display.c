@@ -31,6 +31,7 @@ static display_page_t s_selected_page = DISPLAY_PAGE_CLOCK;
 static uint32_t s_page_revision;
 static uint32_t s_page_since_tick;
 static bool s_page_cycle_started;
+static bool s_cycle_paused;
 static uint32_t s_attention_seen;
 static uint32_t s_attention_tick;
 static uint8_t s_attention_active;
@@ -98,6 +99,7 @@ static void s_poll_page_locked(uint32_t now_tick,
         s_restart_cycle_locked(now_tick);
         return;
     }
+    if (s_cycle_paused) { return; }
     elapsed = (uint32_t)(now_tick - s_page_since_tick);
     /* A snapshot tick sampled before a concurrent request is stale. */
     interval = p_feed->available != 0U && s_selected_page != DISPLAY_PAGE_CLOCK ?
@@ -121,17 +123,66 @@ static void s_poll_page_locked(uint32_t now_tick,
     s_restart_cycle_locked(now_tick);
 }
 
+/* Caller holds the page lock. Confirm only events published before this
+ * successful manual selection; a later publication remains eligible. */
+static void s_ack_attention_locked(void)
+{
+    weather_feed_snapshot_t feed;
+    weather_feed_get_snapshot((uint32_t)xTaskGetTickCount(), &feed);
+    s_attention_seen = feed.attention_revision;
+    s_attention_active = 0U;
+}
+
+static void s_manual_select_locked(display_page_t page, uint32_t now_tick)
+{
+    s_ack_attention_locked();
+    s_alert_index = 0U;
+    s_text_page = 0U;
+    s_select_page_locked(page);
+    s_restart_cycle_locked(now_tick);
+}
+
+bool display_handle_action(display_action_t action)
+{
+    static const display_page_t s_pages[] = {DISPLAY_PAGE_CLOCK,
+        DISPLAY_PAGE_WEATHER, DISPLAY_PAGE_FORECAST, DISPLAY_PAGE_DATA};
+    weather_feed_snapshot_t feed;
+    display_page_t base;
+    uint32_t count;
+    uint32_t index = 0U;
+    uint32_t i;
+    uint32_t now_tick;
+    if ((uint32_t)action > (uint32_t)DISPLAY_ACTION_TOGGLE_CYCLE) { return false; }
+    taskENTER_CRITICAL();
+    now_tick = (uint32_t)xTaskGetTickCount();
+    if (action == DISPLAY_ACTION_TOGGLE_CYCLE) {
+        s_cycle_paused = !s_cycle_paused;
+        s_restart_cycle_locked(now_tick);
+    } else if (action == DISPLAY_ACTION_HOME) {
+        s_manual_select_locked(DISPLAY_PAGE_CLOCK, now_tick);
+    } else {
+        weather_feed_get_snapshot(now_tick, &feed);
+        count = feed.available != 0U ? 4U : 2U;
+        base = s_attention_active != 0U ? s_return_page : s_selected_page;
+        /* Console-only detail pages are anchored at CLOCK for browsing. */
+        for (i = 0U; i < count; i++) {
+            if (s_pages[i] == base) { index = i; break; }
+        }
+        index = action == DISPLAY_ACTION_NEXT ? (index + 1U) % count :
+                                                (index + count - 1U) % count;
+        s_manual_select_locked(s_pages[index], now_tick);
+    }
+    taskEXIT_CRITICAL();
+    return true;
+}
+
 bool display_select_page(display_page_t page)
 {
     if ((uint32_t)page > (uint32_t)DISPLAY_PAGE_SOURCE) {
         return false;
     }
     taskENTER_CRITICAL();
-    s_attention_active = 0U;
-    s_alert_index = 0U;
-    s_text_page = 0U;
-    s_select_page_locked(page);
-    s_restart_cycle_locked((uint32_t)xTaskGetTickCount());
+    s_manual_select_locked(page, (uint32_t)xTaskGetTickCount());
     taskEXIT_CRITICAL();
     return true;
 }
@@ -182,7 +233,7 @@ bool display_page_command(const char *p_line)
     if (alert > WEATHER_FEED_MAX_ALERTS || count == 0U ||
         (page == DISPLAY_PAGE_TEXT && text > count)) { return false; }
     taskENTER_CRITICAL();
-    s_attention_active = 0U;
+    s_ack_attention_locked();
     s_alert_index = (uint8_t)(alert - 1U);
     s_text_page = (uint16_t)(text - 1U);
     s_select_page_locked(page);
@@ -273,6 +324,7 @@ void display_get_snapshot(uint32_t now_tick, display_snapshot_t *p_snapshot)
     s_poll_page_locked(now_tick, &p_snapshot->feed);
     p_snapshot->page = s_selected_page;
     p_snapshot->page_revision = s_page_revision;
+    p_snapshot->cycle_paused = s_cycle_paused;
     p_snapshot->alert_index = s_alert_index;
     p_snapshot->text_page = s_text_page;
     clock_service_get_model(&p_snapshot->clock);

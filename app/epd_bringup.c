@@ -35,6 +35,7 @@ static uint8_t s_displayed_feed_fresh;
 static display_page_t s_displayed_page;
 static uint8_t s_displayed_alert;
 static uint16_t s_displayed_text;
+static bool s_displayed_cycle_paused;
 #if !EPD_CLOCK_USE_GRAY4
 static uint32_t s_displayed_date;
 static uint32_t s_displayed_format_revision;
@@ -211,11 +212,50 @@ static uint8_t s_weather_content_due(void)
         s_weather_format != s_snapshot.clock.format);
 }
 
+/* Reserved right margin: all production views stop at landscape x=288.
+ * Composite from the immutable snapshot, for both native raster formats. */
+#define EPD_PAUSE_X 288U
+#define EPD_PAUSE_WIDTH 8U
+#define EPD_PAUSE_HEIGHT 12U
+#define EPD_PAUSE_BAR_TOP 2U
+#define EPD_PAUSE_BAR_BOTTOM 10U
+static void s_draw_cycle_indicator(void)
+{
+    uint32_t column;
+    uint32_t row;
+    uint32_t native_x;
+    uint32_t native_y;
+    uint32_t offset;
+    uint8_t shift;
+    uint8_t black;
+    if (!s_snapshot.cycle_paused) { return; }
+    for (row = 0U; row < EPD_PAUSE_HEIGHT; row++) {
+        for (column = 0U; column < EPD_PAUSE_WIDTH; column++) {
+            native_x = EPD_CLOCK_VIEW_HEIGHT - 1U - row;
+            native_y = EPD_CLOCK_VIEW_WIDTH - 1U - EPD_PAUSE_X - column;
+            black = (uint8_t)(row >= EPD_PAUSE_BAR_TOP && row < EPD_PAUSE_BAR_BOTTOM &&
+                ((column >= 1U && column <= 2U) || (column >= 5U && column <= 6U)));
+#if EPD_CLOCK_USE_GRAY4
+            offset = native_y * (EPD_CLOCK_VIEW_HEIGHT / 4U) + native_x / 4U;
+            shift = (uint8_t)(6U - 2U * (native_x % 4U));
+            s_frame[offset] = (uint8_t)((s_frame[offset] & (uint8_t)~(3U << shift)) |
+                                      ((black != 0U ? 3U : 0U) << shift));
+#else
+            offset = native_y * (EPD_CLOCK_VIEW_HEIGHT / 8U) + native_x / 8U;
+            shift = (uint8_t)(7U - native_x % 8U);
+            if (black != 0U) { s_frame[offset] &= (uint8_t)~(1U << shift); }
+            else { s_frame[offset] |= (uint8_t)(1U << shift); }
+#endif
+        }
+    }
+}
+
 static uint8_t s_capture_and_draw(uint8_t force)
 {
     uint8_t clock_content;
     display_get_snapshot((uint32_t)xTaskGetTickCount(), &s_snapshot);
     if (s_snapshot.clock.startup_ready == 0U) { return 0U; }
+    if (s_displayed_cycle_paused != s_snapshot.cycle_paused) { force = 1U; }
     clock_content = (uint8_t)(s_snapshot.clock.faults.active_categories != 0U ||
                               s_snapshot.page == DISPLAY_PAGE_CLOCK);
     if (force == 0U) {
@@ -233,6 +273,7 @@ static uint8_t s_capture_and_draw(uint8_t force)
         if (!s_draw_weather()) { return 0U; }
         s_pending_kind = EPD_CONTENT_WEATHER;
     }
+    s_draw_cycle_indicator();
     s_pending = 1U;
     return 1U;
 }
@@ -276,6 +317,7 @@ static const epd_gdey029t94_rect_t s_weather_region =
 static uint8_t s_partial_allowed(uint8_t continuous)
 {
     return (uint8_t)(continuous != 0U && s_force_full == 0U &&
+        s_displayed_cycle_paused == s_snapshot.cycle_paused &&
         (s_pending_kind != EPD_CONTENT_WEATHER || s_snapshot.feed.available == 0U) &&
         s_displayed_kind == s_pending_kind && s_device.initialized != 0U &&
         s_device.sleeping == 0U && s_device.background_valid != 0U &&
@@ -436,6 +478,7 @@ static epd_gdey029t94_status_t s_submit_frame(uint8_t continuous)
         s_weather_format = s_snapshot.clock.format;
     }
     s_displayed_kind = s_pending_kind;
+    s_displayed_cycle_paused = s_snapshot.cycle_paused;
 #if !EPD_CLOCK_USE_GRAY4
     s_displayed_date = s_calendar_date(&s_snapshot.clock);
     s_displayed_format = s_snapshot.clock.format;

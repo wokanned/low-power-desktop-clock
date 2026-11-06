@@ -1,4 +1,5 @@
 #include "storage.h"
+#include "storage_forecast.h"
 #include "clock_config.h"
 #include "clock_faults.h"
 #include "cmsis_os.h"
@@ -101,6 +102,15 @@ int xQueueReceive(QueueHandle_t queue, void *p_item, uint32_t wait)
     s_usage(&usage);
     storage_get_config_snapshot(&config);
     assert(config.ready != 0U);
+    if (s_is("init-failure") && s_queue_calls == 1U) {
+        storage_forecast_snapshot_t forecast;
+        storage_forecast_get_snapshot(&forecast);
+        /* End startup restore promptly even when the filesystem is offline;
+         * this one tick still counts toward the physical-scan retry deadline. */
+        assert(!forecast.ready && wait == 1U);
+        s_tick += wait;
+        return 0;
+    }
 
     if (s_is("periodic") || s_is("tick-wrap") || s_is("timer-preempt")) {
         if (usage.state == CLOCK_DATA_READY && s_stage == 0U) {
@@ -151,7 +161,8 @@ int xQueueReceive(QueueHandle_t queue, void *p_item, uint32_t wait)
             assert(s_stage == 0U && usage.used_bytes == 0U);
             assert(usage.result == (s_is("init-failure") ? W25Q128_ERROR_IO :
                                     W25Q128_ERROR_TIMEOUT));
-            assert(wait == STORAGE_USAGE_INTERVAL_MS);
+            assert(wait == (s_is("init-failure") ?
+                STORAGE_USAGE_INTERVAL_MS - s_tick : STORAGE_USAGE_INTERVAL_MS));
             assert(s_faults[CLOCK_FAULT_W25Q] != 0U);
             if (s_is("init-failure")) { assert(s_read_calls == 0U && s_load_calls == 0U); }
             s_stage = 1U;

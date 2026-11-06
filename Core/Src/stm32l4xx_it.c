@@ -24,6 +24,7 @@
 /* USER CODE BEGIN Includes */
 #include "spi.h"
 #include "stm32_low_power.h"
+#include "stm32_buttons.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -265,6 +266,12 @@ void LPTIM1_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
+
+/* Keep in USER code until CubeMX generates EXTI15_10, then move the forwarder. */
+void EXTI15_10_IRQHandler(void)
+{
+  stm32_buttons_irq();
+}
 
 /* Move this USER handler to the generated implementation after CubeMX
    generates EXTI9_5 from DeskClock.ioc. PA8 is the historical ADXL INT1. */

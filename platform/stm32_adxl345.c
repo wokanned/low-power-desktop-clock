@@ -68,7 +68,7 @@ uint8_t stm32_adxl345_motion_arm(void)
     return armed;
 }
 
-void HAL_GPIO_EXTI_Callback(uint16_t pin)
+void stm32_adxl345_motion_exti_callback(uint16_t pin)
 {
     if (pin != ACCINT2A8_Pin) { return; }
     /* The shared vector may service PC9 while EXTI8 is masked. Preserve the

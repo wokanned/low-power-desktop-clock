@@ -16,7 +16,7 @@ int main(void)
     uint32_t i;
     const uint32_t owners[] = { POWER_BLOCK_DEBUG, POWER_BLOCK_STORAGE,
         POWER_BLOCK_DISPLAY, POWER_BLOCK_CLOCK, POWER_BLOCK_ACCEL,
-        POWER_BLOCK_MOTION, POWER_BLOCK_UART };
+        POWER_BLOCK_MOTION, POWER_BLOCK_UART, POWER_BLOCK_INPUT };
     assert(!power_can_sleep(40000U));
     power_init(0U);
     assert(!power_can_sleep(30000U)); /* startup owners have not acknowledged */

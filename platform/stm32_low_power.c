@@ -2,6 +2,7 @@
 #include "low_power_time.h"
 #include "power.h"
 #include "stm32_debug_uart.h"
+#include "stm32_buttons.h"
 #include "main.h"
 #include "lptim.h"
 #include "FreeRTOS.h"
@@ -234,7 +235,8 @@ void vPortSuppressTicksAndSleep(TickType_t expected_idle)
     if (eTaskConfirmSleepModeStatus() == eAbortSleep ||
         !power_can_sleep((uint32_t)xTaskGetTickCount()) || !s_motion_clear() ||
         (SCB->ICSR & LP_PENDING_FLAGS) != 0U ||
-        !stm32_debug_uart_sleep_ready()) { goto abort_unmodified; }
+        !stm32_debug_uart_sleep_ready() ||
+        !stm32_buttons_sleep_ready()) { goto abort_unmodified; }
     sys_control = SysTick->CTRL;
     tim_control = TIM17->CR1;
     tim_interrupts = TIM17->DIER;
@@ -267,6 +269,7 @@ void vPortSuppressTicksAndSleep(TickType_t expected_idle)
         s_program_compare(start, low_power_time_deadline(expected_idle, remaining)) != 0U &&
         eTaskConfirmSleepModeStatus() != eAbortSleep && s_motion_clear() &&
         power_can_sleep((uint32_t)xTaskGetTickCount()) &&
+        stm32_buttons_sleep_ready() &&
         (SCB->ICSR & LP_PENDING_FLAGS) == 0U) {
         __DSB();
         HAL_PWREx_EnterSTOP2Mode(PWR_STOPENTRY_WFI);

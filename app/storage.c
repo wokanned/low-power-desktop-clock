@@ -83,6 +83,25 @@ static QueueHandle_t s_request_queue;
 
 static uint8_t s_update_scratch[W25Q128_SECTOR_SIZE];
 
+/* The mailbox state is published before this nonblocking wake. A full queue
+ * already contains work that wakes the owner; never replace that request. */
+static void s_wake_owner(void)
+{
+    storage_request_t wake = {CLOCK_FORMAT_24, 0U};
+    if (s_request_queue != NULL) { (void)xQueueSend(s_request_queue, &wake, 0U); }
+}
+
+static bool s_restore_runnable(void)
+{
+    bool runnable;
+    taskENTER_CRITICAL();
+    runnable = s_forecast_state == STORAGE_FORECAST_RESTORE &&
+        s_files.state != FILE_STORE_INITIALIZING &&
+        s_file_owner == STORAGE_OWNER_NONE && s_file_state == STORAGE_FILE_IDLE;
+    taskEXIT_CRITICAL();
+    return runnable;
+}
+
 static void s_forecast_finish(int32_t result)
 {
     taskENTER_CRITICAL();
@@ -516,6 +535,7 @@ static void s_storage_task(void *p_argument)
     int32_t result;
     int32_t received;
     bool busy;
+    bool restore_runnable;
 
     (void)p_argument;
     power_set_blocker(POWER_BLOCK_STORAGE, true);
@@ -598,7 +618,9 @@ static void s_storage_task(void *p_argument)
         }
         now = xTaskGetTickCount();
         elapsed = (TickType_t)(now - scan.completed_tick);
+        restore_runnable = s_restore_runnable();
         wait = ((scan.running != 0U && s_scan_paused == 0U && power_is_hold() && s_files.upload_active == 0U) ||
+                restore_runnable ||
                 s_files.state == FILE_STORE_INITIALIZING || s_file_state == STORAGE_FILE_RUNNING ||
                 (s_forecast_state >= STORAGE_FORECAST_PENDING &&
                  s_forecast_state <= STORAGE_FORECAST_CLEANUP)) ?
@@ -611,6 +633,7 @@ static void s_storage_task(void *p_argument)
         /* Owner acknowledgment: blocking between file-store steps is NOT idle.
          * Every synchronous flash operation has returned before this boundary. */
         busy =
+            restore_runnable ||
             s_files.state == FILE_STORE_INITIALIZING ||
             s_file_state != STORAGE_FILE_IDLE || s_files.upload_active != 0U ||
             s_file_owner != STORAGE_OWNER_NONE ||
@@ -784,7 +807,8 @@ int32_t storage_file_request(const file_store_request_t *p_request)
         p_request->operation > FILE_STORE_OP_SELFTEST) {
         return FILE_STORE_ERROR_ARGUMENT;
     }
-    if (((p_request->operation == FILE_STORE_OP_UPLOAD_BEGIN ||
+    if (((p_request->operation == FILE_STORE_OP_MKDIR ||
+          p_request->operation == FILE_STORE_OP_UPLOAD_BEGIN ||
           p_request->operation == FILE_STORE_OP_REMOVE ||
           p_request->operation == FILE_STORE_OP_RENAME) &&
          strncmp(p_request->path, FORECAST_FILE_PATH, sizeof(FORECAST_FILE_PATH)) == 0) ||
@@ -826,6 +850,7 @@ uint8_t storage_file_take_result(uint32_t token, file_store_response_t *p_respon
         complete = 1U;
     }
     taskEXIT_CRITICAL();
+    if (complete != 0U) { s_wake_owner(); }
     return complete;
 }
 
@@ -848,13 +873,16 @@ int32_t storage_maintenance_acquire(void)
 
 void storage_maintenance_release(void)
 {
+    uint8_t released = 0U;
     taskENTER_CRITICAL();
     if (s_file_owner == STORAGE_OWNER_MAINTENANCE &&
         s_file_state == STORAGE_FILE_IDLE && s_files.upload_active == 0U) {
         s_maintenance_session = 0U;
         s_file_owner = STORAGE_OWNER_NONE;
+        released = 1U;
     }
     taskEXIT_CRITICAL();
+    if (released != 0U) { s_wake_owner(); }
 }
 
 int32_t storage_forecast_request(const forecast_batch_t *p_batch, uint32_t token)
@@ -900,6 +928,7 @@ uint8_t storage_forecast_take_result(uint32_t token, int32_t *p_result)
         complete = 1U;
     }
     taskEXIT_CRITICAL();
+    if (complete != 0U) { s_wake_owner(); }
     return complete;
 }
 

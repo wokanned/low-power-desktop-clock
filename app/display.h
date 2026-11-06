@@ -17,9 +17,17 @@ typedef enum {
     DISPLAY_PAGE_ALERT, DISPLAY_PAGE_TEXT, DISPLAY_PAGE_SOURCE
 } display_page_t;
 
+typedef enum {
+    DISPLAY_ACTION_PREVIOUS = 0,
+    DISPLAY_ACTION_NEXT,
+    DISPLAY_ACTION_HOME,
+    DISPLAY_ACTION_TOGGLE_CYCLE
+} display_action_t;
+
 typedef struct {
     display_page_t page;
     uint32_t page_revision;
+    bool cycle_paused;
     clock_view_model_t clock;
     weather_snapshot_t weather;
     weather_feed_snapshot_t feed;
@@ -29,8 +37,12 @@ typedef struct {
 
 /* 选择 RAM 页面并重新计时，同页也重计；复位默认时钟页。
  * 无 WDATA 为两页各180秒；有 WDATA 为时钟180秒、其他页60秒。
- * 未消费预警仍可能覆盖手动选择，已知限制见 docs/current_code_gaps.md。 */
+ * 成功选择时确认此前已发布的预警事件；选择后新事件仍可抢屏。 */
 bool display_select_page(display_page_t page);
+/* Task context only. Atomic RAM update; never draws or waits for the panel.
+ * PREVIOUS/NEXT use the normal two/four-page cycle; alerts use the saved page.
+ * Navigation acknowledges old alerts, TOGGLE_CYCLE leaves attention untouched. */
+bool display_handle_action(display_action_t action);
 /* Console-only navigation, strict complete PAGE command. One-based arguments. */
 bool display_page_command(const char *p_line);
 /* 完整有效天气原子更新缓存、选择天气页并重新计时，重复包也重置。

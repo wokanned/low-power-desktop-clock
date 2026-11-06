@@ -56,6 +56,7 @@ static uint8_t s_failed_window, s_injected, s_driver_only, s_timeout_active;
 static osThreadFunc_t s_thread;
 static void *s_thread_argument;
 static uint32_t s_feed_id;
+static uint8_t s_expected_paused;
 
 static int scenario(const char *name) { return strcmp(s_scenario,name)==0; }
 
@@ -174,6 +175,19 @@ static void verify_pixels(void)
         }
     } else {
         CHECK(epd_clock_view_draw_bw(s_reference,sizeof(s_reference),&s_expected));
+    }
+    if(s_expected_paused!=0U) {
+        uint32_t x,y,offset,shift;
+        for(x=288U;x<296U;x++) {
+            for(y=0U;y<12U;y++) {
+                offset=(295U-x)*16U+(127U-y)/8U;
+                shift=7U-(127U-y)%8U;
+                s_reference[offset]|=(uint8_t)(1U<<shift);
+                if(y>=2U && y<10U && (x==289U || x==290U || x==293U || x==294U)) {
+                    s_reference[offset]&=(uint8_t)~(1U<<shift);
+                }
+            }
+        }
     }
     for(i=0U;i<FRAME_BYTES;i++) {
         if(s_panel.visible[i]!=s_reference[i]) {
@@ -310,6 +324,11 @@ static int32_t panel_busy(void *handle,uint8_t *level)
         if(s_panel.busy_seen==0U) {
             s_panel.busy_seen=1U;
             *level=1U;
+            if(scenario("buttons-busy") && s_panel.full==2U && s_injected==0U) {
+                CHECK(display_handle_action(DISPLAY_ACTION_NEXT));
+                CHECK(display_handle_action(DISPLAY_ACTION_NEXT));
+                s_injected=1U;
+            }
             if(scenario("busy-coalesce") && s_panel.partial==1U && s_injected==0U) {
                 s_injected=1U;
                 s_live.calendar.minute=32U;
@@ -370,7 +389,9 @@ static void verify_stats(void)
 
 static void finish(void)
 {
-    if(scenario("date-full") || scenario("format-full") || scenario("weather-full") ||
+    if(strncmp(s_scenario,"pause-",6U)==0 || scenario("buttons-busy")) {
+        CHECK(s_panel.sleeps==2U);
+    } else if(scenario("date-full") || scenario("format-full") || scenario("weather-full") ||
        scenario("page-full") || scenario("outside-full") ||
        scenario("forecast-day") || scenario("forecast-missing") ||
        scenario("feed-live-data") || scenario("feed-forecast-day")) {
@@ -383,7 +404,15 @@ static void finish(void)
 
 static void next_change(void)
 {
-    if(scenario("feed-live-data")) {
+    if(strncmp(s_scenario,"pause-",6U)==0) {
+        CHECK(display_handle_action(DISPLAY_ACTION_TOGGLE_CYCLE));
+        s_expected_paused=1U;
+        expect_frame(s_expected_page,s_expected_page==DISPLAY_PAGE_CLOCK ?
+                     CLOCK_MEMORY_IFLASH:CLOCK_MEMORY_SRAM);
+    } else if(scenario("buttons-busy")) {
+        CHECK(display_handle_action(DISPLAY_ACTION_NEXT));
+        expect_frame(DISPLAY_PAGE_WEATHER,CLOCK_MEMORY_IFLASH);
+    } else if(scenario("feed-live-data")) {
         CHECK(display_page_command("PAGE DATA"));
         expect_frame(DISPLAY_PAGE_DATA,CLOCK_MEMORY_SRAM);
     } else if(scenario("feed-forecast-day")) {
@@ -466,6 +495,30 @@ int32_t osDelay(uint32_t ticks)
             CHECK(s_panel.full==1U && s_panel.partial==0U && s_panel.old_writes==1U);
             next_change();
             s_phase=1U;
+        } else if(strncmp(s_scenario,"pause-",6U)==0 && s_phase==1U) {
+            CHECK(s_panel.full==2U && s_panel.partial==0U);
+            if(scenario("pause-feed")) {
+                CHECK(display_handle_action(DISPLAY_ACTION_TOGGLE_CYCLE));
+                s_expected_paused=0U;
+                expect_frame(s_expected_page,CLOCK_MEMORY_SRAM);
+                s_phase=3U;
+            } else {
+                s_live.calendar.minute++;
+                expect_frame(s_expected_page,s_expected_page==DISPLAY_PAGE_CLOCK ?
+                             CLOCK_MEMORY_W25Q:CLOCK_MEMORY_SRAM);
+                s_phase=2U;
+            }
+        } else if(strncmp(s_scenario,"pause-",6U)==0 && s_phase==2U) {
+            CHECK(s_panel.full==2U && s_panel.partial==
+                  (scenario("pause-clock")?2U:1U));
+            CHECK(display_handle_action(DISPLAY_ACTION_TOGGLE_CYCLE));
+            s_expected_paused=0U;
+            expect_frame(s_expected_page,CLOCK_MEMORY_SRAM);
+            s_phase=3U;
+        } else if(scenario("buttons-busy") && s_phase==1U) {
+            CHECK(s_injected!=0U && s_panel.full==2U && s_panel.partial==0U);
+            expect_frame(DISPLAY_PAGE_DATA,CLOCK_MEMORY_IFLASH);
+            s_phase=2U;
         } else if(scenario("busy-coalesce") && s_phase==1U) {
             CHECK(s_injected!=0U && s_panel.full==1U && s_panel.partial==2U);
             expect_frame(DISPLAY_PAGE_CLOCK,CLOCK_MEMORY_W25Q);
@@ -477,7 +530,12 @@ int32_t osDelay(uint32_t ticks)
             expect_frame(DISPLAY_PAGE_CLOCK,CLOCK_MEMORY_IFLASH);
             s_phase=2U;
         } else {
-            if(scenario("weather-minute") || scenario("weather-ampm") ||
+            if(strncmp(s_scenario,"pause-",6U)==0) {
+                CHECK(s_panel.full==3U && s_panel.partial==
+                    (scenario("pause-clock")?2U:(scenario("pause-weather")?1U:0U)));
+            } else if(scenario("buttons-busy")) {
+                CHECK(completed==3U && s_panel.full==3U && s_panel.partial==0U);
+            } else if(scenario("weather-minute") || scenario("weather-ampm") ||
                scenario("forecast-minute")) {
                 CHECK(s_panel.full==1U && s_panel.partial==1U);
             } else if(scenario("date-full") || scenario("format-full") ||
@@ -550,9 +608,9 @@ int main(int argc,char **argv)
     }
     if(scenario("date-full")) { s_live.calendar.hour=23U;s_live.calendar.minute=59U; }
     if(scenario("narrow-digits")) { s_live.calendar.hour=18U;s_live.calendar.minute=58U; }
-    if(strncmp(s_scenario,"feed-",5U)==0) {
+    if(strncmp(s_scenario,"feed-",5U)==0 || scenario("pause-feed") || scenario("buttons-busy")) {
         weather_feed_init(feed_send);weather_feed_set_console(1U);publish_feed();
-        if(scenario("feed-clock-minute")) {
+        if(scenario("feed-clock-minute") || scenario("buttons-busy")) {
             expect_frame(DISPLAY_PAGE_CLOCK,CLOCK_MEMORY_SRAM);
         } else if(scenario("feed-forecast-day")) {
             CHECK(display_page_command("PAGE FORECAST"));
@@ -565,7 +623,7 @@ int main(int argc,char **argv)
         publish_forecast();
         display_forecast_committed();
         expect_forecast(1U);
-    } else if(scenario("weather-minute") || scenario("weather-ampm") || scenario("weather-full")) {
+    } else if(scenario("weather-minute") || scenario("weather-ampm") || scenario("weather-full") || scenario("pause-weather")) {
         if(scenario("weather-minute"))s_live.calendar.minute=59U;
         publish_weather(2U);
         expect_frame(DISPLAY_PAGE_WEATHER,CLOCK_MEMORY_SRAM);

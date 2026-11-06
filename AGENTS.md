@@ -4,7 +4,7 @@
 
 ## 工程概况
 
-目标为低功耗 IoT 桌面时钟。MCU 为 STM32L471RET6（Cortex-M4，80MHz，512KB Flash，128KB SRAM，LQFP-64），使用 FreeRTOS V10.3.1 和 CMSIS-RTOS V2。当前处于软件集成原型阶段，已接入 RTC/黑白时钟、WDATA 多页天气/预警、TIME2/TIME?、FORECAST 持久化、littlefs 文件维护，以及 Tickless/STOP2 和 ADXL345 Activity。自动联网、环境/电量采集、按键闹钟与分域断电未实现；当前整机硬件验收未完成。
+目标为低功耗 IoT 桌面时钟。MCU 为 STM32L471RET6（Cortex-M4，80MHz，512KB Flash，128KB SRAM，LQFP-64），使用 FreeRTOS V10.3.1 和 CMSIS-RTOS V2。当前处于软件集成原型阶段，已接入 RTC/黑白时钟、WDATA 多页天气/预警、TIME2/TIME?、FORECAST 持久化、littlefs 文件维护，以及 Tickless/STOP2 和 ADXL345 Activity。四键浏览与按键唤醒已接入；自动联网、环境/电量采集、闹钟与分域断电未实现；当前整机硬件验收未完成。
 
 **工程进度统一维护在 [docs/totalPLAN.md](docs/totalPLAN.md) 的“当前开发状态”。** 文件系统第一阶段新增 littlefs 与 USART2 文件维护；具体构建身份和测试范围见统一进度及 `docs/测试数据.md`，整机验收待完成。模块文档保留具体历史证据；源码接入、历史构建或局部实采均不能代替当前完整镜像的板测。
 
@@ -92,9 +92,9 @@ DeskClock.ioc      # CubeMX 工程配置
 - **FPU / MPU**：`configENABLE_FPU=1`，`configENABLE_MPU=0`，以 `Core/Inc/FreeRTOSConfig.h` 为准
 - **节拍**：FreeRTOS 使用 SysTick；HAL 使用 TIM17 调用 `HAL_IncTick()`（见 `stm32l4xx_hal_timebase_tim.c`）
 - **NVIC**：允许调用系统 API 的最高中断优先级值为 5，内核中断优先级为 15（最低）
-- **当前任务**：defaultTask、debugTask、accelTask、displayTask、storageTask；Tickless（USER 覆盖为2）、LPTIM1/LSE 计时的 STOP2 和 PA8 动作唤醒已接入，实际时序/功耗待板测。
+- **当前任务**：defaultTask、debugTask、accelTask、displayTask、storageTask、buttonsTask；Tickless（USER 覆盖为2）、LPTIM1/LSE 计时的 STOP2 和 PA8 动作唤醒已接入，实际时序/功耗待板测。
 
-当前使用与实现限制见 [docs/low_power.md](docs/low_power.md)、[docs/weather_pages.md](docs/weather_pages.md) 和 [已知差异](docs/current_code_gaps.md)。有 WDATA 时普通轮换为 CLOCK 180秒→LIVE/FORECAST/DATA 各60秒；以下三分钟两页描述仅适用于无 WDATA 的兼容路径。5项已知缺陷和5项已确认待实现需求不得写成已修复或已完成。
+当前使用与实现限制见 [docs/low_power.md](docs/low_power.md)、[docs/weather_pages.md](docs/weather_pages.md) 和 [已知差异](docs/current_code_gaps.md)。有 WDATA 时普通轮换为 CLOCK 180秒→LIVE/FORECAST/DATA 各60秒；以下三分钟两页描述仅适用于无 WDATA 的兼容路径。B1～B5已修复并通过主机回归/默认黑白构建，板测待完成；另外5项已确认需求仍待实现，不能混写为已完成。
 
 ## 显示模块集成
 

@@ -499,6 +499,15 @@ static uint8_t s_alert_changed(const weather_feed_alert_t *p_new,
         strcmp(p_new->expires, p_old->expires) != 0);
 }
 
+/* Strict comparison retains the first (lowest-index) candidate on ties. */
+static uint8_t s_alert_priority_higher(const weather_feed_alert_t *p_candidate,
+                                      const weather_feed_alert_t *p_selected)
+{
+    return (uint8_t)(p_candidate->severity > p_selected->severity ||
+        (p_candidate->severity == p_selected->severity &&
+         p_candidate->urgency > p_selected->urgency));
+}
+
 static void s_publish(uint32_t now_tick, uint32_t crc)
 {
     weather_feed_batch_t *p_new = &s_batches[s_staging];
@@ -545,9 +554,9 @@ static void s_publish(uint32_t now_tick, uint32_t crc)
             }
         }
         if (attention == FEED_NO_SLOT ||
-            p_new->alerts[i].severity > p_new->alerts[attention].severity ||
-            (p_new->alerts[i].severity == p_new->alerts[attention].severity &&
-             p_new->alerts[i].urgency > p_new->alerts[attention].urgency)) { attention = i; }
+            s_alert_priority_higher(&p_new->alerts[i], &p_new->alerts[attention])) {
+            attention = i;
+        }
     }
     if (p_new->alert_state == WEATHER_ALERT_ACTIVE && active_count == 0U) {
         p_new->alert_state = WEATHER_ALERT_CLEARED;
@@ -778,7 +787,11 @@ void weather_feed_expire(const clock_calendar_t *p_now)
                 strcmp(p_batch->alerts[i].effective, stamp) <= 0) {
                 p_batch->alerts[i].pending = 0U; changed = 1U;
                 if (p_batch->alerts[i].important != 0U &&
-                    p_batch->alert_state == WEATHER_ALERT_ACTIVE) { attention = i; }
+                    p_batch->alert_state == WEATHER_ALERT_ACTIVE &&
+                    (attention == FEED_NO_SLOT || s_alert_priority_higher(
+                        &p_batch->alerts[i], &p_batch->alerts[attention]))) {
+                    attention = i;
+                }
             }
             if (p_batch->alerts[i].expired == 0U) { count++; }
         }

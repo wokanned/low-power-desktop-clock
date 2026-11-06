@@ -139,6 +139,64 @@ static weather_feed_snapshot_t snapshot(void)
     weather_feed_get_snapshot(s_tick, &result); return result;
 }
 
+
+static void priority_alert(uint8_t index, uint8_t severity, uint8_t urgency,
+                            uint8_t important, const char *p_effective,
+                            const char *p_expires)
+{
+    char payload[190];
+    char id[16];
+    (void)snprintf(id, sizeof(id), "priority-%u", (unsigned int)index);
+    (void)snprintf(payload, sizeof(payload),
+        "%u,0,4,%u,%u,%u,2026-11-02T10:20,%s,%s,%u,0,4,3,4,0",
+        (unsigned int)index, (unsigned int)severity, (unsigned int)urgency,
+        (unsigned int)important, p_effective, p_expires, (unsigned int)strlen(id));
+    record("ALERT", payload);
+    text_chunks(index, 0U, id); text_chunks(index, 2U, "RAIN");
+    text_chunks(index, 3U, "MET"); text_chunks(index, 4U, "body");
+}
+
+static void test_priority(void)
+{
+    static const uint8_t severity[][2] = {{4U,1U},{1U,4U},{3U,3U},{3U,3U}};
+    static const uint8_t urgency[][2] = {{1U,4U},{4U,1U},{4U,1U},{2U,2U}};
+    static const uint8_t expected[] = {0U,1U,0U,0U};
+    clock_calendar_t now = {2026U,11U,2U,1U,11U,0U,0U};
+    weather_feed_snapshot_t state;
+    weather_feed_lease_t lease;
+    uint32_t attention;
+    uint8_t pending;
+    uint8_t i;
+    for (pending = 0U; pending < 2U; pending++) {
+        for (i = 0U; i < sizeof(expected); i++) {
+            weather_feed_init(send_text); weather_feed_set_console(1U);
+            begin(0U, 2U, WEATHER_ALERT_ACTIVE, 0U); base();
+            priority_alert(0U, severity[i][0], urgency[i][0], 1U,
+                pending ? "2026-11-02T11:00" : "-", "2026-11-02T13:20");
+            priority_alert(1U, severity[i][1], urgency[i][1], 1U,
+                pending ? "2026-11-02T11:00" : "-", "2026-11-02T13:20");
+            finish("OK WDATA COMMIT");
+            if (pending) {
+                CHECK(snapshot().attention_revision == 0U);
+                CHECK(weather_feed_acquire(0U, &lease));
+                weather_feed_expire(&now); CHECK(snapshot().attention_revision == 0U);
+                weather_feed_release(&lease); weather_feed_expire(&now);
+            }
+            state = snapshot();
+            CHECK(state.attention_revision != 0U && state.attention_index == expected[i]);
+            attention = state.attention_revision;
+            weather_feed_expire(&now); CHECK(snapshot().attention_revision == attention);
+        }
+    }
+    weather_feed_init(send_text); weather_feed_set_console(1U);
+    begin(0U, 3U, WEATHER_ALERT_ACTIVE, 0U); base();
+    priority_alert(0U, 4U, 4U, 0U, "2026-11-02T11:00", "2026-11-02T13:20");
+    priority_alert(1U, 4U, 4U, 1U, "2026-11-02T11:00", "2026-11-02T11:00");
+    priority_alert(2U, 1U, 1U, 1U, "2026-11-02T11:00", "2026-11-02T13:20");
+    finish("OK WDATA COMMIT"); weather_feed_expire(&now);
+    state = snapshot(); CHECK(state.attention_revision != 0U && state.attention_index == 2U);
+}
+
 int main(void)
 {
     weather_feed_snapshot_t state;
@@ -290,6 +348,7 @@ int main(void)
     CHECK(strlen(lease.p_batch->alerts[2].guide) == WEATHER_FEED_GUIDE_MAX);
     CHECK(lease.p_batch->glyphs[127].bitmap[84] == 0xF0U);
     weather_feed_release(&lease);
+    test_priority();
     printf("PASS: weather feed, %lu command assertions; batch=%lu bytes, glyph=%lu bytes\n",
         (unsigned long)s_tests, (unsigned long)sizeof(weather_feed_batch_t),
         (unsigned long)sizeof(weather_feed_glyph_t));

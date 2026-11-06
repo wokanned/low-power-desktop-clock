@@ -10,6 +10,10 @@
 #include <setjmp.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+
+#undef assert
+#define assert(x) do { if (!(x)) { fprintf(stderr, "%s:%d: %s\n", __FILE__, __LINE__, #x); exit(1); } } while (0)
 
 #define TEST_LENGTH 1024U
 #define TEST_CONFIG_TOKEN 200U
@@ -70,6 +74,11 @@ static uint8_t s_power_step;
 static uint8_t s_busy_chip;
 static uint32_t s_scan_reads;
 static uint32_t s_scan_checkpoint;
+static uint8_t s_auto_boot;
+static uint8_t s_release_mode;
+static uint8_t s_reserved_mode;
+static uint32_t s_send_attempts;
+static uint32_t s_release_start;
 
 static void s_make_forecast(uint32_t id)
 {
@@ -191,6 +200,8 @@ QueueHandle_t xQueueCreateStatic(uint32_t length, uint32_t item_size,
 int xQueueSend(QueueHandle_t queue, const void *p_item, uint32_t wait)
 {
     assert(queue != NULL && p_item != NULL && wait == 0U);
+    assert(s_critical == 0U);
+    s_send_attempts++;
     if (s_queued != 0U) { return 0; }
     memcpy(s_queued_bytes, p_item, s_queue_size);
     s_queued = 1U;
@@ -577,16 +588,165 @@ static void s_drive(void)
     }
 }
 
+
+/* Runs after storage has computed wait and its sleep veto. The consumer may
+ * enqueue a wake here; xQueueReceive must observe it before advancing time. */
+static void s_drive_bugfix(uint32_t wait)
+{
+    storage_forecast_snapshot_t forecast;
+    storage_config_snapshot_t config;
+    file_store_snapshot_t files;
+    forecast_batch_t batch;
+    int32_t result;
+    uint32_t attempts;
+    storage_forecast_get_snapshot(&forecast);
+    storage_get_files_snapshot(&files);
+    storage_get_config_snapshot(&config);
+    if (s_auto_boot) {
+        assert(s_scan_reads == 0U);
+        if (!forecast.ready) {
+            assert(wait <= 1U); /* Never sleep an hour with restore outstanding. */
+            assert((g_test_power_blockers & POWER_BLOCK_STORAGE) != 0U);
+            return;
+        }
+        assert(!forecast.busy);
+        if (s_blank_forecast) { assert(forecast.result == FILE_STORE_ERROR_NOT_READY); }
+        else if (s_bad_restore) { assert(forecast.result == FILE_STORE_ERROR_FORMAT); }
+        else { assert(forecast.result == FILE_STORE_OK); }
+        if (s_restore_mode && !s_bad_restore) {
+            assert(forecast_get_batch(&batch) && forecast_equal(&batch, &s_forecast_expected));
+        } else { assert(!forecast_get_batch(&batch)); }
+        longjmp(s_finished, 1);
+    }
+    if (!forecast.ready) { return; }
+    if (s_reserved_mode == 2U) {
+        if (s_stage == 0U || s_stage == 3U) {
+            s_submit(FILE_STORE_OP_STAT, FORECAST_FILE_PATH); s_send(); s_stage++;
+        } else if (s_stage == 1U || s_stage == 4U) {
+            if (!s_take(0)) { return; }
+            assert(s_response.type == 2U); /* littlefs directory, never removed. */
+            if (s_stage == 4U) { longjmp(s_finished, 1); }
+            assert(storage_forecast_request(&s_forecast_batch, 700U) == 0); s_stage = 2U;
+        } else {
+            if (!storage_forecast_take_result(700U, &result)) { return; }
+            assert(result == -21); /* LFS_ERR_ISDIR: no implicit migration. */
+            s_stage = 3U;
+        }
+        return;
+    }
+    if (s_reserved_mode) {
+        if (s_stage == 2U) {
+            if (!storage_forecast_take_result(700U, &result)) { return; }
+            assert(result == 0);
+        }
+        if (s_stage == 0U || s_stage == 2U) {
+            s_submit(FILE_STORE_OP_MKDIR, FORECAST_FILE_PATH);
+            assert(storage_file_request(&s_request) == FILE_STORE_ERROR_ARGUMENT);
+            s_submit(FILE_STORE_OP_UPLOAD_BEGIN, FORECAST_FILE_PATH);
+            assert(storage_file_request(&s_request) == FILE_STORE_ERROR_ARGUMENT);
+            s_submit(FILE_STORE_OP_REMOVE, FORECAST_FILE_PATH);
+            assert(storage_file_request(&s_request) == FILE_STORE_ERROR_ARGUMENT);
+            s_submit(FILE_STORE_OP_RENAME, FORECAST_FILE_PATH);
+            strcpy(s_request.path2, "/other");
+            assert(storage_file_request(&s_request) == FILE_STORE_ERROR_ARGUMENT);
+            s_submit(FILE_STORE_OP_RENAME, "/other");
+            strcpy(s_request.path2, FORECAST_FILE_PATH);
+            assert(storage_file_request(&s_request) == FILE_STORE_ERROR_ARGUMENT);
+            if (s_stage == 0U) {
+                s_submit(FILE_STORE_OP_MKDIR, "/ordinary"); s_send(); s_stage = 1U;
+            } else {
+                assert(forecast_get_batch(&batch) && forecast_equal(&batch, &s_forecast_expected));
+                s_submit(FILE_STORE_OP_READ, FORECAST_FILE_PATH);
+                s_request.length = FORECAST_ENCODED_MAX; s_send(); s_stage = 3U;
+            }
+        } else if (s_stage == 1U) {
+            if (!s_take(0)) { return; }
+            assert(storage_forecast_request(&s_forecast_batch, 700U) == 0); s_stage = 2U;
+        } else {
+            if (!s_take(0)) { return; }
+            assert(forecast_decode(s_response.data, s_response.length, &batch));
+            assert(forecast_equal(&batch, &s_forecast_expected));
+            longjmp(s_finished, 1);
+        }
+        return;
+    }
+    switch (s_stage) {
+    case 0U:
+        g_test_power_hold = false; storage_set_scan_paused(1U); s_release_start = s_tick; s_stage = 1U;
+        break;
+    case 1U:
+        assert((g_test_power_blockers & POWER_BLOCK_STORAGE) == 0U);
+        if (s_release_mode == 2U) {
+            assert(storage_forecast_request(&s_forecast_batch, 700U) == 0);
+        } else if (s_release_mode == 3U) {
+            assert(storage_maintenance_acquire() == 0);
+            storage_set_scan_paused(1U); /* Let owner observe the active session. */
+        } else { s_submit(FILE_STORE_OP_MKDIR, "/ordinary"); s_send(); }
+        s_stage = 2U;
+        break;
+    case 2U:
+        attempts = s_send_attempts;
+        if (s_release_mode == 2U) {
+            assert(!storage_forecast_take_result(999U, &result));
+            assert(s_send_attempts == attempts);
+            if (!storage_forecast_take_result(700U, &result)) { return; }
+            assert(result == 0);
+            attempts = s_send_attempts;
+            assert(!storage_forecast_take_result(700U, &result));
+            assert(s_send_attempts == attempts);
+        } else if (s_release_mode == 3U) {
+            storage_maintenance_release();
+            attempts = s_send_attempts;
+            storage_maintenance_release(); assert(s_send_attempts == attempts);
+        } else {
+            assert(!storage_file_take_result(s_pending + 999U, &s_response));
+            assert(!storage_file_take_result(s_pending, NULL));
+            assert(s_send_attempts == attempts);
+            if (s_release_mode == 4U) {
+                assert(storage_request_format(CLOCK_FORMAT_12, TEST_CONFIG_TOKEN) == 0);
+            }
+            if (!s_take(0)) { return; }
+        }
+        assert(s_queued != 0U); /* Consumer must wake the blocked owner. */
+        assert((g_test_power_blockers & POWER_BLOCK_STORAGE) != 0U);
+        if (s_release_mode == 5U) { s_busy_chip = 1U; }
+        s_stage = 3U;
+        break;
+    case 3U:
+        assert((uint32_t)(s_tick - s_release_start) < 1000U);
+        if (s_release_mode == 5U) {
+            assert((g_test_power_blockers & POWER_BLOCK_STORAGE) != 0U && wait <= 100U);
+            s_busy_chip = 0U; s_stage = 4U;
+        } else {
+            assert((g_test_power_blockers & POWER_BLOCK_STORAGE) == 0U);
+            if (s_release_mode == 4U) {
+                assert(config.completed_token == TEST_CONFIG_TOKEN && config.completed_result == 0);
+            }
+            longjmp(s_finished, 1);
+        }
+        break;
+    case 4U:
+        assert((uint32_t)(s_tick - s_release_start) < 1000U);
+        assert((g_test_power_blockers & POWER_BLOCK_STORAGE) == 0U);
+        longjmp(s_finished, 1);
+        break;
+    default: assert(!"invalid release phase"); break;
+    }
+}
+
 int xQueueReceive(QueueHandle_t queue, void *p_item, uint32_t wait)
 {
     file_store_snapshot_t files;
     storage_config_snapshot_t config;
+    storage_forecast_snapshot_t forecast;
     assert(queue != NULL && p_item != NULL && s_critical == 0U);
     assert(++s_queue_calls < 100000U);
-    if (s_power_mode != 0U) {
+    if (s_auto_boot || s_release_mode || s_reserved_mode) { s_drive_bugfix(wait); }
+    else if (s_power_mode != 0U) {
         storage_get_files_snapshot(&files);
         storage_get_config_snapshot(&config);
-        if (files.state == FILE_STORE_INITIALIZING) {
+        storage_forecast_get_snapshot(&forecast);
+        if (files.state == FILE_STORE_INITIALIZING || !forecast.ready) {
             assert((g_test_power_blockers & POWER_BLOCK_STORAGE) != 0U);
         } else if (s_power_step == 0U) {
             assert(s_scan_reads == 0U);
@@ -638,18 +798,28 @@ int main(int argc, char **argv)
     uint8_t encoded[FORECAST_ENCODED_MAX];
     size_t encoded_length;
     assert(argc == 2);
+    s_auto_boot = (uint8_t)(strncmp(argv[1], "auto-", 5U) == 0);
+    s_release_mode = (uint8_t)(strcmp(argv[1], "release-file") == 0 ? 1U :
+        strcmp(argv[1], "release-forecast") == 0 ? 2U :
+        strcmp(argv[1], "release-maintenance") == 0 ? 3U :
+        strcmp(argv[1], "release-full") == 0 ? 4U :
+        strcmp(argv[1], "release-chip-busy") == 0 ? 5U : 0U);
+    s_reserved_mode = (uint8_t)(strcmp(argv[1], "reserved-path") == 0 ? 1U :
+        strcmp(argv[1], "reserved-existing") == 0 ? 2U : 0U);
+    if (s_auto_boot) { g_test_power_hold = false; }
     s_power_mode = (uint8_t)(strcmp(argv[1], "power") == 0);
     if (s_power_mode != 0U) { g_test_power_hold = false; }
     s_forecast_mode = (uint8_t)(strncmp(argv[1], "forecast", 8U) == 0);
     s_restore_mode = (uint8_t)(strcmp(argv[1], "forecast-restore") == 0 ||
-                             strcmp(argv[1], "forecast-corrupt") == 0);
-    s_bad_restore = (uint8_t)(strcmp(argv[1], "forecast-corrupt") == 0);
-    s_blank_forecast = (uint8_t)(strcmp(argv[1], "forecast-unformatted") == 0);
+                             strcmp(argv[1], "forecast-corrupt") == 0 ||
+                             strcmp(argv[1], "auto-valid") == 0 || strcmp(argv[1], "auto-corrupt") == 0);
+    s_bad_restore = (uint8_t)(strcmp(argv[1], "forecast-corrupt") == 0 || strcmp(argv[1], "auto-corrupt") == 0);
+    s_blank_forecast = (uint8_t)(strcmp(argv[1], "forecast-unformatted") == 0 || strcmp(argv[1], "auto-unformatted") == 0);
     forecast_init();
     s_make_forecast(1U);
     s_diagnostic_mode = (uint8_t)(strcmp(argv[1], "diagnostics") == 0);
     s_formatted_start = (uint8_t)(strcmp(argv[1], "formatted") == 0 || s_diagnostic_mode != 0U ||
-                                 (s_forecast_mode != 0U && s_blank_forecast == 0U));
+                                 ((s_forecast_mode || s_auto_boot || s_release_mode || s_reserved_mode) && !s_blank_forecast));
     memset(s_flash, 0xFF, sizeof(s_flash));
     for (i = 0U; i < sizeof(s_payload); i++) { s_payload[i] = (uint8_t)(i * 37U); }
     if (s_formatted_start != 0U) {
@@ -665,6 +835,10 @@ int main(int argc, char **argv)
         s_request.confirm = 1U;
         assert(file_store_execute(&s_request, &s_response) == 0U);
         assert(s_response.result == 0);
+        if (s_reserved_mode == 2U) {
+            s_submit(FILE_STORE_OP_MKDIR, FORECAST_FILE_PATH);
+            assert(file_store_execute(&s_request, &s_response) == 0U && s_response.result == 0);
+        }
         if (s_restore_mode != 0U) {
             assert(forecast_encode(&s_forecast_batch, encoded, sizeof(encoded), &encoded_length));
             if (s_bad_restore != 0U) { encoded[encoded_length - 1U] ^= 1U; }

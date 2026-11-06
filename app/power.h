@@ -13,6 +13,7 @@
 #define POWER_BLOCK_ACCEL   (1UL << 4)
 #define POWER_BLOCK_MOTION  (1UL << 5)
 #define POWER_BLOCK_UART    (1UL << 6)
+#define POWER_BLOCK_INPUT   (1UL << 7)
 #define POWER_BLOCK_BOOT    (1UL << 16)
 #define POWER_BLOCK_HOLD    (1UL << 17)
 #define POWER_BLOCK_WINDOW  (1UL << 18)

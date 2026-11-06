@@ -10,6 +10,7 @@
 - [天气串口格式](docs/weather_protocol.md)：九个字段、天气与风向编码、发送示例、切页和过期规则。
 - [多天预报与断电保存](docs/forecast_protocol.md)：先校时、按完整日期接收1～7天预报、批次查询和外部Flash恢复。
 - [串口校时格式](docs/time_protocol.md)：北京时间 TIME 命令、结果应答和故障恢复。
+- [四键浏览与接口](docs/buttons.md)：上页、下页、回时钟、暂停／恢复轮播及首次按键唤醒。
 - [调试控制台](docs/debug_console.md)：JustFloat、CONSOLE、FORMAT 和 ERRORS。
 - [当前进度与后续计划](docs/totalPLAN.md#当前开发状态2026-11-04)：已实现功能、验证状态和待办。
 
@@ -23,8 +24,8 @@ USART2 为 H10 调试口，115200、8N1、3.3V TTL。发送端 TX 接 STM32 PA3�
 
 ## 最近验证
 
-2026-11-04 显示终止禁睡收尾已有构建与主机验证记录；精确构建、主机回归及板测状态见[测试数据与验证记录](docs/测试数据.md)。此前 SPI2 DMA 等构建记录只对应其归档输入，不替代局刷版本的验证。
+2026-11-04 四键浏览与按键唤醒已通过7组相关主机测试，默认黑白Keil完整重建0错误/0警告；尚未烧录或板测。精确构建、主机回归及板测状态见[测试数据与验证记录](docs/测试数据.md)。此前 SPI2 DMA 等构建记录只对应其归档输入，不替代局刷版本的验证。
 
-MCU Tickless/STOP2、ADXL345 Activity 动作唤醒、WDATA 多页天气/预警和 TIME2/TIME? 已接入。ESP32 自动联网/NTP、Python 天气发送器、环境及电量采集、按键响铃、分域断电仍待实现。串口首包自动唤醒未实现，暂按先动作唤醒再连接使用。
+MCU Tickless/STOP2、ADXL345 Activity 动作唤醒、WDATA 多页天气/预警和 TIME2/TIME? 已接入。ESP32 自动联网/NTP、Python 天气发送器、环境及电量采集、闹钟响铃、分域断电仍待实现；四键浏览与按键唤醒已接入，待实板验收。串口首包自动唤醒未实现，暂按先动作唤醒再连接使用。
 
-当前5项代码缺陷及已确认但未实现的业务调整见[代码与业务差异清单](docs/current_code_gaps.md)。
+B1～B5的修复/验证状态及另外5项已确认但未实现的业务调整见[代码与业务差异清单](docs/current_code_gaps.md)。

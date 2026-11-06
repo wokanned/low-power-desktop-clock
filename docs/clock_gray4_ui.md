@@ -1,6 +1,6 @@
 # 时钟界面与黑白/四灰阶输出
 
-当前源码的已知缺陷、与用户已确认但尚未实现的行为差异，见[代码与需求差距](current_code_gaps.md)。本文不将待修复项写成已完成。
+B1～B5修复证据和另外5项已确认待实现需求，见[代码与需求差距](current_code_gaps.md)；构建/主机验证不代表板测通过。
 
 更新时间：2026-11-04。返回[文档导航](README.md)。工程总进度见 [totalPLAN.md 的“当前开发状态”](totalPLAN.md#当前开发状态2026-11-04)。本文件说明时钟页面、输出契约及分版本验证记录；接线与移植边界见 [epd_gdey029t94_port.md](epd_gdey029t94_port.md)，使用串口前阅读[控制台](debug_console.md)、[天气](weather_protocol.md)和[校时](time_protocol.md)协议。
 

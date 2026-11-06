@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 Set-Location -LiteralPath $root
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
-$scripts = @('run_power_host', 'run_adxl345_host_tests', 'run_debug_host_tests',
+$scripts = @('run_buttons_host', 'run_power_host', 'run_adxl345_host_tests', 'run_debug_host_tests',
     'run_sync_protocol_host', 'run_epd_spi_dma_host', 'run_clock_partial_host',
     'run_clock_display_host', 'run_gray4_diagnostic_host', 'run_clock_runtime_host',
     'run_clock_config_host', 'run_storage_files_integration_host', 'run_w25q128_host',

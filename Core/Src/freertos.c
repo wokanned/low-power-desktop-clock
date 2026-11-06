@@ -27,6 +27,7 @@
 /* USER CODE BEGIN Includes */
 #include "debug.h"
 #include "display.h"
+#include "buttons.h"
 #include "accel.h"
 #include "storage.h"
 #include "clock_service.h"
@@ -128,6 +129,10 @@ void MX_FREERTOS_Init(void) {
   }
   if (!display_start()) {
     Debug_Log("display: task creation failed\r\n");
+  }
+  if (!buttons_start()) {
+    clock_fault_report(CLOCK_FAULT_TASK, CLOCK_FAULT_START);
+    Debug_Log("buttons: task initialization failed\r\n");
   }
   if (storage_start() != 0) {
     clock_fault_report(CLOCK_FAULT_TASK, CLOCK_FAULT_START);

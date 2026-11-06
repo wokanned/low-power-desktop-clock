@@ -11,6 +11,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#undef assert
+#define assert(x) do { if (!(x)) { fprintf(stderr, "%s:%d: %s\n", __FILE__, __LINE__, #x); exit(1); } } while (0)
+
 static clock_view_model_t s_clock;
 static uint32_t s_tick;
 static uint32_t s_id;
@@ -182,6 +185,27 @@ static void s_render(weather_page_kind_t page, const char *p_name)
     s_export(p_name);
 }
 
+static void s_test_two_page_actions(void)
+{
+    assert(!s_snapshot().cycle_paused);
+    assert(display_handle_action(DISPLAY_ACTION_PREVIOUS));
+    assert(s_snapshot().page == DISPLAY_PAGE_WEATHER);
+    assert(display_handle_action(DISPLAY_ACTION_NEXT));
+    assert(s_snapshot().page == DISPLAY_PAGE_CLOCK);
+    assert(display_handle_action(DISPLAY_ACTION_TOGGLE_CYCLE));
+    s_tick += 360000U;
+    assert(s_snapshot().page == DISPLAY_PAGE_CLOCK && s_snapshot().cycle_paused);
+    assert(display_handle_action(DISPLAY_ACTION_NEXT));
+    assert(s_snapshot().page == DISPLAY_PAGE_WEATHER && s_snapshot().cycle_paused);
+    assert(display_handle_action(DISPLAY_ACTION_HOME));
+    assert(display_handle_action(DISPLAY_ACTION_TOGGLE_CYCLE));
+    s_tick += 179999U; assert(s_snapshot().page == DISPLAY_PAGE_CLOCK);
+    s_tick++; assert(s_snapshot().page == DISPLAY_PAGE_WEATHER);
+    assert(display_handle_action(DISPLAY_ACTION_HOME));
+    assert(!display_handle_action((display_action_t)-1));
+    assert(!display_handle_action((display_action_t)99));
+}
+
 static void s_test_rotation(void)
 {
     static const display_page_t s_pages[] = {
@@ -249,6 +273,46 @@ static void s_test_attention(void)
     assert(!display_page_command("PAGE SOURCE 4"));
 }
 
+
+/* The old frame can still be in flight: do not let display consume the new
+ * event until after the PAGE command. A retained old lease models that gap. */
+static void s_test_manual_pending(void)
+{
+    static const char *const commands[] = {NULL, "PAGE LIVE", "PAGE FORECAST",
+        "PAGE DATA", "PAGE ALERT", "PAGE ALERT 1", "PAGE TEXT 1 1", "PAGE SOURCE 1"};
+    static const display_page_t pages[] = {DISPLAY_PAGE_CLOCK, DISPLAY_PAGE_WEATHER,
+        DISPLAY_PAGE_FORECAST, DISPLAY_PAGE_DATA, DISPLAY_PAGE_ALERT,
+        DISPLAY_PAGE_ALERT, DISPLAY_PAGE_TEXT, DISPLAY_PAGE_SOURCE};
+    weather_feed_lease_t old_frame;
+    display_snapshot_t snapshot;
+    uint32_t i;
+    char body[48];
+    for (i = 0U; i < sizeof(pages) / sizeof(pages[0]); i++) {
+        assert(display_select_page(DISPLAY_PAGE_CLOCK));
+        assert(weather_feed_acquire(0U, &old_frame));
+        (void)snprintf(body, sizeof(body), "pending event %lu", (unsigned long)i);
+        s_begin(1U, WEATHER_ALERT_ACTIVE); s_alert(body, 1U); s_commit("OK WDATA COMMIT");
+        if (commands[i] == NULL) { assert(display_select_page(DISPLAY_PAGE_CLOCK)); }
+        else { assert(display_page_command(commands[i])); }
+        weather_feed_release(&old_frame);
+        snapshot = s_snapshot();
+        assert(snapshot.page == pages[i]);
+        s_tick += 200U; assert(s_snapshot().page == pages[i]);
+    }
+    s_begin(1U, WEATHER_ALERT_ACTIVE); s_alert("new after manual", 1U);
+    s_commit("OK WDATA COMMIT");
+    assert(!display_page_command("PAGE TEXT 1 999"));
+    assert(!display_page_command("PAGE ALERT 0"));
+    assert(!display_select_page((display_page_t)99));
+    assert(s_snapshot().page == DISPLAY_PAGE_ALERT);
+    assert(display_select_page(DISPLAY_PAGE_CLOCK));
+    assert(s_snapshot().page == DISPLAY_PAGE_CLOCK);
+    s_begin(1U, WEATHER_ALERT_ACTIVE); s_alert("genuinely newer event", 1U);
+    s_commit("OK WDATA COMMIT");
+    assert(s_snapshot().page == DISPLAY_PAGE_ALERT);
+    assert(display_select_page(DISPLAY_PAGE_CLOCK));
+}
+
 static void s_test_atomic_reject_and_expiry(void)
 {
     display_snapshot_t before = s_snapshot();
@@ -300,6 +364,62 @@ static void s_test_reordered_attention(void)
     assert(s_snapshot().page == DISPLAY_PAGE_CLOCK);
 }
 
+static void s_test_four_page_actions(void)
+{
+    weather_data_t weather;
+    display_snapshot_t snapshot;
+    assert(display_handle_action(DISPLAY_ACTION_HOME));
+    assert(display_handle_action(DISPLAY_ACTION_PREVIOUS));
+    assert(s_snapshot().page == DISPLAY_PAGE_DATA);
+    /* Model a slow physical refresh: apply actions before consuming snapshots. */
+    assert(display_handle_action(DISPLAY_ACTION_NEXT));
+    assert(display_handle_action(DISPLAY_ACTION_NEXT));
+    assert(display_handle_action(DISPLAY_ACTION_NEXT));
+    assert(s_snapshot().page == DISPLAY_PAGE_FORECAST);
+    assert(display_handle_action(DISPLAY_ACTION_TOGGLE_CYCLE));
+    s_tick += 360000U;
+    assert(s_snapshot().page == DISPLAY_PAGE_FORECAST && s_snapshot().cycle_paused);
+    memset(&weather, 0, sizeof(weather));
+    weather.city = WEATHER_CITY_SHENZHEN; weather.condition = 2U;
+    weather.temperature_tenths = 235; weather.minimum_tenths = 180;
+    weather.maximum_tenths = 270; weather.humidity = 65U;
+    weather.wind_direction = 2U; weather.wind_speed_tenths = 35U;
+    memcpy(weather.source_time, "2026-11-02T16:00", sizeof(weather.source_time));
+    assert(display_publish_weather(&weather, s_tick));
+    assert(s_snapshot().page == DISPLAY_PAGE_WEATHER && s_snapshot().cycle_paused);
+    assert(display_handle_action(DISPLAY_ACTION_HOME));
+    display_forecast_committed();
+    assert(s_snapshot().page == DISPLAY_PAGE_WEATHER && s_snapshot().cycle_paused);
+    assert(display_select_page(DISPLAY_PAGE_FORECAST));
+    s_begin(1U, WEATHER_ALERT_ACTIVE); s_alert("paused important event", 1U);
+    s_commit("OK WDATA COMMIT");
+    assert(s_snapshot().page == DISPLAY_PAGE_ALERT && s_snapshot().cycle_paused);
+    /* Toggling during attention does not acknowledge or restart its hold. */
+    assert(display_handle_action(DISPLAY_ACTION_TOGGLE_CYCLE));
+    assert(s_snapshot().page == DISPLAY_PAGE_ALERT);
+    assert(display_handle_action(DISPLAY_ACTION_TOGGLE_CYCLE));
+    s_tick += 60000U;
+    assert(s_snapshot().page == DISPLAY_PAGE_FORECAST && s_snapshot().cycle_paused);
+    s_tick += 120000U; assert(s_snapshot().page == DISPLAY_PAGE_FORECAST);
+    s_begin(1U, WEATHER_ALERT_ACTIVE); s_alert("paused next event", 1U); s_commit("OK WDATA COMMIT");
+    assert(s_snapshot().page == DISPLAY_PAGE_ALERT);
+    assert(display_handle_action(DISPLAY_ACTION_NEXT));
+    assert(s_snapshot().page == DISPLAY_PAGE_DATA && s_snapshot().cycle_paused);
+    s_begin(1U, WEATHER_ALERT_ACTIVE); s_alert("paused previous event", 1U); s_commit("OK WDATA COMMIT");
+    assert(s_snapshot().page == DISPLAY_PAGE_ALERT);
+    assert(display_handle_action(DISPLAY_ACTION_PREVIOUS));
+    assert(s_snapshot().page == DISPLAY_PAGE_FORECAST);
+    s_begin(1U, WEATHER_ALERT_ACTIVE); s_alert("paused home event", 1U); s_commit("OK WDATA COMMIT");
+    assert(s_snapshot().page == DISPLAY_PAGE_ALERT);
+    assert(display_handle_action(DISPLAY_ACTION_HOME));
+    assert(s_snapshot().page == DISPLAY_PAGE_CLOCK && s_snapshot().cycle_paused);
+    s_tick = UINT32_MAX - 50U;
+    assert(display_handle_action(DISPLAY_ACTION_TOGGLE_CYCLE));
+    s_tick += 179999U; snapshot = s_snapshot();
+    assert(snapshot.page == DISPLAY_PAGE_CLOCK && !snapshot.cycle_paused);
+    s_tick++; assert(s_snapshot().page == DISPLAY_PAGE_WEATHER);
+}
+
 int main(int argc, char **argv)
 {
     if (argc > 1) { s_output_directory = argv[1]; }
@@ -307,8 +427,10 @@ int main(int argc, char **argv)
     s_clock.calendar_state = CLOCK_DATA_READY; s_clock.startup_ready = 1U;
     s_clock.format = CLOCK_FORMAT_24; s_tick = 100U;
     weather_init(); forecast_init(); weather_feed_init(s_send); weather_feed_set_console(1U);
-    s_test_rotation(); s_test_attention(); s_test_reordered_attention();
+    s_test_two_page_actions();
+    s_test_rotation(); s_test_attention(); s_test_manual_pending(); s_test_reordered_attention();
     s_test_atomic_reject_and_expiry();
+    s_test_four_page_actions();
     printf("PASS: %lu WDATA commands, atomic publication, clock/live/forecast/data rotation, repeated updates, one-shot attention/return/manual exit, page bounds, UTF8/glyph rejection, expiry and real C page rendering\n", (unsigned long)s_commands);
     return 0;
 }

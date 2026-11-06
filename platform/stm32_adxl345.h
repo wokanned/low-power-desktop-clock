@@ -8,6 +8,8 @@ int32_t stm32_adxl345_bind(adxl345_ctx_t *p_ctx);
 typedef void (*stm32_adxl345_motion_notify_t)(void);
 /* Callback runs in EXTI9_5 IRQ, after EXTI8 has been masked against storms. */
 void stm32_adxl345_motion_init(stm32_adxl345_motion_notify_t notify);
+/* Called only by the shared platform GPIO callback. */
+void stm32_adxl345_motion_exti_callback(uint16_t pin);
 void stm32_adxl345_motion_disarm(void);
 /* Mask line and consume MCU pending before the owner reads sensor INT_SOURCE. */
 void stm32_adxl345_motion_take_pending(void);

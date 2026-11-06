@@ -1,6 +1,6 @@
 # USART2 显式文本控制台
 
-当前源码的已知缺陷、与用户已确认但尚未实现的行为差异，见[代码与需求差距](current_code_gaps.md)。本文不将待修复项写成已完成。
+B1～B5修复证据和另外5项已确认待实现需求，见[代码与需求差距](current_code_gaps.md)；构建/主机验证不代表板测通过。
 
 2026-11-03：默认 AUTO 待机，不再默认持续发送遥测。在上电30秒或动作唤醒10秒窗口先发送 `POWER HOLD` 并等待应答，再执行 `CONSOLE ON`。完成维护发送 `POWER AUTO`；`POWER STATUS` 可在控制台之外查询。CONSOLE ON/OFF 只切换文本与遥测，不控制待机。详见[低功耗说明](low_power.md)。
 
