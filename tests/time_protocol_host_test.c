@@ -97,6 +97,12 @@ int main(void)
     time_protocol_poll();
     assert(strcmp(s_output, "ERR TIME2 TIMING\r\n") == 0);
     assert(time_protocol_take_sync_success() == 0U);
+    assert(time_protocol_command("TIME?", 0U) == 1U);
+    s_done = 1U;
+    s_complete_result = -5;
+    time_protocol_poll();
+    assert(strcmp(s_output, "ERR TIME UNSYNC\r\n") == 0);
+    assert(time_protocol_take_sync_success() == 0U);
     s_accept_result = -1;
     assert(time_protocol_command("TIME?", 0U) == 1U);
     assert(strcmp(s_output, "ERR BUSY\r\n") == 0 && time_protocol_busy() == 0U);

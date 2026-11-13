@@ -109,7 +109,7 @@ static uint8_t s_draw_weather(void)
     weather_feed_lease_t lease;
     uint8_t drawn;
     weather_page_kind_t page;
-    if (s_snapshot.feed.available != 0U) {
+    if (s_snapshot.use_feed_renderer != 0U) {
         if (!weather_feed_acquire(s_snapshot.feed.revision, &lease)) { return 0U; }
         switch (s_snapshot.page) {
         case DISPLAY_PAGE_FORECAST: page = WEATHER_PAGE_FORECAST; break;
@@ -164,7 +164,7 @@ static uint8_t s_weather_content_equal(void)
 {
     const weather_data_t *p_displayed = &s_displayed_weather.data;
     const weather_data_t *p_current = &s_snapshot.weather.data;
-    if (s_snapshot.feed.available != 0U || s_displayed_feed_revision != 0U) {
+    if (s_snapshot.use_feed_renderer != 0U || s_displayed_feed_revision != 0U) {
         return (uint8_t)(s_displayed_feed_revision == s_snapshot.feed.revision &&
             s_displayed_feed_fresh == s_snapshot.feed.fresh &&
             s_displayed_page == s_snapshot.page &&
@@ -206,9 +206,9 @@ static uint8_t s_weather_content_due(void)
     uint32_t minute_key = s_weather_current_minute(&s_snapshot.clock);
     return (uint8_t)(s_displayed_kind != EPD_CONTENT_WEATHER ||
         s_weather_content_equal() == 0U ||
-        (s_snapshot.feed.available != 0U &&
+        (s_snapshot.use_feed_renderer != 0U &&
          (s_weather_minute_key >> 11) != (minute_key >> 11)) ||
-        (s_snapshot.feed.available == 0U && s_weather_minute_key != minute_key) ||
+        (s_snapshot.use_feed_renderer == 0U && s_weather_minute_key != minute_key) ||
         s_weather_format != s_snapshot.clock.format);
 }
 
@@ -318,7 +318,7 @@ static uint8_t s_partial_allowed(uint8_t continuous)
 {
     return (uint8_t)(continuous != 0U && s_force_full == 0U &&
         s_displayed_cycle_paused == s_snapshot.cycle_paused &&
-        (s_pending_kind != EPD_CONTENT_WEATHER || s_snapshot.feed.available == 0U) &&
+        (s_pending_kind != EPD_CONTENT_WEATHER || s_snapshot.use_feed_renderer == 0U) &&
         s_displayed_kind == s_pending_kind && s_device.initialized != 0U &&
         s_device.sleeping == 0U && s_device.background_valid != 0U &&
         s_device.profile == EPD_PROFILE_BW_296 &&
@@ -469,7 +469,8 @@ static epd_gdey029t94_status_t s_submit_frame(uint8_t continuous)
         if (changed == 0U) { s_schedule.next_memory = next_memory; }
     } else {
         s_displayed_weather = s_snapshot.weather;
-        s_displayed_feed_revision = s_snapshot.feed.revision;
+        s_displayed_feed_revision = s_snapshot.use_feed_renderer != 0U ?
+            s_snapshot.feed.revision : 0U;
         s_displayed_feed_fresh = s_snapshot.feed.fresh;
         s_displayed_page = s_snapshot.page;
         s_displayed_alert = s_snapshot.alert_index;
@@ -489,6 +490,7 @@ static epd_gdey029t94_status_t s_submit_frame(uint8_t continuous)
     s_force_full = 0U;
 #endif
     s_pending = 0U;
+    display_frame_completed(&s_snapshot, (uint32_t)xTaskGetTickCount());
     if (changed != 0U) { s_completed_frames++; }
 #if EPD_VENDOR_DEMO_MODE != EPD_VENDOR_DEMO_OFF
     if (epd_vendor_demo_state.status != EPD_GDEY029T94_OK) {

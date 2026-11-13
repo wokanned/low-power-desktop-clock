@@ -8,7 +8,8 @@ typedef enum {
     CLOCK_DATA_UNAVAILABLE = 0,
     CLOCK_DATA_INITIALIZING,
     CLOCK_DATA_READY,
-    CLOCK_DATA_ERROR
+    CLOCK_DATA_ERROR,
+    CLOCK_DATA_UNSYNCHRONIZED
 } clock_data_state_t;
 
 typedef enum { CLOCK_FORMAT_12 = 12, CLOCK_FORMAT_24 = 24 } clock_format_t;

@@ -8,8 +8,8 @@ applyTo: "app/**/*.c,app/**/*.h,device/**/*.c,device/**/*.h,platform/**/*.c,plat
 - `app/` owns business flow and runtime behavior.
 - `device/` owns register protocol and device semantics.
 - `platform/` owns HAL binding and board resource operations.
-- `middleware/` is the planned location for reusable protocol/algorithm/logging functions; it is not currently implemented.
-- Read `AGENTS.md` for repository guidance and `docs/totalPLAN.md`, section `当前开发状态（2026-10-27）`, for current progress. Source presence, build selection, host tests, and board acceptance are separate states.
+- `middleware/` owns reusable modules including littlefs, file_store, button filtering, and low-power time accounting.
+- Read `AGENTS.md` for repository guidance and `docs/totalPLAN.md`, section `当前开发状态`, for current progress. Source presence, build selection, host tests, and board acceptance are separate states.
 
 - Prefer simple, stable lowercase snake_case file names.
 - `app/` modules should use business/topic names such as `baro`, `imu`, `tam`, not generic names like `app`.

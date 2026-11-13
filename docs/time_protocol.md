@@ -4,7 +4,7 @@
 
 更新日期：2026-11-02。文档入口见 [文档导航](README.md)，工程状态见 [totalPLAN.md](totalPLAN.md)。保留旧 TIME，并新增 TIME2 亚秒校时与 TIME? 实时查询。本功能接收发送端提供的北京时间，不进行晶振频率补偿。构建及镜像身份统一见[验证记录](测试数据.md)；下文2026-10-27数据为历史记录。本次未烧录，联网校时后误差不超过100ms仍待发送端与实机共同验证。
 
-操作前先在启动/动作清醒窗口取得 `OK POWER HOLD`，再 `CONSOLE ON`；维护完发送 `POWER AUTO`。仅进入控制台不保持清醒，详见[低功耗](low_power.md)。当前未校时默认日历仍会照常显示，用户已确认增加“时间未同步”提示，但尚未实现，见[差异清单](current_code_gaps.md)。
+操作前先在启动/动作清醒窗口取得 `OK POWER HOLD`，再 `CONSOLE ON`；维护完发送 `POWER AUTO`。仅进入控制台不保持清醒，详见[低功耗](low_power.md)。RTC_BKP_DR1记录已验证的授时状态。备份域初始化后显示“时间未同步”，TIME?返回`ERR TIME UNSYNC`。成功TIME/TIME2写入并验证授时标记，普通MCU复位保留日历和标记。升级前的固件没有此标记，首次升级后须授时一次。失败写入在当前运行期保留RTC故障，复位后仍需重新授时。具体状态见[修复记录](current_code_gaps.md)。
 
 ## TIME2 与 TIME?
 

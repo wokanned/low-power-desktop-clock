@@ -103,7 +103,8 @@ void time_protocol_poll(void)
         &result, &timestamp) == 0U) { return; }
     s_pending_token = 0U;
     if (result != 0) {
-        s_send_text(result == -4 ? "ERR TIME2 TIMING\r\n" : "ERR RTC\r\n");
+        s_send_text(result == -4 ? "ERR TIME2 TIMING\r\n" :
+            (result == -5 ? "ERR TIME UNSYNC\r\n" : "ERR RTC\r\n"));
         return;
     }
     p_calendar = &timestamp.calendar;

@@ -29,7 +29,7 @@ $stubDirectory = Join-Path $PSScriptRoot 'stubs\display'
 $scenarios = @('startup', 'minute', 'time-jump', 'weather-time-jump', 'rtc-error', 'retry-limit', 'retry-stop-error', 'retry-success',
     'init-retry', 'retry-budget', 'sleep-failure', 'coalesce',
     'failed-fault-coalesce', 'failed-recovery-coalesce', 'page-switch',
-    'weather-auto-page', 'fault-weather', 'weather-duplicate', 'weather-minute',
+    'weather-keeps-page', 'fault-weather', 'weather-duplicate', 'weather-minute',
     'memory-phase-weather', 'fault-page-hidden', 'page-revert', 'weather-revert',
     'weather-coalesce', 'weather-retry', 'weather-expiry', 'debug-tx', 'debug-tx-weather',
     'cycle-default', 'cycle-weather', 'cycle-manual', 'cycle-wrap', 'cycle-time',

@@ -26,6 +26,9 @@ extern RTC_TypeDef g_fake_rtc;
 extern RTC_HandleTypeDef hrtc;
 #define RTC (&g_fake_rtc)
 #define RTC_FORMAT_BIN 0U
+#define RTC_BKP_DR1 1U
+uint32_t HAL_RTCEx_BKUPRead(RTC_HandleTypeDef *p_handle, uint32_t register_index);
+void HAL_RTCEx_BKUPWrite(RTC_HandleTypeDef *p_handle, uint32_t register_index, uint32_t value);
 #define RTC_CR_FMT (1UL << 6)
 #define RTC_CR_REFCKON (1UL << 4)
 #define RTC_CR_BYPSHAD (1UL << 5)

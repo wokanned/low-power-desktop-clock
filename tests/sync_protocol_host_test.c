@@ -87,7 +87,7 @@ void sync_test_exit(void)
     if (s_critical == 0U && s_probe_weather != 0U) {
         s_probe_weather = 0U;
         display_get_snapshot(s_tick, &snapshot);
-        assert(snapshot.page == DISPLAY_PAGE_WEATHER && snapshot.weather.available);
+        assert(snapshot.page == DISPLAY_PAGE_CLOCK && snapshot.weather.available);
         assert(snapshot.clock.wifi.state == CLOCK_DATA_READY);
         assert(snapshot.clock.wifi.value == 0);
     }
@@ -144,6 +144,10 @@ bool stm32_debug_uart_send(void *p_handle, const uint8_t *p_data, uint16_t lengt
     s_output[s_output_length] = '\0';
     return true;
 }
+
+uint8_t stm32_clock_is_synchronized(void) { return 1U; }
+int32_t stm32_clock_set_synchronized(uint8_t synchronized)
+{ (void)synchronized; return 0; }
 
 int32_t stm32_clock_read_calendar(clock_calendar_t *p_calendar)
 { assert(s_critical == 0U); *p_calendar = s_rtc; return 0; }

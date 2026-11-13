@@ -10,6 +10,7 @@ New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 # build/epd-host/import-blobs.json; the upstream vendor checkout is not required.
 $sources=@('tests/vendor_host_test.c','device/epd_gdey029t94.c','app/epd_vendor_demo.c',
     'app/epd_clock_view.c','app/clock_model.c','resources/clock_gray_assets.c',
+    'resources/weather_glyphs.c',
     'resources/epd_vendor_assets.c','gui/GUI_Paint.c','fonts/font12CN.c','fonts/font24CN.c',
     'fonts/font8.c','fonts/font12.c','fonts/font16.c','fonts/font20.c','fonts/font24.c') |
     ForEach-Object {Join-Path $root $_}

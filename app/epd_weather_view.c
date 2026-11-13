@@ -592,9 +592,9 @@ static uint8_t s_draw(weather_canvas_t *p_canvas,
     } else {
         s_weather_icon(p_canvas, 0U, 8, 27);
         p_label = p_weather->kind == WEATHER_VIEW_NO_TODAY ?
-            "\xE6\x97\xA0\xE5\xBD\x93\xE5\xA4\xA9\xE9\xA2\x84\xE6\x8A\xA5" :
+            "\xE5\xA4\xA9\xE6\xB0\x94\xE5\xBE\x85\xE6\x9B\xB4\xE6\x96\xB0" :
             (p_weather->kind == WEATHER_VIEW_CLOCK_UNAVAILABLE ?
-            "\xE7\xAD\x89\xE5\xBE\x85\xE6\xA0\xA1\xE6\x97\xB6" :
+            "\xE6\x97\xB6\xE9\x97\xB4\xE6\x9C\xAA\xE5\x90\x8C\xE6\xAD\xA5" :
             "\xE7\xAD\x89\xE5\xBE\x85\xE5\xA4\xA9\xE6\xB0\x94\xE6\x95\xB0\xE6\x8D\xAE");
         (void)s_draw_text(p_canvas, 56U, 38U, 168U, p_label);
         s_large_placeholder(p_canvas);

@@ -16,6 +16,7 @@ $testSources = @(
     (Join-Path $projectRoot 'app\epd_clock_view.c'),
     (Join-Path $projectRoot 'app\clock_model.c'),
     (Join-Path $projectRoot 'resources\clock_gray_assets.c'),
+    (Join-Path $projectRoot 'resources\weather_glyphs.c'),
     (Join-Path $projectRoot 'gui\GUI_Paint.c'),
     (Join-Path $projectRoot 'fonts\font8.c'),
     (Join-Path $projectRoot 'fonts\font12.c'),

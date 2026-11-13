@@ -574,7 +574,8 @@ static void s_publish(uint32_t now_tick, uint32_t crc)
         memcpy(s_attention_id, p_new->alerts[attention].id, sizeof(s_attention_id));
     } else if (s_attention_revision != 0U) {
         for (i = 0U; i < p_new->alert_count; i++) {
-            if (strcmp(s_attention_id, p_new->alerts[i].id) == 0 &&
+            if (p_old != NULL && p_old->city == p_new->city &&
+                strcmp(s_attention_id, p_new->alerts[i].id) == 0 &&
                 p_new->alerts[i].expired == 0U && p_new->alerts[i].pending == 0U &&
                 p_new->alerts[i].important != 0U) { break; }
         }
@@ -724,7 +725,9 @@ void weather_feed_get_snapshot(uint32_t now_tick, weather_feed_snapshot_t *p_sna
                 p_snapshot->alert_count++; p_snapshot->alert_mask |= (uint8_t)(1U << i);
             }
         }
-        if (s_attention_index >= p_batch->alert_count ||
+        if ((p_batch->alert_state != WEATHER_ALERT_ACTIVE &&
+             p_batch->alert_state != WEATHER_ALERT_OFFLINE) ||
+            s_attention_index >= p_batch->alert_count ||
             p_batch->alerts[s_attention_index].expired != 0U ||
             p_batch->alerts[s_attention_index].pending != 0U) {
             p_snapshot->attention_revision = 0U;
@@ -787,7 +790,8 @@ void weather_feed_expire(const clock_calendar_t *p_now)
                 strcmp(p_batch->alerts[i].effective, stamp) <= 0) {
                 p_batch->alerts[i].pending = 0U; changed = 1U;
                 if (p_batch->alerts[i].important != 0U &&
-                    p_batch->alert_state == WEATHER_ALERT_ACTIVE &&
+                    (p_batch->alert_state == WEATHER_ALERT_ACTIVE ||
+                     p_batch->alert_state == WEATHER_ALERT_OFFLINE) &&
                     (attention == FEED_NO_SLOT || s_alert_priority_higher(
                         &p_batch->alerts[i], &p_batch->alerts[attention]))) {
                     attention = i;

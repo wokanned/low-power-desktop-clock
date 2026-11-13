@@ -2,7 +2,7 @@
 
 **当前串口操作前提（2026-11-04）**：默认 AUTO 不持续遥测，睡眠时不能保证串口接收。先在上电30秒或晃动后的10秒窗口发送 `POWER HOLD`，收到 `OK POWER HOLD` 后再执行本文示例；结束调试可发送 `POWER AUTO`。仅 `CONSOLE ON` 不会保持清醒。详见[低功耗说明](low_power.md)。
 
-更新日期：2026-11-04。文档入口见 [文档导航](README.md)，整机进度见 [totalPLAN.md](totalPLAN.md#当前开发状态2026-11-04)。
+更新日期：2026-11-04。文档入口见 [文档导航](README.md)，整机进度见 [totalPLAN.md](totalPLAN.md#当前开发状态)。
 
 ## 版本与范围
 

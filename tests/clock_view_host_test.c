@@ -901,6 +901,9 @@ static void export_previews(const char *p_directory)
     model.format = CLOCK_FORMAT_24;
     CHECK(draw_frame(s_frame, FRAME_BYTES, &model) == 1U);
     write_preview(p_directory, "clock-gray-missing");
+    model.calendar_state = CLOCK_DATA_UNSYNCHRONIZED;
+    CHECK(draw_frame(s_frame, FRAME_BYTES, &model) == 1U);
+    write_preview(p_directory, "clock-gray-unsynchronized");
     model = normal_model();
     all_faults(&model);
     CHECK(draw_frame(s_frame, FRAME_BYTES, &model) == 1U);

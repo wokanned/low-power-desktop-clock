@@ -31,7 +31,10 @@ $scenarios = @('clock-minute', 'weather-minute', 'clock-ampm', 'weather-ampm',
     'fault-full', 'outside-full', 'duplicate', 'second-window-failure', 'second-window-timeout',
     'busy-coalesce', 'cleanup-120', 'forecast-minute', 'forecast-day',
     'forecast-missing', 'forecast-restore', 'feed-clock-minute', 'feed-live-data',
-    'feed-forecast-day', 'feed-duplicate', 'pause-clock', 'pause-weather', 'pause-feed', 'buttons-busy')
+    'feed-forecast-day', 'feed-duplicate', 'pause-clock', 'pause-weather', 'pause-feed', 'buttons-busy',
+    'business-alert', 'business-weather', 'business-unsynchronized',
+    'business-forecast-fault', 'business-forecast-first', 'business-forecast-visible',
+    'business-forecast-expire', 'business-forecast-manual', 'business-forecast-paused')
 foreach ($scenario in $scenarios) {
     & $testExecutable $scenario
     if ($LASTEXITCODE -ne 0) { throw "Real raster/controller partial integration failed: $scenario" }

@@ -57,6 +57,7 @@ static osThreadFunc_t s_thread;
 static void *s_thread_argument;
 static uint32_t s_feed_id;
 static uint8_t s_expected_paused;
+static uint32_t s_presented_tick;
 
 static int scenario(const char *name) { return strcmp(s_scenario,name)==0; }
 
@@ -155,6 +156,23 @@ static void publish_forecast(void)
     CHECK(forecast_publish(&batch));
 }
 
+static void reference_pause(uint8_t paused)
+{
+    if(paused!=0U) {
+        uint32_t x,y,offset,shift;
+        for(x=288U;x<296U;x++) {
+            for(y=0U;y<12U;y++) {
+                offset=(295U-x)*16U+(127U-y)/8U;
+                shift=7U-(127U-y)%8U;
+                s_reference[offset]|=(uint8_t)(1U<<shift);
+                if(y>=2U && y<10U && (x==289U || x==290U || x==293U || x==294U)) {
+                    s_reference[offset]&=(uint8_t)~(1U<<shift);
+                }
+            }
+        }
+    }
+}
+
 static void verify_pixels(void)
 {
     uint32_t i;
@@ -176,19 +194,7 @@ static void verify_pixels(void)
     } else {
         CHECK(epd_clock_view_draw_bw(s_reference,sizeof(s_reference),&s_expected));
     }
-    if(s_expected_paused!=0U) {
-        uint32_t x,y,offset,shift;
-        for(x=288U;x<296U;x++) {
-            for(y=0U;y<12U;y++) {
-                offset=(295U-x)*16U+(127U-y)/8U;
-                shift=7U-(127U-y)%8U;
-                s_reference[offset]|=(uint8_t)(1U<<shift);
-                if(y>=2U && y<10U && (x==289U || x==290U || x==293U || x==294U)) {
-                    s_reference[offset]&=(uint8_t)~(1U<<shift);
-                }
-            }
-        }
-    }
+    reference_pause(s_expected_paused);
     for(i=0U;i<FRAME_BYTES;i++) {
         if(s_panel.visible[i]!=s_reference[i]) {
             fprintf(stderr,"pixel byte %lu actual=%02X expected=%02X\n",
@@ -203,6 +209,7 @@ static void apply_activation(void)
 {
     activation_t *a=&s_panel.trace[s_panel.activations-1U];
     uint16_t row, x;
+    s_presented_tick=s_tick;
     if(a->mode==0xF7U) {
         memcpy(s_panel.visible,s_panel.new_ram,FRAME_BYTES);
     } else {
@@ -453,6 +460,7 @@ static void next_change(void)
         expect_frame(DISPLAY_PAGE_WEATHER,CLOCK_MEMORY_SRAM);
     } else if(scenario("page-full")) {
         publish_weather(2U);
+        CHECK(display_select_page(DISPLAY_PAGE_WEATHER));
         expect_frame(DISPLAY_PAGE_WEATHER,CLOCK_MEMORY_SRAM);
     } else if(scenario("fault-full")) {
         clock_fault_report(CLOCK_FAULT_IMU,CLOCK_FAULT_IO);
@@ -590,6 +598,180 @@ static void cleanup_contract(void)
     CHECK(s_panel.visible[0]==0xAAU);
 }
 
+static void business_record(const char *verb,const char *payload,uint32_t *sequence,uint32_t *crc)
+{
+    char command[224];
+    (void)snprintf(command,sizeof(command),"WDATA %s %lu,%lu,%s",verb,
+        (unsigned long)s_feed_id,(unsigned long)*sequence,payload);
+    CHECK(weather_feed_command(command,s_tick)==1U);
+    *crc=feed_crc(*crc,command);*crc=feed_crc(*crc,"\n");
+    (*sequence)++;
+}
+
+static void business_alert(uint8_t offline)
+{
+    char command[224];
+    uint32_t sequence=0U;
+    uint32_t crc=UINT32_MAX;
+    s_feed_id++;
+    (void)snprintf(command,sizeof(command),
+        "WDATA BEGIN %lu,1,0,%u,%u,2026-10-28T16:00,2026-10-28T16:00,0",
+        (unsigned long)s_feed_id,offline?0U:1U,offline?3U:1U);
+    CHECK(weather_feed_command(command,s_tick)==1U);
+    business_record("NOW","NA",&sequence,&crc);
+    business_record("METRICS","NA,NA,NA,NA,NA,NA",&sequence,&crc);
+    if(!offline) {
+        business_record("ALERT","0,0,4,3,4,1,2026-10-28T16:00,-,2026-10-28T19:00,2,0,4,3,5,0",&sequence,&crc);
+        business_record("TEXT","0,0,0,4131",&sequence,&crc);
+        business_record("TEXT","0,2,0,5241494E",&sequence,&crc);
+        business_record("TEXT","0,3,0,4D4554",&sequence,&crc);
+        business_record("TEXT",s_phase==0U?"0,4,0,53544F524D":"0,4,0,464C4F4F44",&sequence,&crc);
+    }
+    (void)snprintf(command,sizeof(command),"WDATA COMMIT %lu,%lu,%08lX",
+        (unsigned long)s_feed_id,(unsigned long)sequence,(unsigned long)(crc^UINT32_MAX));
+    CHECK(weather_feed_command(command,s_tick)==1U);
+}
+
+static display_snapshot_t business_snapshot(void)
+{
+    display_snapshot_t snapshot;
+    display_get_snapshot(s_tick,&snapshot);
+    return snapshot;
+}
+
+static void business_render(void)
+{
+    display_snapshot_t snapshot;
+    weather_feed_lease_t lease;
+    CHECK(epd_bringup_run_once()==EPD_GDEY029T94_OK);
+    snapshot=business_snapshot();
+    if(snapshot.clock.faults.active_categories!=0U || snapshot.page==DISPLAY_PAGE_CLOCK) {
+        snapshot.clock.memory_mode=CLOCK_MEMORY_SRAM;
+        CHECK(epd_clock_view_draw_bw(s_reference,sizeof(s_reference),&snapshot.clock));
+    } else if(snapshot.page==DISPLAY_PAGE_ALERT) {
+        CHECK(weather_feed_acquire(snapshot.feed.revision,&lease));
+        CHECK(epd_weather_pages_draw_bw_for_date(s_reference,sizeof(s_reference),lease.p_batch,
+            WEATHER_PAGE_ALERT,snapshot.alert_index,0U,snapshot.feed.fresh,&s_live.calendar));
+        weather_feed_release(&lease);
+    } else {
+        CHECK(epd_weather_view_draw_bw(s_reference,sizeof(s_reference),&snapshot.weather,&snapshot.clock));
+    }
+    reference_pause(snapshot.cycle_paused);
+    CHECK(memcmp(s_reference,s_panel.visible,FRAME_BYTES)==0);
+}
+
+static void business_contract(void)
+{
+    display_snapshot_t snapshot;
+    uint32_t origin;
+    s_driver_only=1U;
+    weather_feed_init(feed_send);weather_feed_set_console(1U);
+    if(strncmp(s_scenario,"business-forecast-",18U)==0) {
+        CHECK(display_select_page(DISPLAY_PAGE_DATA));
+        if(scenario("business-forecast-paused")) {
+            CHECK(display_handle_action(DISPLAY_ACTION_TOGGLE_CYCLE));
+        }
+        business_alert(0U);
+        CHECK(business_snapshot().page==DISPLAY_PAGE_ALERT);
+        if(!scenario("business-forecast-first")) { business_render(); }
+        origin=s_presented_tick;
+        s_tick+=20000U;
+        if(!scenario("business-forecast-visible") && !scenario("business-forecast-first")) {
+            s_live.faults.active_categories=1U;
+            s_live.faults.category[0].source_bits=1U;
+            s_live.faults.revision++;
+            business_render();
+            s_tick+=120000U;
+        }
+        publish_forecast();
+        display_forecast_committed();
+        display_forecast_committed(); /* Another completion must not reset the hold. */
+        CHECK(business_snapshot().page==DISPLAY_PAGE_ALERT);
+        if(scenario("business-forecast-manual")) {
+            CHECK(display_select_page(DISPLAY_PAGE_CLOCK));
+        } else if(scenario("business-forecast-expire")) {
+            s_live.calendar.hour=19U;
+            weather_feed_expire(&s_live.calendar);
+        }
+        s_live.faults.active_categories=0U;s_live.faults.revision++;
+        if(scenario("business-forecast-manual")) {
+            CHECK(business_snapshot().page==DISPLAY_PAGE_CLOCK);
+            business_render();
+            s_tick+=60000U;
+            CHECK(business_snapshot().page==DISPLAY_PAGE_CLOCK);
+            s_phase=1U;business_alert(0U);
+            CHECK(business_snapshot().page==DISPLAY_PAGE_ALERT);
+            business_render();origin=s_presented_tick;
+            s_tick=origin+60000U;
+            CHECK(business_snapshot().page==DISPLAY_PAGE_CLOCK);
+            return;
+        }
+        if(!scenario("business-forecast-expire")) {
+            if(!scenario("business-forecast-visible")) {
+                business_render();origin=s_presented_tick;
+            }
+            s_tick=origin+59999U;
+            CHECK(business_snapshot().page==DISPLAY_PAGE_ALERT);
+            s_tick++;
+        }
+        CHECK(business_snapshot().page==DISPLAY_PAGE_WEATHER);
+        origin=s_tick;
+        business_render();
+        if(scenario("business-forecast-paused")) {
+            s_tick=origin+120000U;
+            snapshot=business_snapshot();
+            CHECK(snapshot.page==DISPLAY_PAGE_WEATHER && snapshot.cycle_paused);
+            CHECK(display_handle_action(DISPLAY_ACTION_TOGGLE_CYCLE));
+            origin=s_tick;
+        }
+        s_tick=origin+59999U;
+        CHECK(business_snapshot().page==DISPLAY_PAGE_WEATHER);
+        s_tick++;
+        CHECK(business_snapshot().page==DISPLAY_PAGE_FORECAST);
+    } else if(scenario("business-alert")) {
+        CHECK(display_select_page(DISPLAY_PAGE_DATA));
+        business_alert(0U);
+        CHECK(business_snapshot().page==DISPLAY_PAGE_ALERT);
+        s_tick+=90000U;
+        CHECK(business_snapshot().page==DISPLAY_PAGE_ALERT); /* No completed frame yet. */
+        business_render();origin=s_presented_tick;
+        s_tick=origin+20000U;business_alert(1U);business_render();
+        s_tick=origin+59999U;CHECK(business_snapshot().page==DISPLAY_PAGE_ALERT);
+        s_tick++;CHECK(business_snapshot().page==DISPLAY_PAGE_DATA);
+        CHECK(display_select_page(DISPLAY_PAGE_CLOCK));
+        business_alert(0U); /* Identical poll does not create another event. */
+        CHECK(business_snapshot().page==DISPLAY_PAGE_CLOCK);
+        s_phase=1U;
+        business_alert(0U);
+        s_live.faults.active_categories=1U;
+        s_live.faults.category[0].source_bits=1U;
+        s_live.faults.revision++;
+        s_tick+=120000U;
+        CHECK(business_snapshot().page==DISPLAY_PAGE_ALERT);
+        business_render();
+        s_live.faults.active_categories=0U;s_live.faults.revision++;
+        business_render();origin=s_presented_tick;
+        s_tick=origin+59999U;CHECK(business_snapshot().page==DISPLAY_PAGE_ALERT);
+        s_tick++;CHECK(business_snapshot().page==DISPLAY_PAGE_CLOCK);
+    } else if(scenario("business-weather")) {
+        publish_feed();origin=s_tick;
+        s_tick=origin+10799999U;
+        CHECK(display_select_page(DISPLAY_PAGE_WEATHER));
+        CHECK(business_snapshot().use_feed_renderer!=0U);
+        s_tick++;
+        snapshot=business_snapshot();
+        CHECK(snapshot.use_feed_renderer==0U && snapshot.weather.kind==WEATHER_VIEW_FORECAST);
+        CHECK(snapshot.weather.data.condition==1U);
+        business_render();
+    } else {
+        s_live.calendar_state=CLOCK_DATA_UNSYNCHRONIZED;
+        CHECK(display_select_page(DISPLAY_PAGE_CLOCK));
+        business_render();
+        snapshot=business_snapshot();
+        CHECK(snapshot.clock.faults.active_categories==0U);
+    }
+}
+
 int main(int argc,char **argv)
 {
     if(argc!=2) { fprintf(stderr,"scenario required\n");return 2; }
@@ -603,6 +785,11 @@ int main(int argc,char **argv)
     s_live.memory[0]=(clock_field_t){CLOCK_DATA_READY,37};
     s_live.memory[1]=(clock_field_t){CLOCK_DATA_READY,19};
     s_live.memory[2]=(clock_field_t){CLOCK_DATA_READY,1};
+    if(strncmp(s_scenario,"business-",9U)==0) {
+        business_contract();
+        printf("PASS: real raster/controller %s (%lu checks)\n",s_scenario,s_checks);
+        return 0;
+    }
     if(scenario("clock-ampm") || scenario("weather-ampm")) {
         s_live.format=CLOCK_FORMAT_12;s_live.calendar.hour=11U;s_live.calendar.minute=59U;
     }
@@ -626,6 +813,7 @@ int main(int argc,char **argv)
     } else if(scenario("weather-minute") || scenario("weather-ampm") || scenario("weather-full") || scenario("pause-weather")) {
         if(scenario("weather-minute"))s_live.calendar.minute=59U;
         publish_weather(2U);
+        CHECK(display_select_page(DISPLAY_PAGE_WEATHER));
         expect_frame(DISPLAY_PAGE_WEATHER,CLOCK_MEMORY_SRAM);
     } else { expect_frame(DISPLAY_PAGE_CLOCK,CLOCK_MEMORY_SRAM); }
     if(scenario("cleanup-120")) { cleanup_contract(); }

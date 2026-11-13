@@ -1,6 +1,6 @@
 # AGENTS.md
 
-本文件为 AI 编程助手提供本仓库的开发规则。更新日期：2026-11-04。面向使用者的说明见 [文档导航](docs/README.md)。
+本文件为 AI 编程助手提供本仓库的开发规则。更新日期为2026-11-12。面向使用者的说明见 [文档导航](docs/README.md)。
 
 ## 工程概况
 
@@ -54,7 +54,7 @@ DeskClock.ioc      # CubeMX 工程配置
 | ADC1   | hadc1  | 预留电池电压采样，尚未接入业务                                       | PA0 接电池分压；电池 NTC 接到 BQ24074 TS，不接此 ADC                                         |
 | TIM4   | htim4  | 预留蜂鸣器 PWM，尚未启动响铃业务                                     | 5.2kHz 无源压电蜂鸣器，当前仅完成外设配置                                                     |
 | TIM17  | htim17 | HAL 毫秒时间基准                                                 | 用于`HAL_IncTick()`（FreeRTOS 使用 SysTick 作为内核节拍）                                  |
-| RTC    | hrtc   | 日历已接入；闹钟业务待实现，MCU定时睡醒使用LPTIM1                       | LSE 32.768kHz；备份域供电时使用 RTC_BKP_DR0 标记保留日历；冷初始化为 2000-10-18 00:00:00    |
+| RTC    | hrtc   | 日历已接入；闹钟业务待实现，MCU定时睡醒使用LPTIM1                       | LSE 32.768kHz；备份域供电时使用 RTC_BKP_DR0 标记保留日历；冷初始化占位为2000-10-18，DR1无授时标记时显示“时间未同步”    |
 
 ### 电源域 GPIO
 
@@ -94,15 +94,15 @@ DeskClock.ioc      # CubeMX 工程配置
 - **NVIC**：允许调用系统 API 的最高中断优先级值为 5，内核中断优先级为 15（最低）
 - **当前任务**：defaultTask、debugTask、accelTask、displayTask、storageTask、buttonsTask；Tickless（USER 覆盖为2）、LPTIM1/LSE 计时的 STOP2 和 PA8 动作唤醒已接入，实际时序/功耗待板测。
 
-当前使用与实现限制见 [docs/low_power.md](docs/low_power.md)、[docs/weather_pages.md](docs/weather_pages.md) 和 [已知差异](docs/current_code_gaps.md)。有 WDATA 时普通轮换为 CLOCK 180秒→LIVE/FORECAST/DATA 各60秒；以下三分钟两页描述仅适用于无 WDATA 的兼容路径。B1～B5已修复并通过主机回归/默认黑白构建，板测待完成；另外5项已确认需求仍待实现，不能混写为已完成。
+当前使用与实现限制见 [docs/low_power.md](docs/low_power.md)、[docs/weather_pages.md](docs/weather_pages.md) 和 [已知差异](docs/current_code_gaps.md)。有 WDATA 时普通轮换为 CLOCK 180秒→LIVE/FORECAST/DATA 各60秒；以下三分钟两页描述仅适用于无 WDATA 的兼容路径。B1～B5已修复并通过主机回归/默认黑白构建，板测待完成；R1～R5的当前实现与验收范围统一见差异清单和验证记录。
 
 ## 显示模块集成
 
-- `app/forecast`保存当前城市1～7天每日预报，与旧WEATHER实况模型隔离；`app/forecast_protocol`通过send回调处理BEGIN/DAY/COMMIT/CANCEL/STATUS，不绑定UART/HAL。每个新批次先用TIME成功获得一次许可，DAY含完整日期，校验连续且新提交不早于RTC当天；预报无来源更新时间和三小时过期。`storageTask`将`/forecast.bin`原子替换并发布后才最终应答；启动恢复不校时、不切页、不记同步。既有WEATHER的来源时间与三小时tick规则只用于实况。天气页集中选择同城当天有效实况或当天预报，缺字段用占位。协议及切换串口的分层边界见`docs/forecast_protocol.md`。
+- `app/forecast`保存当前城市1～7天每日预报，与旧WEATHER实况模型隔离；`app/forecast_protocol`通过send回调处理BEGIN/DAY/COMMIT/CANCEL/STATUS，不绑定UART/HAL。每个新批次先用TIME或TIME2成功获得一次许可，DAY含完整日期，校验连续且新提交不早于RTC当天；预报无来源更新时间和三小时过期。`storageTask`将`/forecast.bin`原子替换并发布后才最终应答；启动恢复不校时、不切页、不记同步。既有WEATHER的来源时间与三小时tick规则只用于实况。天气页集中选择同城当天有效实况或当天预报，缺字段用占位。协议及切换串口的分层边界见`docs/forecast_protocol.md`。
 
 - 复用远端 `EinKTest` 的设备驱动、GUI、字库和资源，不得随意重构协议或资源。`device/` 保持不依赖 HAL；`platform/stm32_gdey029t94` 负责绑定 SPI2、控制引脚和延时。
 - `app/display` 独占显示控制器、帧缓冲区和全局 `Paint` 画布。在 RTOS 初始化阶段通过 `display_start()` 启动。禁止从其他任务或 ISR 调用绘制、演示或刷新函数。
-- `app/weather` 只在 RAM 中缓存经校验的完整天气消息并跟踪单调 tick 过期状态；`app/display` 合并选中页面、天气与时钟为一致快照，天气渲染由 `app/epd_weather_view` 完成。启动默认时钟页，此后每三分钟切换时钟/天气页；每个有效 `WEATHER`（含重复包）原子更新缓存、选择天气页并重启轮换计时，非法包不影响计时。手动 `PAGE`（含同页）也重计三分钟；周期使用单调 tick，不受 RTC 校时影响。切页或天气页可见内容变化触发全刷，相同天气页画面仅重计时不追加全刷；BUSY 和故障覆盖沿用最新目标合并。串口协议见 `docs/weather_protocol.md`。
+- `app/weather` 只在 RAM 中缓存经校验的完整天气消息并跟踪单调 tick 过期状态；`app/display` 合并选中页面、天气与时钟为一致快照，天气渲染由 `app/epd_weather_view` 完成。启动默认时钟页，此后每三分钟切换时钟/天气页；每个有效 `WEATHER`（含重复包）原子更新缓存和同步年龄，保留选页、暂停及轮换期限，非法包不影响计时。手动 `PAGE`（含同页）也重计三分钟；周期使用单调 tick，不受 RTC 校时影响。切页或天气页可见内容变化触发全刷，相同天气页画面不追加全刷；BUSY 和故障覆盖沿用最新目标合并。串口协议见 `docs/weather_protocol.md`。
 - `app/epd_bringup` 的生产黑白连续显示按分钟更新：正常时钟分别局刷时间区和内存格，天气页只局刷页头时间，保留 `HH:MM` 与内存轮换。首帧、切页、日期/时制/天气内容/故障变化和异常恢复全刷；允许区域外有像素变化也回退全刷。完整渲染后与最后成功背景比较，窗口按控制器坐标8像素对齐，时间与内存分别激活，全部BUSY成功后才提交和推进内存轮换。正常同页期间保持控制器唤醒，切页结束旧会话后重新初始化并全刷；三分钟切页是正常残影清理，驱动120次局刷计数只是长期停留同页的兜底。字模仍按半覆盖阈值二值化；`EPD_CLOCK_USE_GRAY4=1`、模式7和单次显示入口保留原全刷/休眠行为。真实刷新统计通过 `epd_bringup_get_refresh_stats()` 只读查询。
 - 正式时钟使用 `EPD_VENDOR_DEMO_MODE=0`，头文件及 Keil 当前默认均为0，并统一设置 `EPD_CLOCK_USE_GRAY4=0`。模式7仍保留专用四灰阶诊断页，刷新和休眠成功后保留画面，仅挂起显示任务，不进入时钟；模式1–6为原厂演示，完成后进入所选格式的时钟。两个宏独立，必须在整个工程统一设置，编号见显示移植文档。当前实屏四灰阶验收未通过，不将其解释为面板确定不支持。
 - 显示启动/恢复最多尝试三次，失败后间隔一秒再尝试。尝试耗尽后记录保留的状态，并仅挂起显示任务。调度器启动后，平台延时通过 RTOS 让出执行权。

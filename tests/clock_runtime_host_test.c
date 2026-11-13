@@ -47,6 +47,16 @@ static uint8_t s_sync_on_image;
 static uint8_t s_sync_before_enter;
 static uint8_t s_require_locked_ticks;
 static uint16_t s_precise_millisecond;
+static uint8_t s_synchronized = 1U;
+static int32_t s_marker_result;
+
+uint8_t stm32_clock_is_synchronized(void) { return s_synchronized; }
+int32_t stm32_clock_set_synchronized(uint8_t synchronized)
+{
+    assert(s_critical == 0U);
+    if (s_marker_result == 0) { s_synchronized = synchronized; }
+    return s_marker_result;
+}
 
 #define TEST_SYNC_HOUR_TICKS (3600UL * configTICK_RATE_HZ)
 
@@ -545,6 +555,8 @@ static void s_assert_calendar(const clock_calendar_t *p_actual,
 
 static void s_time_reset(TickType_t ticks)
 {
+    s_synchronized = 1U;
+    s_marker_result = 0;
     s_ticks = ticks;
     s_rtc_result = 0;
     s_write_result = 0;
@@ -1173,6 +1185,59 @@ static void s_test_precise_time(void)
     assert(clock_service_request_timestamp(&requested_time, s_ticks, 2007U) == -3);
 }
 
+static void s_test_unsynchronized(void)
+{
+    clock_view_model_t model;
+    clock_timestamp_t timestamp;
+    int32_t result;
+    s_time_reset(0U);
+    s_synchronized = 0U;
+    clock_service_poll();
+    clock_service_get_model(&model);
+    assert(model.calendar_state == CLOCK_DATA_UNSYNCHRONIZED);
+    assert(model.faults.active_categories == 0U && model.startup_ready != 0U);
+    s_bind_time_owner();
+    assert(clock_service_request_time_query(3001U) == 0);
+    clock_service_poll();
+    assert(clock_service_take_timestamp_result(3001U, &result, &timestamp) == 1U && result == -5);
+    assert(s_synchronized == 0U);
+    assert(clock_service_request_time(&s_calendar, 3002U) == 0);
+    clock_service_poll();
+    assert(clock_service_take_time_result(3002U, &result) == 1U && result == 0);
+    assert(s_synchronized == 1U);
+    clock_service_init();
+    clock_service_poll();
+    clock_service_get_model(&model);
+    assert(model.calendar_state == CLOCK_DATA_READY);
+    s_wait_count = 0U;
+    s_bind_time_owner();
+    s_write_result = -1;
+    assert(clock_service_request_time(&s_calendar, 3003U) == 0);
+    clock_service_poll();
+    assert(clock_service_take_time_result(3003U, &result) == 1U && result == -1);
+    assert(s_synchronized == 0U);
+    clock_service_init();
+    clock_service_poll();
+    clock_service_get_model(&model);
+    assert(model.calendar_state == CLOCK_DATA_UNSYNCHRONIZED);
+    s_wait_count = 0U;
+    s_bind_time_owner();
+    s_write_result = 0;
+    memset(&timestamp, 0, sizeof(timestamp));
+    timestamp.calendar = s_calendar;
+    assert(clock_service_request_timestamp(&timestamp, s_ticks, 3004U) == 0);
+    clock_service_poll();
+    assert(clock_service_take_timestamp_result(3004U, &result, &timestamp) == 1U && result == 0);
+    clock_service_get_model(&model);
+    assert(s_synchronized == 1U && model.calendar_state == CLOCK_DATA_READY);
+    s_marker_result = -1;
+    assert(clock_service_request_time(&s_calendar, 3005U) == 0);
+    clock_service_poll();
+    assert(clock_service_take_time_result(3005U, &result) == 1U && result == -1);
+    clock_service_get_model(&model);
+    assert(model.calendar_state == CLOCK_DATA_ERROR);
+}
+
 int main(void)
 {
     s_test_calendar();
@@ -1187,6 +1252,7 @@ int main(void)
     s_test_time_requests();
     s_test_time_loop();
     s_test_precise_time();
+    s_test_unsynchronized();
     assert(s_critical == 0U);
     (void)puts("clock runtime: dates, faults, schedule, cached service, W25Q snapshots, diagnostic-only TX, TIME mailbox/ownership, fault latch/recovery, notify/deadline/wrap and sync age/boundaries/saturation/atomicity/reset passed");
     return 0;

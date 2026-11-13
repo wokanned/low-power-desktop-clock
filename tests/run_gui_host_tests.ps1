@@ -26,7 +26,8 @@ $testSources = @(
     (Join-Path $projectRoot 'fonts\font24.c'),
     (Join-Path $projectRoot 'app\epd_clock_view.c'),
     (Join-Path $projectRoot 'app\clock_model.c'),
-    (Join-Path $projectRoot 'resources\clock_gray_assets.c')
+    (Join-Path $projectRoot 'resources\clock_gray_assets.c'),
+    (Join-Path $projectRoot 'resources\weather_glyphs.c')
 )
 
 & $Compiler '-std=c99' '-Wall' '-Wextra' '-Werror' '-pedantic' '-O2' @testSources '-o' $testExecutable

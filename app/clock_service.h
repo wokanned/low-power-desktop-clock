@@ -23,7 +23,8 @@ int32_t clock_service_request_time(const clock_calendar_t *p_calendar,
 uint8_t clock_service_take_time_result(uint32_t token, int32_t *p_result);
 /* Same one-request mailbox as TIME. Precise input denotes receive_tick_ms in
  * the 1000Hz RTOS tick domain; owner compensates queue delay (max 2000ms).
- * Query performs fresh RTC IO on the owner task and never records a sync. */
+ * Query performs fresh RTC IO on the owner task and never records a sync.
+ * A readable calendar without a retained synchronization marker returns -5. */
 int32_t clock_service_request_timestamp(const clock_timestamp_t *p_timestamp,
                                         uint32_t receive_tick_ms, uint32_t token);
 int32_t clock_service_request_time_query(uint32_t token);

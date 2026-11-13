@@ -8,16 +8,16 @@
 ## Repository Purpose
 - DeskClock is an STM32L471RET6 + FreeRTOS desktop clock with a GDEY029T94-FL03 e-paper display, built on CubeMX HAL.
 - Primary development flow: maintain peripheral configuration in CubeMX, edit and review in VS Code, then build, download, and debug through Keil MDK-ARM (ARMCC).
-- Use `docs/totalPLAN.md`, section `当前开发状态（2026-10-27）`, as the shared project-status entry. Module documents retain detailed contracts and dated verification records.
-- The current software prototype integrates RTC/clock display, ADXL345 telemetry, W25Q128 configuration storage, weather injection, and TIME synchronization over USART2. The onboard ESP32 remains connected to USART1 without an application protocol. ESP32 networking/NTP, environmental and battery sampling, button/alarm behavior, and whole-device low-power operation remain pending.
-- The 2026-10-27 weather and TIME integration passed the recorded host checks and a complete default BW Keil build (zero errors/warnings). The image is in `build/time-sync-keil/mode-0/` and has not been flashed. See `docs/测试数据.md` for image identity and verification scope. Do not transfer historical build or board results to the current working tree.
+- Use `docs/totalPLAN.md`, section `当前开发状态`, as the shared project-status entry. Module documents retain detailed contracts and dated verification records.
+- Read the shared status and `docs/current_code_gaps.md` for implemented behavior and outstanding acceptance. Keep feature inventories in that shared entry.
+- See `docs/测试数据.md` for dated test scope and exact image identity. Evaluate each working tree against its own inputs and validation.
 
 ## Source Layout (High Level)
 - `Core/`: CubeMX-generated startup/system/peripheral init and main entry.
 - `app/`: application logic, scheduling, data handling.
 - `device/`: device/register protocol logic (hardware-agnostic as much as possible).
 - `platform/`: HAL-bound platform adaptation for SPI/I2C/UART/GPIO/delay.
-- `middleware/`: planned location for reusable protocol/algorithm/logging modules; the directory is not currently implemented.
+- `middleware/`: reusable modules including littlefs, file_store, button filtering, and low-power time accounting.
 - `docs/`: human-readable standards and process documentation.
 
 ## Build Facts

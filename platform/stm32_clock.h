@@ -5,6 +5,10 @@
 
 /* Returns 0, -1 (IO), or -2 (invalid calendar). */
 int32_t stm32_clock_read_calendar(clock_calendar_t *p_calendar);
+/* RTC_BKP_DR1 records verified time synchronization independently of DR0's
+ * peripheral-initialized marker. Owner-task only; set verifies readback. */
+uint8_t stm32_clock_is_synchronized(void);
+int32_t stm32_clock_set_synchronized(uint8_t synchronized);
 /* Task-context 24-hour hardware calendar update. Weekday is derived from date.
  * Returns 0 only after a single INIT transaction and verified readback (exact
  * value or its next second), -1 (IO/busy), -2 (invalid), or -3 (verification).

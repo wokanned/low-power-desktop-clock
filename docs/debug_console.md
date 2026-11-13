@@ -1,6 +1,6 @@
 # USART2 显式文本控制台
 
-B1～B5修复证据和另外5项已确认待实现需求，见[代码与需求差距](current_code_gaps.md)；构建/主机验证不代表板测通过。
+B1～B5与R1～R5的实现和验证记录，见[代码与需求差距](current_code_gaps.md)；构建/主机验证不代表板测通过。
 
 2026-11-03：默认 AUTO 待机，不再默认持续发送遥测。在上电30秒或动作唤醒10秒窗口先发送 `POWER HOLD` 并等待应答，再执行 `CONSOLE ON`。完成维护发送 `POWER AUTO`；`POWER STATUS` 可在控制台之外查询。CONSOLE ON/OFF 只切换文本与遥测，不控制待机。详见[低功耗说明](low_power.md)。
 
@@ -34,7 +34,7 @@ TIME2/TIME? 也与新天气、预报和文件事务排他；旧 TIME 与 FORMAT 
 
 多天预报新增`FORECAST BEGIN/DAY/COMMIT/CANCEL/STATUS`，仅在控制台处理，先完成TIME再发送新批次；完整日期字段、异步落盘应答和重试规则见[多天预报协议](forecast_protocol.md)。收集或保存预报时，TIME、CONSOLE OFF以及除FS STATUS以外的文件维护返回BUSY，须完成或取消预报后再切换。
 
-更新日期：2026-11-04。文档入口见 [文档导航](README.md)，工程总进度见 [totalPLAN.md 的“当前开发状态（2026-11-04）”](totalPLAN.md#当前开发状态2026-11-04)。控制台、天气注入、切页和 TIME 校时已接入。USART2 TX 已改为 DMA，最新构建与验证范围见[验证记录](测试数据.md)；最新镜像尚未烧录，板上验收仍待完成。
+更新日期为2026-11-12。文档入口见 [文档导航](README.md)，工程总进度见 [totalPLAN.md 的“当前开发状态”](totalPLAN.md#当前开发状态)。控制台、天气注入、切页和 TIME 校时已接入。USART2 TX 已改为 DMA，最新构建与验证范围见[验证记录](测试数据.md)；最新镜像尚未烧录，板上验收仍待完成。
 
 USART2 使用 H10，PA2 TX / PA3 RX，115200、8N1、3.3V TTL。默认 AUTO 不持续发送遥测；
 取得 HOLD 且退出控制台后发送16通道、68字节 JustFloat 帧，`debugTask` 始终是唯一发送者。
@@ -55,7 +55,7 @@ HOLD 非控制台模式下，普通文本终端看到二进制乱码符合协议
 | `FORMAT 12` / `FORMAT 24` | 异步请求保存格式；验证持久化成功后回复 `OK FORMAT 12` / `OK FORMAT 24` |
 | `ERRORS` | 输出活动类别数、故障修订号、保留 EPD 状态；各来源输出当前原因、初次原因、首次完整时间和 tick |
 | `CONSOLE OFF` | 回复 `OK CONSOLE OFF` 成功后清空旧队列；HOLD恢复二进制输出，AUTO仍暂停连续遥测 |
-| `WEATHER <record>` | 控制台回复 `OK WEATHER`；完整记录校验成功后原子替换 RAM 天气缓存、选择天气页、重启三分钟轮换计时并记录同步成功 |
+| `WEATHER <record>` | 控制台回复 `OK WEATHER`；完整记录校验成功后原子替换RAM天气缓存、刷新过期及同步年龄，保留选页、暂停和轮换期限 |
 | `PAGE WEATHER` / `PAGE CLOCK` | 控制台分别回复 `OK PAGE WEATHER` / `OK PAGE CLOCK`；手动选择目标页面并重新计时（无WDATA为180秒；有WDATA时CLOCK180秒、WEATHER60秒），状态仅保存在RAM |
 | `TIME YYYY-MM-DDTHH:MM:SS` | 北京时间直接校时；RTC 写入、同步和读回验证成功后发布模型并记录同步成功，控制台回复 `OK TIME` |
 | `FS STATUS` / `FS LIST /` | 查询文件系统快照或目录；STATUS 的 FLASH 字段保留文件故障的底层原因，文件检查中返回未就绪 |
@@ -68,7 +68,7 @@ HOLD 非控制台模式下，普通文本终端看到二进制乱码符合协议
 `ERR WEATHER`，损坏或超长命令整行丢弃并返回 `ERR RX`。存储未就绪、拒绝请求
 或提交失败返回 `ERR STORAGE`。未知文本命令返回 `ERR COMMAND`。NTP 和任意 Flash 读写命令尚未实现。校时格式及运行行为见 [time_protocol.md](time_protocol.md)，天气字段和有效范围见 [weather_protocol.md](weather_protocol.md)。
 启动默认选择时钟页，此后每三分钟在时钟页和天气页之间切换。每个完整有效 `WEATHER`
-包会选择天气页、重启三分钟计时，重复有效包也一样；无效天气或接收错误不重置。
+包只更新缓存、过期及同步年龄，保留选页、暂停和轮换期限。重复有效包采用相同规则。
 手动 `PAGE` 命令也从该命令重新计时，包括重复选择当前页。天气、页面和计时不跨复位保存，
 格式配置则由 storageTask 持久化。轮换使用单调 tick，`TIME` 校时和 `CONSOLE ON/OFF`
 不改变周期。故障覆盖期间继续更新最终目标，BUSY 期间合并最新画面。详细规则见[天气协议](weather_protocol.md)。
@@ -87,7 +87,7 @@ WEATHER 深圳,2,235,180,270,65,2,35,2026-10-28T14:30
 PAGE CLOCK
 ```
 
-天气提交会先选择天气页，返回时钟页后才显示该格；故障页也会隐藏它。`WIFI` 表示距上次成功同步的时间，不增加联网、信号强度或断线判断。独立TIME验收、整小时边界及刷新规则见[天气协议的同步记录说明](weather_protocol.md#wifi-同步记录与验收示例)与[校时协议](time_protocol.md#wifi-同步记录)。
+天气提交保留当前页，在时钟页可查看该格。故障页也会隐藏它。`WIFI` 表示距上次成功同步的时间，不增加联网、信号强度或断线判断。独立TIME验收、整小时边界及刷新规则见[天气协议的同步记录说明](weather_protocol.md#wifi-同步记录与验收示例)与[校时协议](time_protocol.md#wifi-同步记录)。
 
 `ERRORS` 的 active/first 是十六进制位掩码，依次为 IO=001、CONFIG=002、
 TIMEOUT=004、ID=008、VERIFY=010、START=020、TX=040、RX=080、OVERFLOW=100。

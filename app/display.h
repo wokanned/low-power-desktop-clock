@@ -31,6 +31,7 @@ typedef struct {
     clock_view_model_t clock;
     weather_snapshot_t weather;
     weather_feed_snapshot_t feed;
+    uint8_t use_feed_renderer;
     uint8_t alert_index;
     uint16_t text_page;
 } display_snapshot_t;
@@ -45,15 +46,19 @@ bool display_select_page(display_page_t page);
 bool display_handle_action(display_action_t action);
 /* Console-only navigation, strict complete PAGE command. One-based arguments. */
 bool display_page_command(const char *p_line);
-/* 完整有效天气原子更新缓存、选择天气页并重新计时，重复包也重置。
- * 失败不改变缓存、页面或计时；now_tick 使用单调 RTOS tick。 */
+/* 完整有效天气原子更新缓存和同步年龄，保留页面和轮换期限。
+ * now_tick 使用单调 RTOS tick。 */
 bool display_publish_weather(const weather_data_t *p_data, uint32_t now_tick);
-/* A newly committed forecast selects weather and records a sync. Restoring a
- * saved batch must publish it without calling this command-side hook. */
+/* A newly committed forecast records a sync and selects weather after any
+ * active automatic alert. Manual navigation overrides that deferred page.
+ * Restoring a saved batch must not call this command-side hook. */
 void display_forecast_committed(void);
 /* 获取一致快照并推进按页面时长配置的轮换/预警停留；
  * 耗时刷新后只切一次，不补跑错过的页面。 */
 void display_get_snapshot(uint32_t now_tick, display_snapshot_t *p_snapshot);
+/* displayTask calls after a successful panel refresh, including BUSY completion.
+ * Starts the matching automatic alert's hold only when its frame is visible. */
+void display_frame_completed(const display_snapshot_t *p_snapshot, uint32_t now_tick);
 
 /* Create one task with application-owned stack and control block.
  * Call during RTOS object initialization; no FreeRTOS heap is consumed. */

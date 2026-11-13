@@ -10,7 +10,7 @@ if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
 $testOutput = [IO.Path]::GetFullPath($OutputDirectory)
 New-Item -ItemType Directory -Path $testOutput -Force | Out-Null
 $renderSources = @('app/epd_clock_view.c', 'app/clock_model.c',
-    'resources/clock_gray_assets.c', 'gui/GUI_Paint.c',
+    'resources/clock_gray_assets.c', 'resources/weather_glyphs.c', 'gui/GUI_Paint.c',
     'fonts/font8.c', 'fonts/font12.c', 'fonts/font16.c', 'fonts/font20.c', 'fonts/font24.c') |
     ForEach-Object { Join-Path $projectRoot $_ }
 $pixelExecutable = Join-Path $testOutput 'pixel_test.exe'
@@ -25,7 +25,7 @@ $testSources = @('tests/stubs/power_stub.c', 'tests/gray4_diagnostic_host_test.c
     'app/epd_bringup.c', 'app/epd_vendor_demo.c', 'app/clock_schedule.c',
     'device/epd_gdey029t94.c', 'resources/epd_vendor_assets.c',
     'fonts/font12CN.c', 'fonts/font24CN.c', 'app/weather_feed.c', 'app/epd_weather_pages.c',
-    'resources/weather_pages_assets.c', 'resources/weather_glyphs.c') | ForEach-Object { Join-Path $projectRoot $_ }
+    'resources/weather_pages_assets.c') | ForEach-Object { Join-Path $projectRoot $_ }
 $stubDirectory = Join-Path $PSScriptRoot 'stubs/display'
 & $Compiler '-std=c99' '-Wall' '-Wextra' '-Werror' '-pedantic' '-O2' `
     '-DEPD_VENDOR_DEMO_MODE=7' '-I' $stubDirectory @testSources @renderSources '-o' $testExecutable

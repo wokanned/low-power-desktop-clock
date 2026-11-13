@@ -3,6 +3,7 @@
 #include "../device/epd_gdey029t94.h"
 #include "../gui/GUI_Paint.h"
 #include "../resources/clock_gray_assets.h"
+#include "../resources/weather_glyphs.h"
 
 #include <string.h>
 
@@ -256,6 +257,36 @@ static void clock_gray_wifi(char text[16], const clock_field_t *p_field)
     }
 }
 
+static void clock_gray_unsynchronized(clock_gray_canvas_t *p_canvas,
+                                      uint16_t x, uint16_t y)
+{
+    static const uint16_t s_label[] = {0x65F6U, 0x95F4U, 0x672AU, 0x540CU, 0x6B65U};
+    const weather_glyph_t *p_glyph;
+    uint8_t i;
+    uint8_t j;
+    uint8_t row;
+    uint8_t column;
+    for (i = 0U; i < sizeof(s_label) / sizeof(s_label[0]); i++) {
+        p_glyph = NULL;
+        for (j = 0U; j < g_weather_glyph_count; j++) {
+            if (g_weather_glyphs[j].codepoint == s_label[i]) {
+                p_glyph = &g_weather_glyphs[j];
+                break;
+            }
+        }
+        if (p_glyph == NULL) { p_canvas->valid = 0U; return; }
+        for (row = 0U; row < 16U; row++) {
+            for (column = 0U; column < 16U; column++) {
+                if ((p_glyph->bitmap[row * 2U + column / 8U] &
+                    (0x80U >> (column % 8U))) != 0U) {
+                    clock_gray_pixel(p_canvas, (int16_t)(x + i * 16U + column),
+                        (int16_t)(y + row), CLOCK_GRAY_BLACK);
+                }
+            }
+        }
+    }
+}
+
 static void clock_gray_normal(clock_gray_canvas_t *p_canvas,
                               const clock_view_model_t *p_model)
 {
@@ -288,7 +319,11 @@ static void clock_gray_normal(clock_gray_canvas_t *p_canvas,
     } else {
         strcpy(text, "N/A");
     }
-    clock_gray_text(p_canvas, CLOCK_FONT_DATE, 8U, 102U, 156U, text);
+    if (p_model->calendar_state == CLOCK_DATA_UNSYNCHRONIZED) {
+        clock_gray_unsynchronized(p_canvas, 8U, 102U);
+    } else {
+        clock_gray_text(p_canvas, CLOCK_FONT_DATE, 8U, 102U, 156U, text);
+    }
     clock_gray_rectangle(p_canvas, 160U, 10U, 1U, 108U, CLOCK_GRAY_MAIN_DIVIDER);
     clock_gray_rectangle(p_canvas, 228U, 10U, 1U, 108U, CLOCK_GRAY_DIVIDER);
     clock_gray_rectangle(p_canvas, 168U, 64U, 120U, 1U, CLOCK_GRAY_DIVIDER);
@@ -378,7 +413,11 @@ static void clock_gray_errors(clock_gray_canvas_t *p_canvas,
     } else {
         strcpy(text, "N/A");
     }
-    clock_gray_text(p_canvas, CLOCK_FONT_HEADER_DATE, 55U, 9U, 220U, text);
+    if (p_model->calendar_state == CLOCK_DATA_UNSYNCHRONIZED) {
+        clock_gray_unsynchronized(p_canvas, 55U, 6U);
+    } else {
+        clock_gray_text(p_canvas, CLOCK_FONT_HEADER_DATE, 55U, 9U, 220U, text);
+    }
     strcpy(text, "ERRORS ");
     p_end = clock_gray_unsigned(&text[7], count);
     *p_end = '\0';

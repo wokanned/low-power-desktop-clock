@@ -35,6 +35,7 @@ static bool s_cycle_paused;
 static uint32_t s_attention_seen;
 static uint32_t s_attention_tick;
 static uint8_t s_attention_active;
+static uint8_t s_attention_visible;
 static display_page_t s_return_page;
 static uint8_t s_return_alert;
 static uint16_t s_return_text;
@@ -57,38 +58,42 @@ static void s_restart_cycle_locked(uint32_t now_tick)
 }
 
 static void s_poll_page_locked(uint32_t now_tick,
-                                const weather_feed_snapshot_t *p_feed)
+                                const weather_feed_snapshot_t *p_feed,
+                                const clock_view_model_t *p_clock)
 {
     uint32_t elapsed;
     uint32_t interval;
     if (p_feed->attention_revision != 0U &&
         p_feed->attention_revision != s_attention_seen) {
         s_attention_seen = p_feed->attention_revision;
-        if (p_feed->alert_state == WEATHER_ALERT_ACTIVE) {
-            if (s_attention_active == 0U) {
-                s_return_page = s_selected_page;
-                s_return_alert = s_alert_index;
-                s_return_text = s_text_page;
-            }
-            s_attention_active = 1U;
-            s_attention_tick = now_tick;
-            s_alert_index = p_feed->attention_index;
-            s_text_page = 0U;
-            s_select_page_locked(DISPLAY_PAGE_ALERT);
-            s_restart_cycle_locked(now_tick);
+        if (s_attention_active == 0U) {
+            s_return_page = s_selected_page;
+            s_return_alert = s_alert_index;
+            s_return_text = s_text_page;
         }
+        s_attention_active = 1U;
+        s_attention_visible = 0U;
+        s_alert_index = p_feed->attention_index;
+        s_text_page = 0U;
+        s_select_page_locked(DISPLAY_PAGE_ALERT);
+        s_restart_cycle_locked(now_tick);
     }
     if (s_attention_active != 0U) {
         if (p_feed->attention_revision == s_attention_seen) {
             s_alert_index = p_feed->attention_index;
         }
         elapsed = (uint32_t)(now_tick - s_attention_tick);
-        if (p_feed->alert_state == WEATHER_ALERT_ACTIVE &&
-            (p_feed->alert_mask & (uint8_t)(1U << s_alert_index)) != 0U &&
-            (elapsed < DISPLAY_ALERT_HOLD_TICKS || elapsed >= DISPLAY_TICK_HALF_RANGE)) {
-            return;
+        if (p_feed->attention_revision != 0U &&
+            p_feed->attention_revision == s_attention_seen &&
+            (p_feed->alert_mask & (uint8_t)(1U << s_alert_index)) != 0U) {
+            if (p_clock->faults.active_categories != 0U || p_clock->startup_ready == 0U) {
+                s_attention_visible = 0U;
+            }
+            if (s_attention_visible == 0U || elapsed < DISPLAY_ALERT_HOLD_TICKS ||
+                elapsed >= DISPLAY_TICK_HALF_RANGE) { return; }
         }
         s_attention_active = 0U;
+        s_attention_visible = 0U;
         s_alert_index = s_return_alert;
         s_text_page = s_return_text;
         s_select_page_locked(s_return_page);
@@ -131,6 +136,7 @@ static void s_ack_attention_locked(void)
     weather_feed_get_snapshot((uint32_t)xTaskGetTickCount(), &feed);
     s_attention_seen = feed.attention_revision;
     s_attention_active = 0U;
+    s_attention_visible = 0U;
 }
 
 static void s_manual_select_locked(display_page_t page, uint32_t now_tick)
@@ -249,8 +255,6 @@ bool display_publish_weather(const weather_data_t *p_data, uint32_t now_tick)
     published = weather_publish(p_data, now_tick);
     if (published) {
         clock_service_note_sync_success();
-        s_select_page_locked(DISPLAY_PAGE_WEATHER);
-        s_restart_cycle_locked(now_tick);
     }
     taskEXIT_CRITICAL();
     return published;
@@ -260,8 +264,16 @@ void display_forecast_committed(void)
 {
     taskENTER_CRITICAL();
     clock_service_note_sync_success();
-    s_select_page_locked(DISPLAY_PAGE_WEATHER);
-    s_restart_cycle_locked((uint32_t)xTaskGetTickCount());
+    if (s_attention_active != 0U) {
+        /* Background publication must not displace an alert waiting for its
+         * completed frame. Apply the requested page when attention ends. */
+        s_return_page = DISPLAY_PAGE_WEATHER;
+        s_return_alert = 0U;
+        s_return_text = 0U;
+    } else {
+        s_select_page_locked(DISPLAY_PAGE_WEATHER);
+        s_restart_cycle_locked((uint32_t)xTaskGetTickCount());
+    }
     taskEXIT_CRITICAL();
 }
 
@@ -279,7 +291,7 @@ static uint8_t s_live_date_matches(const weather_data_t *p_live,
 }
 
 /* Called under the snapshot lock. All inputs are RAM; no storage work occurs. */
-static void s_select_weather_locked(const clock_view_model_t *p_clock,
+static void s_select_legacy_weather_locked(const clock_view_model_t *p_clock,
                                     weather_snapshot_t *p_weather)
 {
     forecast_batch_t batch;
@@ -316,20 +328,117 @@ static void s_select_weather_locked(const clock_view_model_t *p_clock,
     }
 }
 
+/* WDATA owns the city once published. Its dated DAY records precede the
+ * persisted same-city FORECAST. Neither source invents current conditions. */
+static void s_select_weather_locked(display_snapshot_t *p_snapshot)
+{
+    weather_feed_lease_t lease;
+    forecast_batch_t saved;
+    forecast_day_t day;
+    const weather_feed_batch_t *p_feed;
+    weather_snapshot_t *p_weather = &p_snapshot->weather;
+    const clock_view_model_t *p_clock = &p_snapshot->clock;
+    uint8_t calendar_ready;
+    uint8_t found = 0U;
+    uint8_t i;
+
+    p_snapshot->use_feed_renderer = 0U;
+    if (p_snapshot->feed.available == 0U) {
+        s_select_legacy_weather_locked(p_clock, p_weather);
+        return;
+    }
+    calendar_ready = (uint8_t)(p_clock->calendar_state == CLOCK_DATA_READY &&
+        clock_calendar_valid(&p_clock->calendar));
+    memset(p_weather, 0, sizeof(*p_weather));
+    p_weather->data.city = p_snapshot->feed.city;
+    p_weather->forecast_date = p_clock->calendar;
+    p_weather->kind = calendar_ready != 0U ? WEATHER_VIEW_NO_TODAY :
+                                           WEATHER_VIEW_CLOCK_UNAVAILABLE;
+    if (weather_feed_acquire(p_snapshot->feed.revision, &lease)) {
+        p_feed = lease.p_batch;
+        if (p_snapshot->feed.fresh != 0U && p_feed->live_valid != 0U &&
+            (calendar_ready == 0U || s_live_date_matches(&p_feed->live, &p_clock->calendar))) {
+            p_weather->kind = WEATHER_VIEW_LIVE;
+            p_weather->data = p_feed->live;
+            p_weather->available = 1U;
+            p_weather->fresh = 1U;
+            p_weather->revision = p_feed->revision;
+            p_snapshot->use_feed_renderer = 1U;
+        } else if (calendar_ready != 0U) {
+            for (i = 0U; i < p_feed->day_count; i++) {
+                if (p_feed->days[i].date.year == p_clock->calendar.year &&
+                    p_feed->days[i].date.month == p_clock->calendar.month &&
+                    p_feed->days[i].date.day == p_clock->calendar.day) {
+                    day.date = p_feed->days[i].date;
+                    day.condition = p_feed->days[i].condition;
+                    day.minimum_tenths = p_feed->days[i].minimum_tenths;
+                    day.maximum_tenths = p_feed->days[i].maximum_tenths;
+                    p_weather->revision = p_feed->revision;
+                    found = 1U;
+                    break;
+                }
+            }
+        }
+        weather_feed_release(&lease);
+    }
+    if (p_snapshot->use_feed_renderer != 0U || calendar_ready == 0U) { return; }
+    if (found == 0U && forecast_get_batch(&saved) && saved.city == p_snapshot->feed.city) {
+        for (i = 0U; i < saved.count; i++) {
+            if (saved.days[i].date.year == p_clock->calendar.year &&
+                saved.days[i].date.month == p_clock->calendar.month &&
+                saved.days[i].date.day == p_clock->calendar.day) {
+                day = saved.days[i];
+                p_weather->revision = saved.id;
+                found = 1U;
+                break;
+            }
+        }
+    }
+    if (found != 0U) {
+        p_weather->kind = WEATHER_VIEW_FORECAST;
+        p_weather->available = 1U;
+        p_weather->fresh = 1U;
+        p_weather->forecast_date = day.date;
+        p_weather->data.condition = day.condition;
+        p_weather->data.minimum_tenths = day.minimum_tenths;
+        p_weather->data.maximum_tenths = day.maximum_tenths;
+    }
+}
+
 void display_get_snapshot(uint32_t now_tick, display_snapshot_t *p_snapshot)
 {
     if (p_snapshot == NULL) { return; }
     taskENTER_CRITICAL();
+    clock_service_get_model(&p_snapshot->clock);
     weather_feed_get_snapshot(now_tick, &p_snapshot->feed);
-    s_poll_page_locked(now_tick, &p_snapshot->feed);
+    s_poll_page_locked(now_tick, &p_snapshot->feed, &p_snapshot->clock);
     p_snapshot->page = s_selected_page;
     p_snapshot->page_revision = s_page_revision;
     p_snapshot->cycle_paused = s_cycle_paused;
     p_snapshot->alert_index = s_alert_index;
     p_snapshot->text_page = s_text_page;
-    clock_service_get_model(&p_snapshot->clock);
     weather_get_snapshot(now_tick, &p_snapshot->weather);
-    s_select_weather_locked(&p_snapshot->clock, &p_snapshot->weather);
+    s_select_weather_locked(p_snapshot);
+    if (p_snapshot->feed.available != 0U && p_snapshot->page != DISPLAY_PAGE_WEATHER) {
+        p_snapshot->use_feed_renderer = 1U;
+    }
+    taskEXIT_CRITICAL();
+}
+
+void display_frame_completed(const display_snapshot_t *p_snapshot, uint32_t now_tick)
+{
+    if (p_snapshot == NULL) { return; }
+    taskENTER_CRITICAL();
+    if (s_attention_active != 0U) {
+        if (p_snapshot->clock.faults.active_categories != 0U) {
+            s_attention_visible = 0U;
+        } else if (s_attention_visible == 0U && p_snapshot->page == DISPLAY_PAGE_ALERT &&
+            p_snapshot->page_revision == s_page_revision &&
+            p_snapshot->feed.attention_revision == s_attention_seen) {
+            s_attention_tick = now_tick;
+            s_attention_visible = 1U;
+        }
+    }
     taskEXIT_CRITICAL();
 }
 

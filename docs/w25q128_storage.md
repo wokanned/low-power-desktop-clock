@@ -2,9 +2,9 @@
 
 **当前串口操作前提（2026-11-04）**：默认 AUTO 不持续遥测，睡眠时不能保证串口接收。先在上电30秒或晃动后的10秒窗口发送 `POWER HOLD`，收到 `OK POWER HOLD` 后再执行本文示例；结束调试可发送 `POWER AUTO`。仅 `CONSOLE ON` 不会保持清醒。详见[低功耗说明](low_power.md)。
 
-B1～B5修复证据和另外5项已确认待实现需求，见[代码与需求差距](current_code_gaps.md)；构建/主机验证不代表板测通过。
+B1～B5与R1～R5的实现和验证记录，见[代码与需求差距](current_code_gaps.md)；构建/主机验证不代表板测通过。
 
-更新日期：2026-11-04。文档入口见 [文档导航](README.md)，整机进度见 [totalPLAN.md](totalPLAN.md#当前开发状态2026-11-04)。
+更新日期：2026-11-04。文档入口见 [文档导航](README.md)，整机进度见 [totalPLAN.md](totalPLAN.md#当前开发状态)。
 
 本模块为板上的 W25Q128JV 外部 SPI NOR Flash 提供阻塞式存取接口。设备层位于 `device/flash_w25q128.*`，STM32 HAL 适配位于 `platform/stm32_w25q128.*`，启动自检和任务归属位于 `app/storage.*`。
 

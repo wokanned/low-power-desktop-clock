@@ -7,6 +7,21 @@
 #define CLOCK_PRECISE_VERIFY_MS 20
 #define CLOCK_PRECISE_SHIFT_ATTEMPTS 2U
 #define CLOCK_MILLISECONDS_PER_SECOND 1000U
+#define CLOCK_SYNCHRONIZED_MARKER 0x53594E31UL
+
+uint8_t stm32_clock_is_synchronized(void)
+{
+    return (uint8_t)(hrtc.Instance == RTC &&
+        HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR1) == CLOCK_SYNCHRONIZED_MARKER);
+}
+
+int32_t stm32_clock_set_synchronized(uint8_t synchronized)
+{
+    uint32_t marker = synchronized != 0U ? CLOCK_SYNCHRONIZED_MARKER : 0U;
+    if (hrtc.Instance != RTC) { return -1; }
+    HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR1, marker);
+    return HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR1) == marker ? 0 : -1;
+}
 
 #if defined(__CC_ARM)
 extern const uint8_t Image$$RW_IRAM1$$Base[];

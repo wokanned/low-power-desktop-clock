@@ -235,6 +235,7 @@ void clock_service_poll(void)
     uint8_t apply_time;
     clock_time_kind_t request_kind = CLOCK_TIME_LEGACY;
     uint8_t request_pending;
+    uint8_t synchronized;
     uint32_t elapsed;
     uint32_t total_ms;
     uint16_t request_year;
@@ -270,8 +271,11 @@ void clock_service_poll(void)
                     result = stm32_clock_read_calendar(&s_calendar);
                 } else {
                     timestamp.millisecond = (uint16_t)(total_ms % 1000U);
-                    write_result = stm32_clock_write_timestamp(&timestamp,
-                        (uint32_t)now, &timestamp);
+                    write_result = stm32_clock_set_synchronized(0U);
+                    if (write_result == 0) {
+                        write_result = stm32_clock_write_timestamp(&timestamp,
+                            (uint32_t)now, &timestamp);
+                    }
                     if (write_result == 0 && (uint32_t)(xTaskGetTickCount() -
                         timestamp.tick_ms) > timestamp.read_span_ms +
                         CLOCK_PRECISE_SAMPLE_MARGIN_MS) { write_result = -4; }
@@ -279,12 +283,16 @@ void clock_service_poll(void)
                 }
             }
         } else {
-            write_result = stm32_clock_write_calendar(&requested, &s_calendar);
+            write_result = stm32_clock_set_synchronized(0U);
+            if (write_result == 0) {
+                write_result = stm32_clock_write_calendar(&requested, &s_calendar);
+            }
         }
         if (write_result == 0 && !clock_calendar_valid(&s_calendar)) {
             write_result = -2;
         }
         if (apply_time != 0U) {
+            if (write_result == 0) { write_result = stm32_clock_set_synchronized(1U); }
             s_rtc_trust_lost = (uint8_t)(write_result != 0);
             result = write_result;
         }
@@ -299,6 +307,7 @@ void clock_service_poll(void)
     }
     /* A plausible read after a failed write does not restore RTC trust. */
     if (s_rtc_trust_lost != 0U) { result = -1; }
+    synchronized = stm32_clock_is_synchronized();
     now = xTaskGetTickCount();
     sample_memory = (uint8_t)(s_memory_sampled == 0U ||
         (TickType_t)(now - s_memory_tick) >= pdMS_TO_TICKS(CLOCK_MEMORY_SAMPLE_MS));
@@ -320,11 +329,12 @@ void clock_service_poll(void)
         s_memory_sampled = 1U;
     }
     taskENTER_CRITICAL();
-    clock_faults_set_clock(&s_calendar, (uint8_t)(result == 0));
+    clock_faults_set_clock(&s_calendar, (uint8_t)(result == 0 && synchronized != 0U));
     clock_fault_report(CLOCK_FAULT_RTC, result == 0 ? 0U :
         (result == -2 ? CLOCK_FAULT_CONFIGURATION : CLOCK_FAULT_IO));
     if (result == 0) { s_model.calendar = s_calendar; }
-    s_model.calendar_state = result == 0 ? CLOCK_DATA_READY : CLOCK_DATA_ERROR;
+    s_model.calendar_state = result != 0 ? CLOCK_DATA_ERROR :
+        (synchronized != 0U ? CLOCK_DATA_READY : CLOCK_DATA_UNSYNCHRONIZED);
     if (apply_time != 0U && write_result == 0) {
         s_note_sync_success_locked();
     } else {
@@ -339,6 +349,8 @@ void clock_service_poll(void)
         /* Publish completion with the matching calendar/fault model. */
         s_time_request.result = (request_kind == CLOCK_TIME_QUERY && s_rtc_trust_lost != 0U) ?
             -1 : write_result;
+        if (request_kind == CLOCK_TIME_QUERY && s_time_request.result == 0 &&
+            synchronized == 0U) { s_time_request.result = -5; }
         if (request_kind != CLOCK_TIME_LEGACY && write_result == 0) {
             s_time_request.timestamp = timestamp;
         }

@@ -146,6 +146,7 @@ static display_snapshot_t s_snapshot(void)
 {
     display_snapshot_t snapshot;
     display_get_snapshot(s_tick, &snapshot);
+    display_frame_completed(&snapshot, s_tick);
     return snapshot;
 }
 
@@ -386,7 +387,7 @@ static void s_test_four_page_actions(void)
     weather.wind_direction = 2U; weather.wind_speed_tenths = 35U;
     memcpy(weather.source_time, "2026-11-02T16:00", sizeof(weather.source_time));
     assert(display_publish_weather(&weather, s_tick));
-    assert(s_snapshot().page == DISPLAY_PAGE_WEATHER && s_snapshot().cycle_paused);
+    assert(s_snapshot().page == DISPLAY_PAGE_FORECAST && s_snapshot().cycle_paused);
     assert(display_handle_action(DISPLAY_ACTION_HOME));
     display_forecast_committed();
     assert(s_snapshot().page == DISPLAY_PAGE_WEATHER && s_snapshot().cycle_paused);
@@ -420,6 +421,146 @@ static void s_test_four_page_actions(void)
     s_tick++; assert(s_snapshot().page == DISPLAY_PAGE_WEATHER);
 }
 
+static void s_test_offline_and_fault_hold(void)
+{
+    display_snapshot_t snapshot;
+    display_snapshot_t stale;
+    uint32_t origin;
+    clock_calendar_t expired = {2026U, 11U, 2U, 1U, 13U, 20U, 0U};
+    assert(display_select_page(DISPLAY_PAGE_DATA));
+    s_begin(1U, WEATHER_ALERT_ACTIVE); s_alert("offline hold", 1U); s_commit("OK WDATA COMMIT");
+    assert(s_snapshot().page == DISPLAY_PAGE_ALERT);
+    origin = s_tick;
+    s_tick += 20000U;
+    s_begin(0U, WEATHER_ALERT_OFFLINE); s_commit("OK WDATA COMMIT");
+    snapshot = s_snapshot();
+    assert(snapshot.page == DISPLAY_PAGE_ALERT && snapshot.feed.alert_state == WEATHER_ALERT_OFFLINE);
+    s_tick = origin + 59999U; assert(s_snapshot().page == DISPLAY_PAGE_ALERT);
+    s_tick++; assert(s_snapshot().page == DISPLAY_PAGE_DATA);
+
+    s_begin(1U, WEATHER_ALERT_ACTIVE); s_alert("fault hold", 1U); s_commit("OK WDATA COMMIT");
+    assert(s_snapshot().page == DISPLAY_PAGE_ALERT);
+    s_tick += 30000U;
+    s_clock.faults.active_categories = 1U;
+    assert(s_snapshot().page == DISPLAY_PAGE_ALERT);
+    s_tick += 120000U;
+    assert(s_snapshot().page == DISPLAY_PAGE_ALERT);
+    s_clock.faults.active_categories = 0U;
+    assert(s_snapshot().page == DISPLAY_PAGE_ALERT);
+    origin = s_tick;
+    s_tick = origin + 59999U; assert(s_snapshot().page == DISPLAY_PAGE_ALERT);
+    s_tick++; assert(s_snapshot().page == DISPLAY_PAGE_DATA);
+
+    s_clock.faults.active_categories = 1U;
+    s_begin(1U, WEATHER_ALERT_ACTIVE); s_alert("expires while covered", 1U); s_commit("OK WDATA COMMIT");
+    assert(s_snapshot().page == DISPLAY_PAGE_ALERT);
+    weather_feed_expire(&expired);
+    s_clock.faults.active_categories = 0U;
+    assert(s_snapshot().page == DISPLAY_PAGE_DATA);
+
+    s_clock.faults.active_categories = 1U;
+    s_begin(1U, WEATHER_ALERT_ACTIVE); s_alert("manual while covered", 1U); s_commit("OK WDATA COMMIT");
+    assert(s_snapshot().page == DISPLAY_PAGE_ALERT);
+    assert(display_select_page(DISPLAY_PAGE_CLOCK));
+    s_tick += 120000U;
+    s_clock.faults.active_categories = 0U;
+    assert(s_snapshot().page == DISPLAY_PAGE_CLOCK);
+
+    s_begin(1U, WEATHER_ALERT_ACTIVE); s_alert("old frame", 1U); s_commit("OK WDATA COMMIT");
+    display_get_snapshot(s_tick, &stale);
+    s_begin(1U, WEATHER_ALERT_ACTIVE); s_alert("new frame", 1U); s_commit("OK WDATA COMMIT");
+    display_get_snapshot(s_tick, &snapshot);
+    display_frame_completed(&stale, s_tick);
+    s_tick += 120000U;
+    display_get_snapshot(s_tick, &snapshot);
+    assert(snapshot.page == DISPLAY_PAGE_ALERT);
+    display_frame_completed(&snapshot, s_tick);
+    s_tick += 60000U;
+    assert(s_snapshot().page == DISPLAY_PAGE_CLOCK);
+
+    s_clock.faults.active_categories = 1U;
+    s_begin(1U, WEATHER_ALERT_ACTIVE); s_alert("offline before first snapshot", 1U);
+    s_commit("OK WDATA COMMIT");
+    s_begin(0U, WEATHER_ALERT_OFFLINE); s_commit("OK WDATA COMMIT");
+    assert(s_snapshot().page == DISPLAY_PAGE_ALERT);
+    s_tick += 120000U; assert(s_snapshot().page == DISPLAY_PAGE_ALERT);
+    s_clock.faults.active_categories = 0U;
+    assert(s_snapshot().page == DISPLAY_PAGE_ALERT);
+    s_tick += 60000U; assert(s_snapshot().page == DISPLAY_PAGE_CLOCK);
+
+    s_begin(1U, WEATHER_ALERT_ACTIVE);
+    s_record("ALERT", "0,0,4,3,4,1,2026-11-02T10:20,2026-11-02T12:00,2026-11-02T13:20,2,0,4,3,5,0");
+    s_text(0U, 0U, "P1"); s_text(0U, 2U, "RAIN"); s_text(0U, 3U, "MET");
+    s_text(0U, 4U, "LATER"); s_commit("OK WDATA COMMIT");
+    s_begin(0U, WEATHER_ALERT_OFFLINE); s_commit("OK WDATA COMMIT");
+    assert(s_snapshot().page == DISPLAY_PAGE_CLOCK);
+    expired.hour = 12U; expired.minute = 0U;
+    weather_feed_expire(&expired);
+    assert(s_snapshot().page == DISPLAY_PAGE_ALERT);
+    s_tick += 60000U; assert(s_snapshot().page == DISPLAY_PAGE_CLOCK);
+}
+
+static void s_weather_batch(uint8_t city, uint8_t days, const char *p_now)
+{
+    s_id++; s_sequence = 0U; s_crc = UINT32_MAX;
+    (void)snprintf(s_command, sizeof(s_command),
+        "WDATA BEGIN %lu,%u,%u,0,2,2026-11-02T10:35,2026-11-02T10:35,0",
+        (unsigned long)s_id, (unsigned int)city, (unsigned int)days);
+    s_send_command(s_command, "OK WDATA BEGIN");
+    s_record("NOW", p_now);
+    s_record("METRICS", "NA,NA,NA,NA,NA,NA");
+    if (days != 0U) { s_record("DAY", "0,2026-11-02,4,180,270,20"); }
+    s_commit("OK WDATA COMMIT");
+}
+
+static void s_test_feed_weather_selection(void)
+{
+    static const char s_live[] = "1,235,180,270,72,2,50,3,4,2026-11-02T10:30";
+    forecast_batch_t saved;
+    display_snapshot_t snapshot;
+    uint32_t origin;
+    s_clock.calendar = (clock_calendar_t){2026U, 11U, 2U, 1U, 10U, 35U, 0U};
+    assert(display_select_page(DISPLAY_PAGE_WEATHER));
+    if (!s_snapshot().cycle_paused) { assert(display_handle_action(DISPLAY_ACTION_TOGGLE_CYCLE)); }
+    s_weather_batch(1U, 1U, s_live);
+    origin = s_tick;
+    snapshot = s_snapshot();
+    assert(snapshot.use_feed_renderer && snapshot.weather.kind == WEATHER_VIEW_LIVE);
+    s_tick = origin + 10799999U;
+    assert(s_snapshot().use_feed_renderer);
+    s_commit("OK WDATA COMMIT"); /* Idempotent COMMIT leaves the original TTL. */
+    s_tick++;
+    snapshot = s_snapshot();
+    assert(!snapshot.use_feed_renderer && snapshot.weather.kind == WEATHER_VIEW_FORECAST);
+    assert(snapshot.weather.data.condition == 4U && snapshot.weather.data.city == WEATHER_CITY_ZHANJIANG);
+    s_weather_batch(1U, 1U, "NA");
+    assert(s_snapshot().weather.kind == WEATHER_VIEW_FORECAST);
+
+    memset(&saved, 0, sizeof(saved));
+    saved.id = 42U; saved.city = WEATHER_CITY_ZHANJIANG; saved.count = 1U;
+    saved.days[0].date = s_clock.calendar; saved.days[0].condition = 7U;
+    saved.days[0].minimum_tenths = 170; saved.days[0].maximum_tenths = 280;
+    assert(forecast_publish(&saved));
+    assert(s_snapshot().weather.data.condition == 4U); /* WDATA DAY precedes saved. */
+    s_weather_batch(1U, 0U, "NA");
+    snapshot = s_snapshot();
+    assert(snapshot.weather.kind == WEATHER_VIEW_FORECAST && snapshot.weather.data.condition == 7U);
+    s_weather_batch(0U, 0U, "NA");
+    snapshot = s_snapshot();
+    assert(snapshot.weather.kind == WEATHER_VIEW_NO_TODAY && !snapshot.weather.available);
+    forecast_clear();
+    s_weather_batch(1U, 0U, "NA");
+    assert(s_snapshot().weather.kind == WEATHER_VIEW_NO_TODAY);
+    s_weather_batch(1U, 1U, s_live);
+    s_clock.calendar.day = 3U;
+    snapshot = s_snapshot();
+    assert(!snapshot.use_feed_renderer && snapshot.weather.kind == WEATHER_VIEW_NO_TODAY);
+    s_clock.calendar_state = CLOCK_DATA_UNSYNCHRONIZED;
+    s_weather_batch(1U, 0U, "NA");
+    assert(s_snapshot().weather.kind == WEATHER_VIEW_CLOCK_UNAVAILABLE);
+    s_clock.calendar_state = CLOCK_DATA_READY;
+}
+
 int main(int argc, char **argv)
 {
     if (argc > 1) { s_output_directory = argv[1]; }
@@ -427,10 +568,19 @@ int main(int argc, char **argv)
     s_clock.calendar_state = CLOCK_DATA_READY; s_clock.startup_ready = 1U;
     s_clock.format = CLOCK_FORMAT_24; s_tick = 100U;
     weather_init(); forecast_init(); weather_feed_init(s_send); weather_feed_set_console(1U);
+    if (argc > 2) {
+        if (strcmp(argv[2], "weather-selection") == 0) { s_test_feed_weather_selection(); }
+        else if (strcmp(argv[2], "alert-hold") == 0) { s_test_offline_and_fault_hold(); }
+        else { return 2; }
+        puts("PASS: selected weather behavior regression");
+        return 0;
+    }
     s_test_two_page_actions();
     s_test_rotation(); s_test_attention(); s_test_manual_pending(); s_test_reordered_attention();
     s_test_atomic_reject_and_expiry();
     s_test_four_page_actions();
+    s_test_offline_and_fault_hold();
+    s_test_feed_weather_selection();
     printf("PASS: %lu WDATA commands, atomic publication, clock/live/forecast/data rotation, repeated updates, one-shot attention/return/manual exit, page bounds, UTF8/glyph rejection, expiry and real C page rendering\n", (unsigned long)s_commands);
     return 0;
 }

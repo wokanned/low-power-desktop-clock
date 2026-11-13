@@ -530,7 +530,7 @@ int32_t osDelay(uint32_t ticks)
         if(s_committed==3U) { longjmp(s_stop,STOP_COMPLETE); }
     } else if(scenario("memory-phase-weather")) {
         if(s_committed==3U) { longjmp(s_stop,STOP_COMPLETE); }
-    } else if(scenario("weather-auto-page")) {
+    } else if(scenario("weather-keeps-page")) {
         if(s_poll_delays==1U) {
             publish_weather(s_tick, 1U);
             CHECK(s_refreshes==1U);
@@ -860,12 +860,12 @@ static void verify(int stopped)
         CHECK(s_frame_ticks[0]==0U && s_frame_ticks[1]==200U && s_frame_ticks[2]==400U);
         CHECK(s_render_models[1].memory_mode==CLOCK_MEMORY_IFLASH);
         check_retry_intervals(0U);
-    } else if(scenario("weather-auto-page")) {
+    } else if(scenario("weather-keeps-page")) {
         CHECK(stopped==STOP_COMPLETE && s_refreshes==2U && s_committed==2U);
         CHECK(s_weather_published==1U);
         CHECK(s_frame_hashes[0]!=s_frame_hashes[1]);
         CHECK(s_frame_ticks[0]==0U && s_frame_ticks[1]==200U);
-        check_weather_frame(1U, 1U, 0U);
+        CHECK(s_renders==2U && s_render_models[1].wifi.state==CLOCK_DATA_READY);
         check_retry_intervals(0U);
     } else if(scenario("cycle-busy")) {
         CHECK(stopped==STOP_COMPLETE && s_refreshes==3U && s_committed==3U);
@@ -963,19 +963,20 @@ static void verify_cycle_contract(void)
     } else if(scenario("cycle-weather")) {
         s_tick=1000U;
         publish_weather(s_tick, 2U);
-        check_selected_page(1000U, DISPLAY_PAGE_WEATHER);
+        check_selected_page(1000U, DISPLAY_PAGE_CLOCK);
         check_selected_page(180000U, DISPLAY_PAGE_WEATHER);
         check_selected_page(180999U, DISPLAY_PAGE_WEATHER);
-        check_selected_page(181000U, DISPLAY_PAGE_CLOCK);
+        check_selected_page(181000U, DISPLAY_PAGE_WEATHER);
         s_tick=181001U;
         publish_weather(s_tick, 5U);
         check_selected_page(181001U, DISPLAY_PAGE_WEATHER);
         s_tick=350000U;
         publish_weather(s_tick, 5U);
-        check_selected_page(361001U, DISPLAY_PAGE_WEATHER);
-        check_selected_page(529999U, DISPLAY_PAGE_WEATHER);
+        check_selected_page(359999U, DISPLAY_PAGE_WEATHER);
+        check_selected_page(360000U, DISPLAY_PAGE_CLOCK);
         CHECK(!display_publish_weather(NULL, s_tick));
-        check_selected_page(530000U, DISPLAY_PAGE_CLOCK);
+        check_selected_page(539999U, DISPLAY_PAGE_CLOCK);
+        check_selected_page(540000U, DISPLAY_PAGE_WEATHER);
         display_get_snapshot(s_tick, &snapshot);
         CHECK(snapshot.weather.available==1U && snapshot.weather.expired==0U);
         CHECK(snapshot.weather.data.condition==5U && s_weather_published==3U);
@@ -1040,7 +1041,7 @@ static void verify_weather_sync_contract(void)
     CHECK(display_publish_weather(&weather, s_tick));
     display_get_snapshot(s_tick, &before);
     CHECK(s_sync_successes==1U);
-    CHECK(before.page==DISPLAY_PAGE_WEATHER && before.weather.available==1U);
+    CHECK(before.page==DISPLAY_PAGE_CLOCK && before.weather.available==1U);
     CHECK(before.clock.wifi.state==CLOCK_DATA_READY && before.clock.wifi.value==0);
     s_tick=1000U;
     CHECK(display_publish_weather(&weather, s_tick));

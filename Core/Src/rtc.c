@@ -60,6 +60,8 @@ void MX_RTC_Init(void)
   /* USER CODE BEGIN Check_RTC_BKUP */
   /* Preserve calendar and alarm configuration while the backup domain lives. */
   if (HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR0) != RTC_INITIALIZED_MARKER) {
+    /* A new/default calendar has no verified TIME/TIME2 observation. */
+    HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR1, 0U);
   /* USER CODE END Check_RTC_BKUP */
 
   /** Initialize RTC and set the Time and Date

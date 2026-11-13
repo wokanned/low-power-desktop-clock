@@ -26,6 +26,19 @@ static uint32_t s_exit_delay;
 static uint32_t s_read_delay;
 static HAL_StatusTypeDef s_shift_status;
 static uint32_t s_shift_calls;
+static uint8_t s_backup_write_failed;
+
+uint32_t HAL_RTCEx_BKUPRead(RTC_HandleTypeDef *p_handle, uint32_t register_index)
+{
+    assert(p_handle == &hrtc && register_index == RTC_BKP_DR1);
+    return g_fake_rtc.BKP1R;
+}
+
+void HAL_RTCEx_BKUPWrite(RTC_HandleTypeDef *p_handle, uint32_t register_index, uint32_t value)
+{
+    assert(p_handle == &hrtc && register_index == RTC_BKP_DR1);
+    if (s_backup_write_failed == 0U) { g_fake_rtc.BKP1R = value; }
+}
 
 uint8_t RTC_ByteToBcd2(uint8_t value)
 {
@@ -487,6 +500,19 @@ int main(void)
     s_test_failures_and_retry();
     s_test_existing_read();
     s_test_precise_io();
+    s_reset();
+    g_fake_rtc.BKP1R = 0U;
+    assert(stm32_clock_is_synchronized() == 0U);
+    assert(stm32_clock_set_synchronized(1U) == 0);
+    assert(stm32_clock_is_synchronized() == 1U);
+    hrtc.State = HAL_RTC_STATE_RESET;
+    assert(stm32_clock_is_synchronized() == 1U);
+    assert(g_fake_rtc.BKP0R == s_retained.BKP0R);
+    assert(stm32_clock_set_synchronized(0U) == 0);
+    assert(stm32_clock_is_synchronized() == 0U);
+    s_backup_write_failed = 1U;
+    assert(stm32_clock_set_synchronized(1U) == -1);
+    assert(stm32_clock_is_synchronized() == 0U);
     puts("PASS: atomic RTC INIT calendar, verified readback, rollover, cleanup, retry and retained configuration");
     return 0;
 }
